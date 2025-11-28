@@ -1,0 +1,5 @@
+{
+  "name": "CineFlow AI",
+  "description": "A professional cinematic production assistant that manages story context and generates detailed directorial prompts (physics, lighting, lens, sound) for 8-second clips.",
+  "requestFramePermissions": []
+}
