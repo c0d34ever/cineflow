@@ -1,11 +1,11 @@
 import express, { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { getPool } from '../../db';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const JWT_SECRET: string = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '24h';
 
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response) => {
@@ -37,10 +37,11 @@ router.post('/login', async (req: Request, res: Response) => {
     await pool.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
 
     // Generate token
+    const signOptions: SignOptions = { expiresIn: JWT_EXPIRES_IN };
     const token = jwt.sign(
       { userId: user.id, username: user.username, role: user.role },
-      JWT_SECRET as string,
-      { expiresIn: JWT_EXPIRES_IN as string | number }
+      JWT_SECRET,
+      signOptions
     );
 
     res.json({
@@ -96,10 +97,11 @@ router.post('/register', async (req: Request, res: Response) => {
     const userId = insertResult.insertId;
 
     // Generate token
+    const signOptions: SignOptions = { expiresIn: JWT_EXPIRES_IN };
     const token = jwt.sign(
       { userId, username, role },
-      JWT_SECRET as string,
-      { expiresIn: JWT_EXPIRES_IN as string | number }
+      JWT_SECRET,
+      signOptions
     );
 
     res.status(201).json({
