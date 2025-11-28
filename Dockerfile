@@ -55,7 +55,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install production dependencies only
+# Install production dependencies only (root package.json for frontend)
 COPY package*.json ./
 RUN npm ci --only=production
 
@@ -64,8 +64,11 @@ COPY --from=frontend-builder /app/dist ./dist
 
 # Copy entire server/dist directory from builder
 COPY --from=backend-builder /app/server/dist ./server/dist-temp
-# Copy server package.json (needed for module resolution with "type": "module")
+# Copy server package.json and install server dependencies (needed for bcryptjs, etc.)
 COPY --from=backend-builder /app/server/package.json ./server/
+WORKDIR /app/server
+RUN npm ci --only=production
+WORKDIR /app
 
 # Move files from nested server/ directory to dist root (because rootDir="../")
 RUN echo "=== Starting file copy process ===" && \
