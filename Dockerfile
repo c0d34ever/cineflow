@@ -64,10 +64,10 @@ COPY --from=frontend-builder /app/dist ./dist
 
 # Copy entire server/dist directory from builder
 COPY --from=backend-builder /app/server/dist ./server/dist-temp
-# Copy server package.json and install server dependencies (needed for bcryptjs, etc.)
-COPY --from=backend-builder /app/server/package.json ./server/
+# Copy server package.json and package-lock.json, then install server dependencies (needed for bcryptjs, etc.)
+COPY --from=backend-builder /app/server/package*.json ./server/
 WORKDIR /app/server
-RUN npm ci --only=production
+RUN npm ci --omit=dev || npm install --omit=dev
 WORKDIR /app
 
 # Move files from nested server/ directory to dist root (because rootDir="../")
