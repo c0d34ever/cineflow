@@ -64,9 +64,6 @@ COPY --from=frontend-builder /app/dist ./dist
 
 # Copy entire server/dist directory from builder
 COPY --from=backend-builder /app/server/dist ./server/dist-temp
-# Copy types.js from builder root (compiled there because rootDir="../")
-# Note: This may fail if types.js is in a different location - we'll handle in RUN
-COPY --from=backend-builder /app/types.js ./server/types.js
 # Copy server package.json and package-lock.json, then install server dependencies (needed for bcryptjs, etc.)
 COPY --from=backend-builder /app/server/package*.json ./server/
 WORKDIR /app/server
@@ -94,17 +91,25 @@ RUN echo "=== Starting file copy process ===" && \
       find /app/server/dist-temp -type f | head -20; \
       exit 1; \
     fi && \
-    echo "=== Copying types.js ===" && \
+    echo "=== Finding and copying types.js ===" && \
     if [ -f /app/server/dist-temp/types.js ]; then \
       cp /app/server/dist-temp/types.js /app/server/types.js && \
-      echo "SUCCESS: types.js copied from dist-temp"; \
+      echo "SUCCESS: types.js copied from dist-temp root"; \
     elif [ -f /app/server/dist-temp/server/types.js ]; then \
       cp /app/server/dist-temp/server/types.js /app/server/types.js && \
-      echo "SUCCESS: types.js copied from nested location"; \
+      echo "SUCCESS: types.js copied from nested server location"; \
     else \
-      echo "Looking for types.js in builder output..."; \
-      find /app/server/dist-temp -name "types.js" -type f 2>&1 | head -5; \
-      echo "WARNING: types.js not found, will try to copy from builder in next step"; \
+      echo "Searching for types.js in dist-temp..."; \
+      TYPES_PATH=$(find /app/server/dist-temp -name "types.js" -type f 2>/dev/null | head -1); \
+      if [ -n "$TYPES_PATH" ]; then \
+        cp "$TYPES_PATH" /app/server/types.js && \
+        echo "SUCCESS: types.js found and copied from $TYPES_PATH"; \
+      else \
+        echo "ERROR: types.js not found in dist-temp! Listing all .js files:"; \
+        find /app/server/dist-temp -name "*.js" -type f 2>&1 | head -10; \
+        echo "Trying to find types.js in builder output..."; \
+        exit 1; \
+      fi; \
     fi && \
     echo "=== Final verification ===" && \
     test -f /app/server/dist/index.js && echo "SUCCESS: index.js found at /app/server/dist/index.js" && ls -lh /app/server/dist/index.js && head -3 /app/server/dist/index.js || (echo "ERROR: index.js still missing!" && echo "Files in dist:" && find /app/server/dist -type f | head -20 && exit 1) && \
