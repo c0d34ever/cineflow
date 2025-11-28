@@ -89,7 +89,7 @@ RUN echo "=== Starting file copy process ===" && \
     fi && \
     rm -rf /app/server/dist-temp && \
     echo "=== Final verification ===" && \
-    test -f /app/server/dist/index.js && echo "SUCCESS: index.js found at /app/server/dist/index.js" && ls -lh /app/server/dist/index.js || (echo "ERROR: index.js still missing!" && echo "Files in dist:" && find /app/server/dist -type f | head -20 && exit 1)
+    test -f /app/server/dist/index.js && echo "SUCCESS: index.js found at /app/server/dist/index.js" && ls -lh /app/server/dist/index.js && head -3 /app/server/dist/index.js || (echo "ERROR: index.js still missing!" && echo "Files in dist:" && find /app/server/dist -type f | head -20 && exit 1)
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -106,5 +106,10 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Start the server - run from server directory so package.json is found
 WORKDIR /app/server
+# Verify file exists and show its location
+RUN echo "=== Verifying before CMD ===" && \
+    pwd && \
+    ls -la dist/index.js && \
+    test -f dist/index.js && echo "SUCCESS: dist/index.js exists and is readable" || (echo "ERROR: dist/index.js missing!" && ls -la dist/ && exit 1)
 CMD ["node", "dist/index.js"]
 
