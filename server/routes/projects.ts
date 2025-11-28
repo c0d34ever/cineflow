@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
-import { getPool } from '../db';
-import { StoryContext, Scene, DirectorSettings } from '../../types';
+import { getPool } from '../db/index.js';
+import { StoryContext, Scene, DirectorSettings } from '../../types.js';
 
 const router = express.Router();
 

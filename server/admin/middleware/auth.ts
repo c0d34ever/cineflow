@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getPool } from '../../db';
+import { getPool } from '../../db/index.js';
 
 // Ensure .env is loaded (in case middleware is imported before main server loads it)
 const __filename = fileURLToPath(import.meta.url);

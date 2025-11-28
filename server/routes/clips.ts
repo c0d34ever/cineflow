@@ -1,7 +1,7 @@
 import express, { Response } from 'express';
-import { getPool } from '../db';
+import { getPool } from '../db/index.js';
 import { AuthRequest, authenticateToken } from '../admin/middleware/auth';
-import { DirectorSettings } from '../../types';
+import { DirectorSettings } from '../../types.js';
 
 const router = express.Router();
 

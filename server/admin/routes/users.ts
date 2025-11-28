@@ -1,7 +1,7 @@
 import express, { Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { getPool } from '../../db';
-import { AuthRequest, requireAdmin } from '../middleware/auth';
+import { getPool } from '../../db/index.js';
+import { AuthRequest, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 

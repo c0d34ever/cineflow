@@ -109,7 +109,12 @@ WORKDIR /app/server
 # Verify file exists and show its location
 RUN echo "=== Verifying before CMD ===" && \
     pwd && \
-    ls -la dist/index.js && \
-    test -f dist/index.js && echo "SUCCESS: dist/index.js exists and is readable" || (echo "ERROR: dist/index.js missing!" && ls -la dist/ && exit 1)
+    echo "=== Contents of /app/server ===" && \
+    ls -la /app/server/ && \
+    echo "=== Contents of /app/server/dist ===" && \
+    ls -la /app/server/dist/ 2>&1 || echo "dist directory missing" && \
+    echo "=== Looking for index.js ===" && \
+    find /app/server -name "index.js" -type f 2>&1 && \
+    test -f dist/index.js && echo "SUCCESS: dist/index.js exists and is readable" || (echo "ERROR: dist/index.js missing!" && echo "Files in dist:" && find /app/server/dist -type f 2>&1 | head -20 && exit 1)
 CMD ["node", "dist/index.js"]
 

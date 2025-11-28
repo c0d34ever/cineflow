@@ -3,14 +3,14 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createConnection } from '../db';
-import authRouter from './routes/auth';
-import usersRouter from './routes/users';
-import projectsRouter from './routes/projects';
-import statsRouter from './routes/stats';
-import apiKeysRouter from './routes/apiKeys';
-import { initDatabase } from '../db/schema';
-import { authenticateToken, requireAdmin } from './middleware/auth';
+import { createConnection } from '../db/index.js';
+import authRouter from './routes/auth.js';
+import usersRouter from './routes/users.js';
+import projectsRouter from './routes/projects.js';
+import statsRouter from './routes/stats.js';
+import apiKeysRouter from './routes/apiKeys.js';
+import { initDatabase } from '../db/schema.js';
+import { authenticateToken, requireAdmin } from './middleware/auth.js';
 
 // Ensure we load .env from the server directory (parent of admin)
 const __filename = fileURLToPath(import.meta.url);

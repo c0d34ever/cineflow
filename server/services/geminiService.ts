@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { StoryContext, DirectorSettings, TechnicalStyle, Scene } from '../../types';
+import { StoryContext, DirectorSettings, TechnicalStyle, Scene } from '../../types.js';
 import dotenv from 'dotenv';
-import { getPool } from '../db';
+import { getPool } from '../db/index.js';
 
 dotenv.config();
 

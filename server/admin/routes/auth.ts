@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { getPool } from '../../db';
+import { getPool } from '../../db/index.js';
 
 const router = express.Router();
 const JWT_SECRET: string = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
