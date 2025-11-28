@@ -3,8 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Build argument for API URL
+# Build arguments for API URLs
 ARG VITE_API_URL=http://localhost:5000/api
+ARG VITE_ADMIN_API_URL=http://localhost:5001/api
 
 # Copy package files
 COPY package*.json ./
@@ -17,6 +18,7 @@ COPY . .
 # Install dependencies and build
 RUN npm ci
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_ADMIN_API_URL=$VITE_ADMIN_API_URL
 RUN npm run build
 
 # Production Nginx image

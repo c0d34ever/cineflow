@@ -37,12 +37,35 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-Sun12day46fun}
       DB_NAME: ${DB_NAME:-youtigyk_cineflow}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:80,http://209.182.232.185:8081,https://209.182.232.185:8081,http://youtilitybox.com,https://youtilitybox.com,http://www.youtilitybox.com,https://www.youtilitybox.com}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:80,http://209.182.232.185:8081,https://209.182.232.185:8081,http://youtilitybox.com,https://youtilitybox.com,http://www.youtilitybox.com,https://www.youtilitybox.com,https://cineflow.youtilitybox.com,http://cineflow.youtilitybox.com}
     ports:
       - "5000:5000"
-    # depends_on:
-    #   mysql:
-    #     condition: service_healthy
+    networks:
+      - cineflow-network
+    volumes:
+      - ./server/dist:/app/server/dist:ro
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cineflow-admin
+    restart: unless-stopped
+    command: ["node", "/app/server/dist/admin/index.js"]
+    working_dir: /app/server
+    environment:
+      NODE_ENV: production
+      ADMIN_PORT: 5001
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-youtigyk_cineflow}
+      DB_PASSWORD: ${DB_PASSWORD:-Sun12day46fun}
+      DB_NAME: ${DB_NAME:-youtigyk_cineflow}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      ADMIN_CORS_ORIGIN: ${ADMIN_CORS_ORIGIN:-http://localhost:3000,http://localhost:80,http://209.182.232.185:8081,https://209.182.232.185:8081,http://youtilitybox.com,https://youtilitybox.com,http://www.youtilitybox.com,https://www.youtilitybox.com,https://cineflow.youtilitybox.com,http://cineflow.youtilitybox.com}
+    ports:
+      - "5001:5001"
     networks:
       - cineflow-network
     volumes:
@@ -53,13 +76,15 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        - VITE_API_URL=/api
+        - VITE_API_URL=https://cineflow.youtilitybox.com/api
+        - VITE_ADMIN_API_URL=https://cineflow.youtilitybox.com/admin-api
     container_name: cineflow-frontend
     restart: unless-stopped
     ports:
       - "8081:80"
     depends_on:
       - backend
+      - admin
     networks:
       - cineflow-network
 
