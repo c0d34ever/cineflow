@@ -43,9 +43,6 @@ RUN npm ci
 WORKDIR /app
 RUN npm run build:server
 
-# Verify build output exists
-RUN ls -la /app/server/dist/ || (echo "Build output not found, checking alternative locations:" && find /app -name "index.js" -type f)
-
 # Production image
 FROM node:20-alpine
 
@@ -58,11 +55,23 @@ RUN npm ci --only=production
 # Copy built frontend
 COPY --from=frontend-builder /app/dist ./dist
 
-# Copy built backend
+# Copy built backend - with rootDir="../", output might be at server/dist/server/index.js
 COPY --from=backend-builder /app/server/dist ./server/dist
 
-# Verify backend files exist
-RUN test -f /app/server/dist/index.js || (echo "ERROR: /app/server/dist/index.js not found!" && ls -la /app/server/ && exit 1)
+# Fix nested structure if rootDir caused it (server/dist/server/* -> server/dist/*)
+RUN if [ -d /app/server/dist/server ]; then \
+      echo "Fixing nested structure from rootDir..."; \
+      mv /app/server/dist/server/* /app/server/dist/ 2>/dev/null && \
+      rmdir /app/server/dist/server 2>/dev/null || true; \
+    fi && \
+    if [ ! -f /app/server/dist/index.js ]; then \
+      echo "ERROR: index.js not found!"; \
+      echo "Files in /app/server/dist:"; \
+      find /app/server/dist -type f; \
+      echo "All index.js files:"; \
+      find /app -name "index.js" -type f; \
+      exit 1; \
+    fi
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
