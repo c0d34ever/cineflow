@@ -1,4 +1,4 @@
-import { getPool } from '../index';
+import { getPool } from '../index.js';
 import bcrypt from 'bcryptjs';
 
 export async function seedDatabase(): Promise<void> {

@@ -1,4 +1,4 @@
-import { getPool } from '../index';
+import { getPool } from '../index.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

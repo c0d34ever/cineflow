@@ -1,6 +1,6 @@
-import { getPool } from './index';
-import { runMigrations } from './migrations/migrationRunner';
-import { seedDatabase } from './seeders/seederRunner';
+import { getPool } from './index.js';
+import { runMigrations } from './migrations/migrationRunner.js';
+import { seedDatabase } from './seeders/seederRunner.js';
 
 export async function initDatabase(): Promise<void> {
   const pool = getPool();
