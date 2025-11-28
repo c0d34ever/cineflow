@@ -37,11 +37,10 @@ router.post('/login', async (req: Request, res: Response) => {
     await pool.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
 
     // Generate token
-    const signOptions: SignOptions = { expiresIn: JWT_EXPIRES_IN };
     const token = jwt.sign(
       { userId: user.id, username: user.username, role: user.role },
       JWT_SECRET,
-      signOptions
+      { expiresIn: JWT_EXPIRES_IN } as SignOptions
     );
 
     res.json({
@@ -97,11 +96,10 @@ router.post('/register', async (req: Request, res: Response) => {
     const userId = insertResult.insertId;
 
     // Generate token
-    const signOptions: SignOptions = { expiresIn: JWT_EXPIRES_IN };
     const token = jwt.sign(
       { userId, username, role },
       JWT_SECRET,
-      signOptions
+      { expiresIn: JWT_EXPIRES_IN } as SignOptions
     );
 
     res.status(201).json({
