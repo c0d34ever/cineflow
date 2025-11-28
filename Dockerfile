@@ -39,9 +39,12 @@ RUN npm ci
 WORKDIR /app/server
 RUN npm ci
 
-# Build backend (from root, so it can find types in root node_modules)
+# Build backend (from root directory)
 WORKDIR /app
 RUN npm run build:server
+
+# Verify build output exists
+RUN ls -la /app/server/dist/ || (echo "Build output not found, checking alternative locations:" && find /app -name "index.js" -type f)
 
 # Production image
 FROM node:20-alpine
@@ -57,7 +60,9 @@ COPY --from=frontend-builder /app/dist ./dist
 
 # Copy built backend
 COPY --from=backend-builder /app/server/dist ./server/dist
-COPY --from=backend-builder /app/types.ts ./
+
+# Verify backend files exist
+RUN test -f /app/server/dist/index.js || (echo "ERROR: /app/server/dist/index.js not found!" && ls -la /app/server/ && exit 1)
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
