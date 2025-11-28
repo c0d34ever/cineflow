@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { getPool } from '../db/index.js';
-import { AuthRequest, authenticateToken } from '../admin/middleware/auth';
+import { AuthRequest, authenticateToken } from '../admin/middleware/auth.js';
 
 const router = express.Router();
 
