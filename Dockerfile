@@ -41,7 +41,14 @@ RUN npm ci
 
 # Build backend (from root directory)
 WORKDIR /app
-RUN npm run build:server
+RUN npm run build:server && \
+    echo "=== Checking build output ===" && \
+    ls -la /app/server/dist/ 2>/dev/null || echo "dist directory missing" && \
+    find /app/server/dist -type f 2>/dev/null | head -20 || echo "No files found" && \
+    find /app -name "index.js" -type f 2>/dev/null | head -10 && \
+    echo "=== Build completed, checking output ===" && \
+    find /app/server/dist -type f 2>/dev/null | head -20 || echo "No files in server/dist" && \
+    find /app -name "index.js" -type f 2>/dev/null | head -10
 
 # Production image
 FROM node:20-alpine
@@ -55,23 +62,26 @@ RUN npm ci --only=production
 # Copy built frontend
 COPY --from=frontend-builder /app/dist ./dist
 
-# Copy built backend - with rootDir="../", output might be at server/dist/server/index.js
-COPY --from=backend-builder /app/server/dist ./server/dist
+# Copy entire server/dist directory from builder
+COPY --from=backend-builder /app/server/dist ./server/dist-temp
 
-# Fix nested structure if rootDir caused it (server/dist/server/* -> server/dist/*)
-RUN if [ -d /app/server/dist/server ]; then \
-      echo "Fixing nested structure from rootDir..."; \
-      mv /app/server/dist/server/* /app/server/dist/ 2>/dev/null && \
-      rmdir /app/server/dist/server 2>/dev/null || true; \
-    fi && \
-    if [ ! -f /app/server/dist/index.js ]; then \
-      echo "ERROR: index.js not found!"; \
-      echo "Files in /app/server/dist:"; \
-      find /app/server/dist -type f; \
-      echo "All index.js files:"; \
-      find /app -name "index.js" -type f; \
+# Find and move index.js to correct location
+RUN mkdir -p /app/server/dist && \
+    if [ -f /app/server/dist-temp/index.js ]; then \
+      echo "Found index.js at root of dist"; \
+      cp -r /app/server/dist-temp/* /app/server/dist/; \
+    elif [ -f /app/server/dist-temp/server/index.js ]; then \
+      echo "Found index.js in nested server/ directory"; \
+      cp -r /app/server/dist-temp/server/* /app/server/dist/; \
+    else \
+      echo "ERROR: index.js not found! Searching..."; \
+      find /app/server/dist-temp -name "index.js" -type f; \
+      find /app/server/dist-temp -type f | head -20; \
       exit 1; \
-    fi
+    fi && \
+    rm -rf /app/server/dist-temp && \
+    test -f /app/server/dist/index.js || (echo "ERROR: index.js still not found after copy!" && find /app/server/dist -type f && exit 1) && \
+    echo "SUCCESS: index.js found at /app/server/dist/index.js"
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
