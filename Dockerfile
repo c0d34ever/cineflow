@@ -20,16 +20,27 @@ FROM node:20-alpine AS backend-builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy root package files (includes @types/node in devDependencies)
 COPY package*.json ./
+COPY tsconfig.json ./
+
+# Copy server package files
+COPY server/package*.json ./server/
 COPY server/tsconfig.json ./server/
 
 # Copy backend source
 COPY server ./server
 COPY types.ts ./
 
-# Install dependencies and build backend
+# Install root dependencies (including devDependencies for build)
 RUN npm ci
+
+# Install server dependencies (including devDependencies for build)
+WORKDIR /app/server
+RUN npm ci
+
+# Build backend (from root, so it can find types in root node_modules)
+WORKDIR /app
 RUN npm run build:server
 
 # Production image
