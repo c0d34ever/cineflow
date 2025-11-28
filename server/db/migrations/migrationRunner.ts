@@ -35,16 +35,16 @@ export async function runMigrations(): Promise<void> {
     console.log(`📦 Found ${files.length} migration files`);
 
     // Get executed migrations
-    const [executed] = await connection.query<Array<{ name: string }>>(
+    const [executed] = await connection.query(
       'SELECT name FROM migrations'
-    );
+    ) as [Array<{ name: string }>, any];
     const executedNames = new Set(executed.map(m => m.name));
 
     // Verify critical tables exist - if migrations are marked as executed but tables don't exist, re-run them
     if (executedNames.size > 0) {
-      const [tables] = await connection.query<Array<{[key: string]: string}>>(
+      const [tables] = await connection.query(
         "SHOW TABLES"
-      );
+      ) as [Array<{[key: string]: string}>, any];
       const tableNames = new Set(tables.map(t => Object.values(t)[0] as string));
       
       // Check if critical tables exist
@@ -146,10 +146,10 @@ export async function rollbackMigration(migrationName: string): Promise<void> {
   const connection = await pool.getConnection();
 
   try {
-    const [migrations] = await connection.query<Array<{ name: string }>>(
+    const [migrations] = await connection.query(
       'SELECT name FROM migrations WHERE name = ?',
       [migrationName]
-    );
+    ) as [Array<{ name: string }>, any];
 
     if (migrations.length === 0) {
       throw new Error(`Migration ${migrationName} not found`);

@@ -44,21 +44,21 @@ interface DirectorSettingsRow {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const pool = getPool();
-    const [projects] = await pool.query<ProjectRow[]>(
+    const [projects] = await pool.query(
       'SELECT * FROM projects ORDER BY last_updated DESC'
-    );
+    ) as [ProjectRow[], any];
 
     const projectsWithData = await Promise.all(
       projects.map(async (project) => {
-        const [scenes] = await pool.query<SceneRow[]>(
+        const [scenes] = await pool.query(
           'SELECT * FROM scenes WHERE project_id = ? ORDER BY sequence_number ASC',
           [project.id]
-        );
+        ) as [SceneRow[], any];
 
-        const [settings] = await pool.query<DirectorSettingsRow[]>(
+        const [settings] = await pool.query(
           'SELECT * FROM director_settings WHERE project_id = ?',
           [project.id]
-        );
+        ) as [DirectorSettingsRow[], any];
 
         const storyContext: StoryContext = {
           id: project.id,
@@ -72,10 +72,10 @@ router.get('/', async (req: Request, res: Response) => {
 
         const scenesData: Scene[] = await Promise.all(
           scenes.map(async (scene) => {
-            const [sceneSettings] = await pool.query<DirectorSettingsRow[]>(
+            const [sceneSettings] = await pool.query(
               'SELECT * FROM scene_director_settings WHERE scene_id = ?',
               [scene.id]
-            );
+            ) as [DirectorSettingsRow[], any];
 
             const directorSettings: DirectorSettings = sceneSettings[0]
               ? {
@@ -168,25 +168,25 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const pool = getPool();
-    const [projects] = await pool.query<ProjectRow[]>(
+    const [projects] = await pool.query(
       'SELECT * FROM projects WHERE id = ?',
       [req.params.id]
-    );
+    ) as [ProjectRow[], any];
 
     if (projects.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
     const project = projects[0];
-    const [scenes] = await pool.query<SceneRow[]>(
+    const [scenes] = await pool.query(
       'SELECT * FROM scenes WHERE project_id = ? ORDER BY sequence_number ASC',
       [project.id]
-    );
+    ) as [SceneRow[], any];
 
-    const [settings] = await pool.query<DirectorSettingsRow[]>(
+    const [settings] = await pool.query(
       'SELECT * FROM director_settings WHERE project_id = ?',
       [project.id]
-    );
+    ) as [DirectorSettingsRow[], any];
 
     const storyContext: StoryContext = {
       id: project.id,
@@ -200,10 +200,10 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const scenesData: Scene[] = await Promise.all(
       scenes.map(async (scene) => {
-        const [sceneSettings] = await pool.query<DirectorSettingsRow[]>(
+        const [sceneSettings] = await pool.query(
           'SELECT * FROM scene_director_settings WHERE scene_id = ?',
           [scene.id]
-        );
+        ) as [DirectorSettingsRow[], any];
 
         const directorSettings: DirectorSettings = sceneSettings[0]
           ? {

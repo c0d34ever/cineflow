@@ -46,7 +46,7 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
     const [users] = await pool.query(
       'SELECT id, username, email, role, is_active, created_at, last_login FROM users WHERE id = ?',
       [userId]
-    );
+    ) as [any[], any];
 
     res.status(201).json({
       message: 'User created successfully',

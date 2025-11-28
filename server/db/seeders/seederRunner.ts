@@ -7,9 +7,9 @@ export async function seedDatabase(): Promise<void> {
 
   try {
     // Check if users table exists before seeding
-    const [tables] = await connection.query<Array<{Tables_in_youtigyk_cineflow: string}>>(
+    const [tables] = await connection.query(
       "SHOW TABLES LIKE 'users'"
-    );
+    ) as [Array<{Tables_in_youtigyk_cineflow: string}>, any];
     
     if (tables.length === 0) {
       console.log('⏭️  Users table does not exist, skipping seed. Run migrations first.');
@@ -78,9 +78,9 @@ async function seedAdminUser(connection: any): Promise<void> {
 
 async function seedSystemTemplates(connection: any): Promise<void> {
   // Check if templates table exists
-  const [tables] = await connection.query<Array<{Tables_in_youtigyk_cineflow: string}>>(
+  const [tables] = await connection.query(
     "SHOW TABLES LIKE 'project_templates'"
-  );
+  ) as [Array<{Tables_in_youtigyk_cineflow: string}>, any];
   
   if (tables.length === 0) {
     return; // Table doesn't exist yet

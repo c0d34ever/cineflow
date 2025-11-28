@@ -25,7 +25,7 @@ router.get('/project/:projectId', authenticateToken, async (req: AuthRequest, re
     const [analytics] = await pool.query(
       'SELECT * FROM project_analytics WHERE project_id = ?',
       [projectId]
-    );
+    ) as [any[], any];
 
     // Get scene count
     const [sceneCount] = await pool.query(
@@ -57,7 +57,7 @@ router.get('/project/:projectId', authenticateToken, async (req: AuthRequest, re
       [projectId]
     );
 
-    const analyticsData = analytics[0] || {};
+    const analyticsData = (analytics as any[])[0] || {};
     const sceneCountNum = (sceneCount as any[])[0]?.count || 0;
     const exportCountNum = (exportCount as any[])[0]?.count || 0;
     const commentCountNum = (commentCount as any[])[0]?.count || 0;

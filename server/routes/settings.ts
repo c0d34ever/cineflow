@@ -13,7 +13,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const [settings] = await pool.query(
       'SELECT * FROM user_settings WHERE user_id = ?',
       [userId]
-    );
+    ) as [any[], any];
 
     if (!Array.isArray(settings) || settings.length === 0) {
       // Create default settings
@@ -25,7 +25,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       const [newSettings] = await pool.query(
         'SELECT * FROM user_settings WHERE user_id = ?',
         [userId]
-      );
+      ) as [any[], any];
 
       return res.json({ settings: newSettings[0] });
     }
