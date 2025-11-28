@@ -64,6 +64,8 @@ COPY --from=frontend-builder /app/dist ./dist
 
 # Copy entire server/dist directory from builder
 COPY --from=backend-builder /app/server/dist ./server/dist-temp
+# Copy server package.json (needed for module resolution with "type": "module")
+COPY --from=backend-builder /app/server/package.json ./server/
 
 # Move files from nested server/ directory to dist root (because rootDir="../")
 RUN echo "=== Starting file copy process ===" && \
@@ -102,6 +104,7 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:5000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start the server (use absolute path to be sure)
-CMD ["node", "/app/server/dist/index.js"]
+# Start the server - run from server directory so package.json is found
+WORKDIR /app/server
+CMD ["node", "dist/index.js"]
 
