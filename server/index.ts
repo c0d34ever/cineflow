@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createConnection } from './db';
 import projectsRouter from './routes/projects';
 import geminiRouter from './routes/gemini';
@@ -12,9 +14,21 @@ import settingsRouter from './routes/settings';
 import episodesRouter from './routes/episodes';
 import clipsRouter from './routes/clips';
 import userGeminiKeyRouter from './routes/userGeminiKey';
+import exportsRouter from './routes/exports';
+import sceneNotesRouter from './routes/sceneNotes';
+import templatesRouter from './routes/templates';
+import charactersRouter from './routes/characters';
+import sharingRouter from './routes/sharing';
+import locationsRouter from './routes/locations';
+import analyticsRouter from './routes/analytics';
+import sceneTemplatesRouter from './routes/sceneTemplates';
+import activityRouter from './routes/activity';
 import { initDatabase } from './db/schema';
 
-dotenv.config();
+// Ensure we load .env from the server directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -58,6 +72,15 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/episodes', episodesRouter);
 app.use('/api/clips', clipsRouter);
 app.use('/api/user', userGeminiKeyRouter);
+app.use('/api/exports', exportsRouter);
+app.use('/api/scene-notes', sceneNotesRouter);
+app.use('/api/templates', templatesRouter);
+app.use('/api/characters', charactersRouter);
+app.use('/api/sharing', sharingRouter);
+app.use('/api/locations', locationsRouter);
+app.use('/api/analytics', analyticsRouter);
+app.use('/api/scene-templates', sceneTemplatesRouter);
+app.use('/api/activity', activityRouter);
 
 // 404 handler
 app.use((req, res) => {

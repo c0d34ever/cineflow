@@ -15,7 +15,12 @@ export async function initDatabase(): Promise<void> {
     // Seed database (if needed)
     const shouldSeed = process.env.SEED_DATABASE === 'true';
     if (shouldSeed) {
-      await seedDatabase();
+      try {
+        await seedDatabase();
+      } catch (error) {
+        console.warn('⚠️  Seeding failed, but continuing server startup:', error);
+        // Don't throw - allow server to start even if seeding fails
+      }
     }
 
     console.log('✅ Database initialized successfully');

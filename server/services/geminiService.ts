@@ -123,15 +123,10 @@ export const generateStoryConcept = async (seed: string, userId?: number): Promi
       characters: "Unknown",
       initialContext: ""
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating story:", error);
-    return {
-      title: "Untitled Project",
-      genre: "Unknown",
-      plotSummary: "Could not generate plot.",
-      characters: "Unknown",
-      initialContext: ""
-    };
+    // Re-throw the error so the route handler can return proper error response
+    throw error;
   }
 };
 
@@ -201,9 +196,10 @@ export const suggestNextScene = async (
       }
     });
     return response.text?.trim() || "";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error suggesting next scene:", error);
-    return "";
+    // Re-throw the error so the route handler can return proper error response
+    throw error;
   }
 };
 
@@ -225,6 +221,8 @@ export const suggestDirectorSettings = async (
   Analyze the Genre, Plot, Previous Context, and the User's rough idea for the next shot.
   Select the most impactful settings that enhance the storytelling.
   
+  **CRITICAL: YOU MUST FILL IN ALL FIELDS. DO NOT LEAVE ANY FIELD EMPTY.**
+  
   **CRITICAL LANGUAGE RULES**:
   1. **INPUT HANDLING**: The user's idea might be in **Hindi**, **Hinglish** (Hindi in English script), or **English**. You must understand all three.
   2. **TECHNICAL OUTPUT (Lens, Angle, Lighting, Movement, Sound)**: MUST be in **ENGLISH**.
@@ -234,25 +232,46 @@ export const suggestDirectorSettings = async (
      - **LANGUAGE**: Use **Hindi (Devanagari)** for Hindi lines. Use English for English lines.
      - Example: Aryan: "हम कहाँ हैं?", Creatures: "Tum quantum state mein ho..."
   
-  SPECIFIC INSTRUCTIONS:
-  - Lens: Suggest specific focal lengths (e.g. 24mm, 50mm Anamorphic, 85mm Portrait).
-  - Lighting: Be descriptive (e.g. "Chiaroscuro high contrast", "Neon-noir rim light", "Overcast soft diffusion").
-  - Movement: Suggest specific gear (e.g. "Steadicam", "Dolly Zoom", "Handheld shaky", "Crane down").
-  - Zoom: Suggest zoom intensity (e.g. "Slow Push In", "Crash Zoom", "No Zoom").
-  - Sound: Suggest layers (e.g. "Heartbeat thumping + Distant sirens", "Wind howling + Crunching snow").
-  - Stunts: If action is implied, specify the mechanics (e.g. "Wire-assisted fall", "Squib impact", "High-speed collision").
-  - Dialogue: BE PROACTIVE. If characters are interacting, provide the dialogue in the requested format.
+  **MANDATORY FIELD REQUIREMENTS** (ALL must be filled):
+  - customSceneId: Generate a scene identifier (e.g. "SCENE_001", "INT_OFFICE_02")
+  - lens: REQUIRED - Suggest specific focal lengths (e.g. "24mm Wide", "50mm Anamorphic", "85mm Portrait", "35mm Prime"). NEVER leave empty.
+  - angle: REQUIRED - Camera angle (e.g. "Eye Level", "Low Angle", "High Angle", "Dutch Angle", "Bird's Eye"). NEVER leave empty.
+  - lighting: REQUIRED - Be descriptive (e.g. "Chiaroscuro high contrast", "Neon-noir rim light", "Overcast soft diffusion", "Natural Cinematic"). NEVER leave empty.
+  - movement: REQUIRED - Suggest specific gear (e.g. "Steadicam", "Dolly Zoom", "Handheld shaky", "Crane down", "Static"). NEVER leave empty.
+  - zoom: REQUIRED - Zoom intensity (e.g. "Slow Push In", "Crash Zoom", "No Zoom", "Slow Pull Out"). Use "No Zoom" if no zoom is needed. NEVER leave empty.
+  - sound: REQUIRED - Sound layers (e.g. "Heartbeat thumping + Distant sirens", "Wind howling + Crunching snow", "Atmospheric ambient", "Silence"). NEVER leave empty.
+  - dialogue: If characters are interacting or the scene suggests dialogue, provide it. Otherwise use empty string "".
+  - stuntInstructions: If action/stunts are implied, specify mechanics (e.g. "Wire-assisted fall", "Squib impact", "High-speed collision"). Otherwise use empty string "".
+  - physicsFocus: Boolean - true if scene requires high physics detail (action, explosions, water, etc.), false otherwise.
+  - style: Must be one of: "Cinematic", "Documentary", "Experimental", "Commercial", "Music Video"
+  - transition: Transition type (e.g. "Cut", "Fade", "Dissolve", "Wipe", "Match Cut")
   
-  Return a JSON object matching the DirectorSettings interface exactly.`;
+  Return a JSON object matching the DirectorSettings interface exactly. ALL REQUIRED FIELDS MUST HAVE VALUES.`;
 
   const prompt = `
-    Movie: ${context.title} (${context.genre})
-    Characters: ${context.characters}
-    Context so far: ${(prevSceneSummary || context.plotSummary).substring(0, 500)}
+    MOVIE PROJECT:
+    Title: ${context.title || 'Untitled'}
+    Genre: ${context.genre || 'General'}
+    Characters: ${context.characters || 'Unknown'}
     
-    User's Idea for Next Scene: "${(rawIdea || "Continue the story naturally from the previous context.").substring(0, 300)}"
+    STORY CONTEXT:
+    ${(prevSceneSummary || context.plotSummary || 'No previous context').substring(0, 500)}
     
-    Current Style Preference: ${currentSettings.style}
+    USER'S IDEA FOR NEXT SCENE:
+    "${(rawIdea || "Continue the story naturally from the previous context.").substring(0, 300)}"
+    
+    CURRENT STYLE: ${currentSettings.style || 'Cinematic'}
+    
+    YOUR TASK:
+    Based on the user's idea above, generate COMPLETE technical settings for this scene.
+    - Analyze what type of shot this is (action, dialogue, establishing, etc.)
+    - Determine appropriate camera settings (lens, angle, movement, zoom)
+    - Determine lighting style that matches the mood
+    - Determine sound design that enhances the scene
+    - If dialogue is present or implied, include it
+    - If action/stunts are present, include stunt instructions
+    
+    CRITICAL: Fill in EVERY field with appropriate values. Do not leave any field as an empty string unless it truly doesn't apply (like dialogue in a silent scene).
   `;
 
   try {
@@ -265,45 +284,91 @@ export const suggestDirectorSettings = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            customSceneId: { type: Type.STRING },
-            lens: { type: Type.STRING },
-            angle: { type: Type.STRING },
-            lighting: { type: Type.STRING },
-            movement: { type: Type.STRING },
-            zoom: { type: Type.STRING },
-            sound: { type: Type.STRING },
-            dialogue: { type: Type.STRING, description: "Spoken lines. Format: Character: 'Line'." },
-            stuntInstructions: { type: Type.STRING },
-            physicsFocus: { type: Type.BOOLEAN },
-            style: { type: Type.STRING, enum: Object.values(TechnicalStyle) },
-            transition: { type: Type.STRING }
-          }
+            customSceneId: { 
+              type: Type.STRING,
+              description: "Scene identifier like 'SCENE_001' or 'INT_OFFICE_02'. REQUIRED."
+            },
+            lens: { 
+              type: Type.STRING,
+              description: "Camera lens specification. Examples: '24mm Wide', '50mm Anamorphic', '85mm Portrait', '35mm Prime'. REQUIRED - must provide a value."
+            },
+            angle: { 
+              type: Type.STRING,
+              description: "Camera angle. Examples: 'Eye Level', 'Low Angle', 'High Angle', 'Dutch Angle'. REQUIRED - must provide a value."
+            },
+            lighting: { 
+              type: Type.STRING,
+              description: "Lighting style. Examples: 'Chiaroscuro high contrast', 'Neon-noir rim light', 'Natural Cinematic'. REQUIRED - must provide a value."
+            },
+            movement: { 
+              type: Type.STRING,
+              description: "Camera movement. Examples: 'Steadicam', 'Dolly Zoom', 'Handheld shaky', 'Static', 'Crane down'. REQUIRED - must provide a value."
+            },
+            zoom: { 
+              type: Type.STRING,
+              description: "Zoom operation. Examples: 'Slow Push In', 'Crash Zoom', 'No Zoom', 'Slow Pull Out'. REQUIRED - must provide a value."
+            },
+            sound: { 
+              type: Type.STRING,
+              description: "Sound design. Examples: 'Heartbeat thumping + Distant sirens', 'Atmospheric ambient', 'Wind howling'. REQUIRED - must provide a value."
+            },
+            dialogue: { 
+              type: Type.STRING,
+              description: "Spoken lines if present. Format: Character: 'Line'. Leave empty if no dialogue."
+            },
+            stuntInstructions: { 
+              type: Type.STRING,
+              description: "Stunt/action mechanics if applicable. Examples: 'Wire-assisted fall', 'Squib impact'. Leave empty if no stunts."
+            },
+            physicsFocus: { 
+              type: Type.BOOLEAN,
+              description: "Whether scene requires high physics detail (true for action/explosions/water, false otherwise)."
+            },
+            style: { 
+              type: Type.STRING,
+              enum: Object.values(TechnicalStyle),
+              description: "Visual style. Must be one of: Cinematic, Documentary, Experimental, Commercial, Music Video."
+            },
+            transition: { 
+              type: Type.STRING,
+              description: "Transition type. Examples: 'Cut', 'Fade', 'Dissolve', 'Wipe'. REQUIRED - must provide a value."
+            }
+          },
+          required: ['lens', 'angle', 'lighting', 'movement', 'zoom', 'sound', 'transition', 'style', 'physicsFocus']
         }
       }
     });
 
+    // Log the raw response for debugging
+    console.log('Raw Gemini response:', response.text);
+    
     const json = safeParseJSON<Partial<DirectorSettings>>(response.text, {});
     
-    // Merge with defaults to ensure safety
+    // Log parsed JSON for debugging
+    console.log('Parsed JSON:', JSON.stringify(json, null, 2));
+    
+    // Merge with defaults to ensure safety - use empty string check, not just falsy
     return {
       ...currentSettings,
       ...json,
-      // Ensure specific fields are strings and valid
-      lens: json.lens || '35mm Prime',
-      angle: json.angle || 'Eye Level',
-      lighting: json.lighting || 'Cinematic',
-      movement: json.movement || 'Static',
-      zoom: json.zoom || '',
-      sound: json.sound || 'Ambient',
+      // Ensure specific fields are strings and valid - check for empty strings explicitly
+      customSceneId: json.customSceneId || `SCENE_${Date.now().toString().slice(-6)}`,
+      lens: (json.lens && json.lens.trim()) ? json.lens : '35mm Prime',
+      angle: (json.angle && json.angle.trim()) ? json.angle : 'Eye Level',
+      lighting: (json.lighting && json.lighting.trim()) ? json.lighting : 'Natural Cinematic',
+      movement: (json.movement && json.movement.trim()) ? json.movement : 'Static',
+      zoom: (json.zoom && json.zoom.trim()) ? json.zoom : 'No Zoom',
+      sound: (json.sound && json.sound.trim()) ? json.sound : 'Atmospheric ambient',
       stuntInstructions: json.stuntInstructions || '',
       dialogue: json.dialogue || '',
-      physicsFocus: json.physicsFocus ?? false,
-      style: json.style || TechnicalStyle.CINEMATIC,
-      transition: json.transition || 'Cut'
+      physicsFocus: json.physicsFocus ?? currentSettings.physicsFocus ?? false,
+      style: json.style || currentSettings.style || TechnicalStyle.CINEMATIC,
+      transition: (json.transition && json.transition.trim()) ? json.transition : 'Cut'
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error predicting settings:", error);
-    return currentSettings;
+    // Re-throw the error so the route handler can return proper error response
+    throw error;
   }
 };
 
@@ -402,9 +467,230 @@ export const enhanceScenePrompt = async (
       enhancedPrompt: json.enhancedPrompt || rawIdea,
       contextSummary: json.contextSummary || rawIdea
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error enhancing prompt:", error);
-    return { enhancedPrompt: rawIdea, contextSummary: rawIdea };
+    // Re-throw the error so the route handler can return proper error response
+    throw error;
+  }
+};
+
+/**
+ * Extracts characters from story context and all scenes, returns structured character data
+ */
+export const extractCharacters = async (
+  context: StoryContext,
+  scenes: Scene[] = [],
+  userId?: number
+): Promise<Array<{ name: string; description?: string; role?: string; appearance?: string; personality?: string }>> => {
+  const ai = await getAIClient(userId);
+
+  const systemInstruction = `You are a professional script analyst. Extract all characters mentioned in the ENTIRE story, including all scenes.
+  Return a JSON array of character objects with:
+  - name: Character's name (required)
+  - description: Brief character description
+  - role: Character's role (e.g., "Protagonist", "Antagonist", "Supporting")
+  - appearance: Physical appearance description
+  - personality: Personality traits
+  
+  Extract ALL characters mentioned throughout the entire story, including all scenes. Analyze the complete narrative to identify every character, even minor ones.`;
+
+  // Build scenes content summary
+  const scenesContent = scenes.length > 0 
+    ? scenes.map((scene, idx) => `
+      Scene ${scene.sequenceNumber || idx + 1}:
+      - Raw Idea: ${scene.rawIdea || ''}
+      - Enhanced Prompt: ${scene.enhancedPrompt || ''}
+      - Context Summary: ${scene.contextSummary || ''}
+    `).join('\n')
+    : 'No scenes generated yet.';
+
+  const prompt = `
+    COMPLETE STORY ANALYSIS:
+    
+    STORY CONTEXT:
+    Title: ${context.title || 'Untitled'}
+    Genre: ${context.genre || 'General'}
+    Plot Summary: ${context.plotSummary || ''}
+    Initial Characters Mentioned: ${context.characters || ''}
+    Initial Context: ${context.initialContext || ''}
+    
+    ALL SCENES IN THE STORY:
+    ${scenesContent}
+    
+    Analyze the ENTIRE story above, including all scenes, and extract ALL characters that appear throughout the complete narrative. Consider character development, relationships, and appearances across all scenes.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              description: { type: Type.STRING },
+              role: { type: Type.STRING },
+              appearance: { type: Type.STRING },
+              personality: { type: Type.STRING }
+            },
+            required: ['name']
+          }
+        }
+      }
+    });
+
+    return safeParseJSON<Array<{ name: string; description?: string; role?: string; appearance?: string; personality?: string }>>(
+      response.text,
+      []
+    );
+  } catch (error: any) {
+    console.error("Error extracting characters:", error);
+    throw error;
+  }
+};
+
+/**
+ * Extracts locations from story context and all scenes, returns structured location data
+ */
+export const extractLocations = async (
+  context: StoryContext,
+  scenes: Scene[] = [],
+  userId?: number
+): Promise<Array<{ name: string; description?: string; location_type?: string; address?: string }>> => {
+  const ai = await getAIClient(userId);
+
+  const systemInstruction = `You are a location scout. Extract all locations mentioned in the ENTIRE story, including all scenes.
+  Return a JSON array of location objects with:
+  - name: Location name (required)
+  - description: Brief location description
+  - location_type: Type of location (e.g., "Interior", "Exterior", "Studio", "Real Location")
+  - address: Physical address or description if mentioned
+  
+  Extract ALL locations mentioned throughout the entire story, including all scenes. Analyze the complete narrative to identify every location, even minor ones.`;
+
+  // Build scenes content summary with full details
+  const scenesContent = scenes.length > 0 
+    ? scenes.map((scene, idx) => `
+      Scene ${scene.sequenceNumber || idx + 1}:
+      - Raw Idea: ${scene.rawIdea || ''}
+      - Enhanced Prompt: ${scene.enhancedPrompt || ''}
+      - Context Summary: ${scene.contextSummary || ''}
+    `).join('\n')
+    : 'No scenes generated yet.';
+
+  const prompt = `
+    COMPLETE STORY ANALYSIS:
+    
+    STORY CONTEXT:
+    Title: ${context.title || 'Untitled'}
+    Genre: ${context.genre || 'General'}
+    Plot Summary: ${context.plotSummary || ''}
+    Initial Context: ${context.initialContext || ''}
+    
+    ALL SCENES IN THE STORY:
+    ${scenesContent}
+    
+    Analyze the ENTIRE story above, including all scenes, and extract ALL locations that appear throughout the complete narrative. Consider location descriptions, settings, and any physical addresses or location details mentioned across all scenes.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              description: { type: Type.STRING },
+              location_type: { type: Type.STRING },
+              address: { type: Type.STRING }
+            },
+            required: ['name']
+          }
+        }
+      }
+    });
+
+    return safeParseJSON<Array<{ name: string; description?: string; location_type?: string; address?: string }>>(
+      response.text,
+      []
+    );
+  } catch (error: any) {
+    console.error("Error extracting locations:", error);
+    throw error;
+  }
+};
+
+/**
+ * Generates hashtags and captions for an episode
+ */
+export const generateEpisodeContent = async (
+  episodeTitle: string,
+  episodeDescription: string,
+  projectContext: StoryContext,
+  userId?: number
+): Promise<{ hashtags: string[]; caption: string }> => {
+  const ai = await getAIClient(userId);
+
+  const systemInstruction = `You are a social media content creator for film/TV projects.
+  Generate engaging hashtags and captions for an episode.
+  
+  Return:
+  - hashtags: Array of 10-15 relevant hashtags (mix of genre, themes, episode-specific)
+  - caption: Engaging 2-3 sentence caption for social media (Instagram/Twitter style)
+  
+  Make it engaging, use emojis appropriately, and include relevant film/TV hashtags.`;
+
+  const prompt = `
+    PROJECT:
+    Title: ${projectContext.title || 'Untitled'}
+    Genre: ${projectContext.genre || 'General'}
+    
+    EPISODE:
+    Title: ${episodeTitle}
+    Description: ${episodeDescription}
+    
+    Generate hashtags and caption for this episode.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            hashtags: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            caption: { type: Type.STRING }
+          },
+          required: ['hashtags', 'caption']
+        }
+      }
+    });
+
+    return safeParseJSON<{ hashtags: string[]; caption: string }>(
+      response.text,
+      { hashtags: [], caption: '' }
+    );
+  } catch (error: any) {
+    console.error("Error generating episode content:", error);
+    throw error;
   }
 };
 

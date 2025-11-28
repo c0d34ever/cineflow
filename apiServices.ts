@@ -70,6 +70,149 @@ export const commentsService = {
   delete: (id: number) => apiCall(`/comments/${id}`, { method: 'DELETE' }),
 };
 
+// Scene Notes Service
+export const sceneNotesService = {
+  getByScene: (sceneId: string) => apiCall(`/scene-notes/scene/${sceneId}`),
+  create: (data: { scene_id: string; note_type?: 'note' | 'todo' | 'issue' | 'idea'; content: string }) =>
+    apiCall('/scene-notes', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: { content?: string; note_type?: string; is_resolved?: boolean }) =>
+    apiCall(`/scene-notes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => apiCall(`/scene-notes/${id}`, { method: 'DELETE' }),
+};
+
+// Templates Service
+export const templatesService = {
+  getAll: () => apiCall('/templates'),
+  getById: (id: number) => apiCall(`/templates/${id}`),
+  create: (data: {
+    name: string;
+    description?: string;
+    genre?: string;
+    plot_summary?: string;
+    characters?: string;
+    initial_context?: string;
+    director_settings?: any;
+  }) => apiCall('/templates', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: number) => apiCall(`/templates/${id}`, { method: 'DELETE' }),
+};
+
+// Characters Service
+export const charactersService = {
+  getByProject: (projectId: string) => apiCall(`/characters/project/${projectId}`),
+  getByScene: (sceneId: string) => apiCall(`/characters/scene/${sceneId}`),
+  create: (data: {
+    project_id: string;
+    name: string;
+    description?: string;
+    role?: string;
+    appearance?: string;
+    personality?: string;
+    backstory?: string;
+    image_url?: string;
+  }) => apiCall('/characters', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: {
+    name?: string;
+    description?: string;
+    role?: string;
+    appearance?: string;
+    personality?: string;
+    backstory?: string;
+    image_url?: string;
+  }) => apiCall(`/characters/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => apiCall(`/characters/${id}`, { method: 'DELETE' }),
+  addToScene: (sceneId: string, characterId: number, roleInScene?: string) =>
+    apiCall(`/characters/scene/${sceneId}`, { method: 'POST', body: JSON.stringify({ character_id: characterId, role_in_scene: roleInScene }) }),
+  removeFromScene: (sceneId: string, characterId: number) =>
+    apiCall(`/characters/scene/${sceneId}/${characterId}`, { method: 'DELETE' }),
+};
+
+// Projects Service - Archive
+export const archiveProject = (projectId: string, archived: boolean) =>
+  apiCall(`/projects/${projectId}/archive`, { method: 'PUT', body: JSON.stringify({ archived }) });
+
+// Sharing Service
+export const sharingService = {
+  getByProject: (projectId: string) => apiCall(`/sharing/project/${projectId}`),
+  create: (data: {
+    project_id: string;
+    shared_with_user_id?: number;
+    access_level?: 'view' | 'edit' | 'comment';
+    expires_at?: string;
+  }) => apiCall('/sharing', { method: 'POST', body: JSON.stringify(data) }),
+  revoke: (shareId: number) => apiCall(`/sharing/${shareId}`, { method: 'DELETE' }),
+  getByToken: (token: string) => {
+    const tokenApiCall = async (endpoint: string, options: RequestInit = {}) => {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Request failed');
+      }
+      return response.json();
+    };
+    return tokenApiCall(`/sharing/token/${token}`);
+  },
+};
+
+// Activity Service
+export const activityService = {
+  getFeed: (limit?: number) => apiCall(`/activity${limit ? `?limit=${limit}` : ''}`),
+  logActivity: (data: {
+    project_id?: string;
+    activity_type: string;
+    activity_description?: string;
+    metadata?: any;
+  }) => apiCall('/activity', { method: 'POST', body: JSON.stringify(data) }),
+  getNotifications: (limit?: number) => apiCall(`/activity/notifications${limit ? `?limit=${limit}` : ''}`),
+  markNotificationRead: (id: number) => apiCall(`/activity/notifications/${id}/read`, { method: 'PUT' }),
+  markAllNotificationsRead: () => apiCall('/activity/notifications/read-all', { method: 'PUT' }),
+};
+
+// Scene Templates Service
+export const sceneTemplatesService = {
+  getAll: () => apiCall('/scene-templates'),
+  create: (data: {
+    name: string;
+    description?: string;
+    raw_idea: string;
+    director_settings?: any;
+  }) => apiCall('/scene-templates', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: {
+    name?: string;
+    description?: string;
+    raw_idea?: string;
+    director_settings?: any;
+  }) => apiCall(`/scene-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => apiCall(`/scene-templates/${id}`, { method: 'DELETE' }),
+};
+
+// Locations Service
+export const locationsService = {
+  getByProject: (projectId: string) => apiCall(`/locations/project/${projectId}`),
+  getByScene: (sceneId: string) => apiCall(`/locations/scene/${sceneId}`),
+  create: (data: {
+    project_id: string;
+    name: string;
+    description?: string;
+    location_type?: string;
+    address?: string;
+    image_url?: string;
+    notes?: string;
+  }) => apiCall('/locations', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: {
+    name?: string;
+    description?: string;
+    location_type?: string;
+    address?: string;
+    image_url?: string;
+    notes?: string;
+  }) => apiCall(`/locations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => apiCall(`/locations/${id}`, { method: 'DELETE' }),
+  addToScene: (sceneId: string, locationId: number) =>
+    apiCall(`/locations/scene/${sceneId}`, { method: 'POST', body: JSON.stringify({ location_id: locationId }) }),
+  removeFromScene: (sceneId: string, locationId: number) =>
+    apiCall(`/locations/scene/${sceneId}/${locationId}`, { method: 'DELETE' }),
+};
+
 // Settings Service
 export const settingsService = {
   get: () => apiCall('/settings'),
@@ -154,8 +297,12 @@ export const episodesService = {
     status?: string;
     thumbnail_url?: string;
     episode_number?: number;
+    hashtags?: string[];
+    caption?: string;
   }) => apiCall(`/episodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => apiCall(`/episodes/${id}`, { method: 'DELETE' }),
+  generateContent: (id: string, projectContext: any) =>
+    apiCall(`/episodes/${id}/generate-content`, { method: 'PUT', body: JSON.stringify({ project_context: projectContext }) }),
 };
 
 // Clips Service
@@ -189,6 +336,33 @@ export const clipsService = {
     }),
 };
 
+// Admin Services (use ADMIN_API_URL)
+export const adminProjectsService = {
+  getAll: (params?: { page?: number; limit?: number; userId?: number; search?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.userId) queryParams.append('userId', params.userId.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    const query = queryParams.toString();
+    return adminApiCall(`/projects${query ? '?' + query : ''}`);
+  },
+  delete: (id: string) => adminApiCall(`/projects/${id}`, { method: 'DELETE' }),
+};
+
+export const adminApiKeysService = {
+  getAll: (params?: { page?: number; limit?: number; userId?: number; is_active?: boolean }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.userId) queryParams.append('userId', params.userId.toString());
+    if (params?.is_active !== undefined) queryParams.append('is_active', params.is_active.toString());
+    const query = queryParams.toString();
+    return adminApiCall(`/api-keys${query ? '?' + query : ''}`);
+  },
+  getStats: () => adminApiCall('/api-keys/stats'),
+};
+
 // Export all services
 export default {
   apiKeys: apiKeysService,
@@ -200,5 +374,7 @@ export default {
   episodes: episodesService,
   clips: clipsService,
   userGeminiKey: userGeminiKeyService,
+  adminProjects: adminProjectsService,
+  adminApiKeys: adminApiKeysService,
 };
 

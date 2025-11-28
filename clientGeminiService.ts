@@ -80,6 +80,63 @@ export const suggestDirectorSettings = async (
   return response.json();
 };
 
+export const extractCharacters = async (context: StoryContext, scenes: Scene[] = []): Promise<Array<{ name: string; description?: string; role?: string; appearance?: string; personality?: string }>> => {
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE_URL}/gemini/extract-characters`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ context, scenes })
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to extract characters');
+  }
+  const data = await response.json();
+  return data.characters || [];
+};
+
+export const extractLocations = async (context: StoryContext, scenes: Scene[]): Promise<Array<{ name: string; description?: string; location_type?: string; address?: string }>> => {
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE_URL}/gemini/extract-locations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ context, scenes })
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to extract locations');
+  }
+  const data = await response.json();
+  return data.locations || [];
+};
+
+export const generateEpisodeContent = async (
+  episodeTitle: string,
+  episodeDescription: string,
+  projectContext: StoryContext
+): Promise<{ hashtags: string[]; caption: string }> => {
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE_URL}/gemini/generate-episode-content`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ episode_title: episodeTitle, episode_description: episodeDescription, project_context: projectContext })
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to generate episode content');
+  }
+  return await response.json();
+};
+
 export const enhanceScenePrompt = async (
   rawIdea: string,
   context: StoryContext,

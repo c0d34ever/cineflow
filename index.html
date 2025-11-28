@@ -11,10 +11,18 @@
         font-family: 'Inter', sans-serif;
         background-color: #0f0f10;
         color: #e2e2e2;
+        transition: background-color 0.3s, color 0.3s;
       }
       h1, h2, h3, .cinematic-font {
         font-family: 'Cinzel', serif;
       }
+      
+      /* Light Theme */
+      html.light body {
+        background-color: #fafafa;
+        color: #1f1f1f;
+      }
+      
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
@@ -23,12 +31,36 @@
       ::-webkit-scrollbar-track {
         background: #18181b; 
       }
+      html.light ::-webkit-scrollbar-track {
+        background: #e5e5e5;
+      }
       ::-webkit-scrollbar-thumb {
         background: #3f3f46; 
         border-radius: 4px;
       }
+      html.light ::-webkit-scrollbar-thumb {
+        background: #a3a3a3;
+      }
       ::-webkit-scrollbar-thumb:hover {
         background: #52525b; 
+      }
+      html.light ::-webkit-scrollbar-thumb:hover {
+        background: #737373;
+      }
+      
+      /* Toast Animations */
+      @keyframes slide-in {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      .animate-slide-in {
+        animation: slide-in 0.3s ease-out;
       }
     </style>
   <script type="importmap">

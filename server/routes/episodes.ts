@@ -102,11 +102,49 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// PUT /api/episodes/:id/generate-content - Generate hashtags and caption for episode
+router.put('/:id/generate-content', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const episodeId = req.params.id;
+    const { project_context } = req.body;
+    const pool = getPool();
+
+    // Get episode
+    const [episodes] = await pool.query('SELECT * FROM episodes WHERE id = ?', [episodeId]);
+    if (!Array.isArray(episodes) || episodes.length === 0) {
+      return res.status(404).json({ error: 'Episode not found' });
+    }
+
+    const episode = episodes[0] as any;
+
+    // Generate content using Gemini
+    const { generateEpisodeContent } = require('../services/geminiService');
+    const userId = req.user!.id;
+    const content = await generateEpisodeContent(
+      episode.title || `Episode ${episode.episode_number}`,
+      episode.description || '',
+      project_context,
+      userId
+    );
+
+    // Update episode with generated content
+    await pool.query(
+      'UPDATE episodes SET hashtags = ?, caption = ? WHERE id = ?',
+      [JSON.stringify(content.hashtags), content.caption, episodeId]
+    );
+
+    res.json({ hashtags: content.hashtags, caption: content.caption });
+  } catch (error: any) {
+    console.error('Error generating episode content:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate episode content' });
+  }
+});
+
 // PUT /api/episodes/:id - Update episode
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const episodeId = req.params.id;
-    const { title, description, duration_seconds, air_date, status, thumbnail_url, episode_number } = req.body;
+    const { title, description, duration_seconds, air_date, status, thumbnail_url, episode_number, hashtags, caption } = req.body;
 
     const pool = getPool();
 
@@ -146,6 +184,16 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     if (episode_number !== undefined) {
       updates.push('episode_number = ?');
       params.push(episode_number);
+    }
+
+    if (hashtags !== undefined) {
+      updates.push('hashtags = ?');
+      params.push(Array.isArray(hashtags) ? JSON.stringify(hashtags) : hashtags);
+    }
+
+    if (caption !== undefined) {
+      updates.push('caption = ?');
+      params.push(caption);
     }
 
     if (updates.length === 0) {

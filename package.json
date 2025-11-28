@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "tsx watch server/index.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\" \"npm run dev:admin\"",
+    "dev:admin": "cd server && npm run dev:admin",
     "build": "vite build",
     "build:server": "tsc --project server/tsconfig.json",
     "build:all": "npm run build && npm run build:server",

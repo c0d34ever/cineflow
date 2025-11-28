@@ -6,10 +6,23 @@ import SceneCard from './components/SceneCard';
 import Auth from './components/Auth';
 import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import CommentsPanel from './components/CommentsPanel';
+import SceneNotesPanel from './components/SceneNotesPanel';
+import TemplateSelector from './components/TemplateSelector';
+import CharactersPanel from './components/CharactersPanel';
+import TimelineView from './components/TimelineView';
+import SharingModal from './components/SharingModal';
+import LocationsPanel from './components/LocationsPanel';
+import AnalyticsPanel from './components/AnalyticsPanel';
+import SceneTemplatesModal from './components/SceneTemplatesModal';
+import ActivityPanel from './components/ActivityPanel';
+import SettingsPanel from './components/SettingsPanel';
+import { ToastContainer } from './components/Toast';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
-import { authService } from './apiServices';
+import { authService, tagsService, templatesService, charactersService, sharingService, locationsService, sceneTemplatesService, activityService, archiveProject } from './apiServices';
+import { exportToMarkdown, exportToCSV, exportToPDF, downloadFile, ExportData } from './utils/exportUtils';
 
 const DEFAULT_DIRECTOR_SETTINGS: DirectorSettings = {
   customSceneId: '',
@@ -54,7 +67,9 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
 
   // --- View State ---
-  const [view, setView] = useState<'library' | 'setup' | 'studio' | 'dashboard'>('library');
+  const [view, setView] = useState<'library' | 'setup' | 'studio' | 'dashboard' | 'timeline'>('library');
+  const [adminViewMode, setAdminViewMode] = useState<'admin' | 'website'>('admin');
+  const [studioViewMode, setStudioViewMode] = useState<'storyboard' | 'timeline'>('storyboard');
   
   // --- Data State ---
   const [storyContext, setStoryContext] = useState<StoryContext>(DEFAULT_CONTEXT);
@@ -72,8 +87,132 @@ const App: React.FC = () => {
   const [currentInput, setCurrentInput] = useState('');
   const [storySeed, setStorySeed] = useState(''); // For auto-generating story
 
+  // Export & Tags
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [availableTags, setAvailableTags] = useState<any[]>([]);
+  const [projectTags, setProjectTags] = useState<any[]>([]);
+  const [showTagsMenu, setShowTagsMenu] = useState(false);
+  const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
+
+  // Comments & Notes
+  const [showCommentsPanel, setShowCommentsPanel] = useState(false);
+  const [showSceneNotesPanel, setShowSceneNotesPanel] = useState(false);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+
+  // Library View
+  const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
+  const [librarySortBy, setLibrarySortBy] = useState<'date' | 'title' | 'genre'>('date');
+  const [librarySearchTerm, setLibrarySearchTerm] = useState('');
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [libraryFilterGenre, setLibraryFilterGenre] = useState('');
+  const [libraryFilterTags, setLibraryFilterTags] = useState<string[]>([]);
+
+  // Templates
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  // Characters
+  const [showCharactersPanel, setShowCharactersPanel] = useState(false);
+
+  // Locations
+  const [showLocationsPanel, setShowLocationsPanel] = useState(false);
+
+  // Analytics
+  const [showAnalyticsPanel, setShowAnalyticsPanel] = useState(false);
+
+  // Activity & Notifications
+  const [showActivityPanel, setShowActivityPanel] = useState(false);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+
+  // Settings
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
+  // Scene Templates
+  const [showSceneTemplates, setShowSceneTemplates] = useState(false);
+  const [sceneTemplates, setSceneTemplates] = useState<any[]>([]);
+  const [showSaveSceneTemplateModal, setShowSaveSceneTemplateModal] = useState(false);
+  const [sceneTemplateName, setSceneTemplateName] = useState('');
+
+  const handleSelectSceneTemplate = (template: any) => {
+    setCurrentInput(template.raw_idea);
+    if (template.director_settings) {
+      setCurrentSettings({ ...currentSettings, ...template.director_settings });
+    }
+    setShowSceneTemplates(false);
+    showToast('Scene template applied!', 'success');
+  };
+
+  const handleSaveCurrentAsSceneTemplate = async () => {
+    if (!currentInput.trim()) {
+      showToast('Please enter a scene idea first', 'warning');
+      return;
+    }
+
+    if (!sceneTemplateName.trim()) {
+      showToast('Please enter a template name', 'warning');
+      return;
+    }
+
+    try {
+      await sceneTemplatesService.create({
+        name: sceneTemplateName,
+        raw_idea: currentInput,
+        director_settings: currentSettings
+      });
+      showToast('Scene template saved!', 'success');
+      setShowSaveSceneTemplateModal(false);
+      setSceneTemplateName('');
+      // Reload templates
+      const templates = await sceneTemplatesService.getAll();
+      setSceneTemplates((templates as any)?.templates || []);
+    } catch (error: any) {
+      showToast('Error: ' + error.message, 'error');
+    }
+  };
+
+  // Toast Notifications
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' | 'warning' }>>([]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Sharing
+  const [showSharingModal, setShowSharingModal] = useState(false);
+  const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
+
+  // Undo/Redo
+  const [history, setHistory] = useState<ProjectData[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const maxHistorySize = 50;
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Check admin view mode preference
+  useEffect(() => {
+    if (currentUser?.role === 'admin') {
+      const viewMode = localStorage.getItem('admin_view_mode') || 'admin';
+      setAdminViewMode(viewMode as 'admin' | 'website');
+    }
+  }, [currentUser]);
+
+  // Check admin view mode preference (must be before conditional returns)
+  useEffect(() => {
+    if (currentUser?.role === 'admin') {
+      const viewMode = localStorage.getItem('admin_view_mode') || 'admin';
+      setAdminViewMode(viewMode as 'admin' | 'website');
+    }
+  }, [currentUser]);
 
   // Check authentication on mount
   useEffect(() => {
@@ -123,6 +262,79 @@ const App: React.FC = () => {
     }
   }, [view]);
 
+  // History management for undo/redo
+  const addToHistory = useRef(false); // Flag to prevent adding during undo/redo
+
+  const saveToHistory = (projectData: ProjectData) => {
+    if (addToHistory.current) return; // Skip if we're in the middle of undo/redo
+    
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(JSON.parse(JSON.stringify(projectData))); // Deep clone
+      if (newHistory.length > maxHistorySize) {
+        newHistory.shift();
+        return newHistory;
+      }
+      return newHistory;
+    });
+    setHistoryIndex(prev => {
+      const newIndex = prev + 1;
+      return newIndex >= maxHistorySize ? maxHistorySize - 1 : newIndex;
+    });
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      addToHistory.current = true;
+      const prevState = history[historyIndex - 1];
+      setStoryContext({ ...prevState.context });
+      setScenes([...prevState.scenes]);
+      setCurrentSettings({ ...prevState.settings });
+      setHistoryIndex(prev => prev - 1);
+      setTimeout(() => { addToHistory.current = false; }, 100);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      addToHistory.current = true;
+      const nextState = history[historyIndex + 1];
+      setStoryContext({ ...nextState.context });
+      setScenes([...nextState.scenes]);
+      setCurrentSettings({ ...nextState.settings });
+      setHistoryIndex(prev => prev + 1);
+      setTimeout(() => { addToHistory.current = false; }, 100);
+    }
+  };
+
+  // Initialize history when project opens
+  useEffect(() => {
+    if (view === 'studio' && storyContext.id) {
+      const currentState: ProjectData = {
+        context: { ...storyContext },
+        scenes: [...scenes],
+        settings: { ...currentSettings }
+      };
+      setHistory([currentState]);
+      setHistoryIndex(0);
+    }
+  }, [view, storyContext.id]); // Only when opening project
+
+  // Add to history when scenes/context change (debounced)
+  useEffect(() => {
+    if (view === 'studio' && storyContext.id && !addToHistory.current) {
+      const timeout = setTimeout(() => {
+        const currentState: ProjectData = {
+          context: { ...storyContext },
+          scenes: [...scenes],
+          settings: { ...currentSettings }
+        };
+        saveToHistory(currentState);
+      }, 2000); // Debounce history additions
+      return () => clearTimeout(timeout);
+    }
+  }, [scenes.length, storyContext.title, storyContext.plotSummary, currentSettings]);
+
   // Auto-save when in studio mode
   // Triggers whenever context, scenes, or settings change (including after generation completes)
   useEffect(() => {
@@ -162,11 +374,11 @@ const App: React.FC = () => {
           }
         }
       };
-      
-      const timeout = setTimeout(saveData, 2000); // Debounce 2s
+
+      const timeout = setTimeout(saveData, 1500); // Debounce 1.5s
       return () => clearTimeout(timeout);
     }
-  }, [storyContext.title, storyContext.plotSummary, scenes, currentSettings, view, storyContext.id]);
+  }, [storyContext.title, storyContext.plotSummary, storyContext.genre, storyContext.characters, scenes, currentSettings, view, storyContext.id]);
 
   // Scroll to bottom when scenes change
   useEffect(() => {
@@ -174,6 +386,89 @@ const App: React.FC = () => {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [scenes, view]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle shortcuts when not typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Ctrl/Cmd + S - Save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (view === 'studio' && storyContext.id) {
+          handleManualSave();
+        }
+      }
+
+      // Ctrl/Cmd + E - Export
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault();
+        if (view === 'studio') {
+          setShowExportMenu(!showExportMenu);
+        }
+      }
+
+      // Ctrl/Cmd + N - New scene (if in studio)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        if (view === 'studio') {
+          // Focus on input field
+          const input = document.querySelector('textarea[placeholder*="idea"]') as HTMLTextAreaElement;
+          if (input) input.focus();
+        }
+      }
+
+      // Ctrl/Cmd + C - Comments (if in studio)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && view === 'studio' && storyContext.id) {
+        e.preventDefault();
+        setShowCommentsPanel(true);
+      }
+
+      // Ctrl/Cmd + Z - Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (view === 'studio') {
+          handleUndo();
+        }
+      }
+
+      // Ctrl/Cmd + Shift + Z - Redo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        if (view === 'studio') {
+          handleRedo();
+        }
+      }
+
+      // Ctrl/Cmd + Y - Redo (alternative)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        if (view === 'studio') {
+          handleRedo();
+        }
+      }
+
+      // Ctrl/Cmd + / - Show shortcuts help
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        alert(`Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`);
+      }
+
+      // Escape - Close modals
+      if (e.key === 'Escape') {
+        setShowExportMenu(false);
+        setShowTagsMenu(false);
+        setShowCommentsPanel(false);
+        setShowSceneNotesPanel(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view, storyContext.id, showExportMenu]);
 
   const loadLibrary = async () => {
     try {
@@ -197,11 +492,79 @@ const App: React.FC = () => {
     }
   };
 
-  const handleOpenProject = (project: ProjectData) => {
+  const handleOpenProject = async (project: ProjectData) => {
     setStoryContext(project.context);
     setScenes(project.scenes);
     setCurrentSettings(project.settings);
     setView('studio');
+    
+    // Track view
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        await fetch(`http://localhost:5000/api/analytics/project/${project.context.id}/view`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (error) {
+      // Silent fail
+    }
+  };
+
+  const handleDuplicateProject = async (e: React.MouseEvent, project: ProjectData) => {
+    e.stopPropagation();
+    try {
+      const newId = generateId();
+      const duplicatedProject: ProjectData = {
+        context: {
+          ...project.context,
+          id: newId,
+          title: `${project.context.title} (Copy)`,
+          lastUpdated: Date.now()
+        },
+        scenes: project.scenes.map(scene => ({
+          ...scene,
+          id: generateId()
+        })),
+        settings: project.settings
+      };
+
+      const apiAvailable = await checkApiAvailability();
+      if (apiAvailable) {
+        await apiService.saveProject(duplicatedProject);
+        // Log activity
+        try {
+          await activityService.logActivity({
+            project_id: newId,
+            activity_type: 'project_duplicated',
+            activity_description: `Duplicated project: ${project.context.title}`
+          });
+        } catch (e) {
+          // Silent fail
+        }
+      } else {
+        await saveProjectToDB(duplicatedProject);
+      }
+      loadLibrary();
+      showToast('Project duplicated successfully!', 'success');
+    } catch (error) {
+      console.error("Failed to duplicate project:", error);
+      showToast('Failed to duplicate project', 'error');
+    }
+  };
+
+  const handleArchiveProject = async (e: React.MouseEvent, projectId: string, archived: boolean) => {
+    e.stopPropagation();
+    try {
+      await archiveProject(projectId, archived);
+      await loadLibrary();
+      showToast(`Project ${archived ? 'archived' : 'unarchived'} successfully!`, 'success');
+    } catch (error: any) {
+      showToast('Error: ' + error.message, 'error');
+    }
   };
 
   const handleDeleteProject = async (e: React.MouseEvent, id: string) => {
@@ -230,11 +593,53 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
-    setStoryContext({ ...DEFAULT_CONTEXT, id: generateId() });
+    setShowTemplateSelector(true);
+  };
+
+  const handleTemplateSelect = (template: any) => {
+    const newContext: StoryContext = {
+      id: generateId(),
+      title: '',
+      genre: template.genre || '',
+      plotSummary: template.plot_summary || '',
+      characters: template.characters || '',
+      initialContext: template.initial_context || '',
+      lastUpdated: Date.now()
+    };
+
+    const templateSettings: DirectorSettings = template.director_settings 
+      ? { ...DEFAULT_DIRECTOR_SETTINGS, ...template.director_settings }
+      : DEFAULT_DIRECTOR_SETTINGS;
+
+    setStoryContext(newContext);
     setScenes([]);
-    setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
+    setCurrentSettings(templateSettings);
     setSetupTab('new');
     setView('setup');
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!templateName.trim()) {
+      alert('Please enter a template name');
+      return;
+    }
+
+    try {
+      await templatesService.create({
+        name: templateName,
+        description: `Template based on "${storyContext.title}"`,
+        genre: storyContext.genre,
+        plot_summary: storyContext.plotSummary,
+        characters: storyContext.characters,
+        initial_context: storyContext.initialContext,
+        director_settings: currentSettings
+      });
+      alert('Template saved successfully!');
+      setShowSaveTemplateModal(false);
+      setTemplateName('');
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
   };
 
   const handleImportClick = () => {
@@ -264,14 +669,14 @@ const App: React.FC = () => {
         } else {
           await saveProjectToDB(projectData);
         }
-        await loadLibrary();
-        alert("Project imported successfully!");
+      await loadLibrary();
+      showToast('Project imported successfully!', 'success');
         } else {
-          alert("Invalid project file format.");
+          showToast('Invalid project file format', 'error');
         }
       } catch (error) {
         console.error("Import failed", error);
-        alert("Failed to parse project file.");
+        showToast('Failed to parse project file', 'error');
       }
       // Reset input
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -413,23 +818,177 @@ const App: React.FC = () => {
     setView('library');
   };
 
-  const downloadStoryJSON = () => {
-    const data = {
-      context: storyContext,
-      scenes: scenes,
-      settings: currentSettings,
-      exportedAt: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${storyContext.title.replace(/\s+/g, '_')}_storyboard.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const getExportData = (): ExportData => ({
+    context: storyContext,
+    scenes: scenes,
+    settings: currentSettings,
+    exportedAt: new Date().toISOString()
+  });
+
+  const handleExport = async (format: 'json' | 'markdown' | 'csv' | 'pdf') => {
+    const data = getExportData();
+    const filename = `${storyContext.title.replace(/\s+/g, '_')}_storyboard`;
+    
+    try {
+      switch (format) {
+        case 'json':
+          downloadFile(
+            JSON.stringify(data, null, 2),
+            `${filename}.json`,
+            'application/json'
+          );
+          break;
+        case 'markdown':
+          downloadFile(
+            exportToMarkdown(data),
+            `${filename}.md`,
+            'text/markdown'
+          );
+          break;
+        case 'csv':
+          downloadFile(
+            exportToCSV(data),
+            `${filename}.csv`,
+            'text/csv'
+          );
+          break;
+        case 'pdf':
+          exportToPDF(data);
+          break;
+      }
+      
+      // Track export in database if API available
+      try {
+        const apiAvailable = await checkApiAvailability();
+        if (apiAvailable && storyContext.id) {
+          const token = localStorage.getItem('auth_token');
+          await fetch('http://localhost:5000/api/exports', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              project_id: storyContext.id,
+              export_type: format,
+              file_name: `${filename}.${format === 'pdf' ? 'pdf' : format}`,
+            }),
+          });
+        }
+      } catch (e) {
+        console.error('Failed to track export:', e);
+      }
+      
+      setShowExportMenu(false);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    }
   };
+
+  // Load tags when project is loaded
+  useEffect(() => {
+    if (view === 'studio' && storyContext.id) {
+      loadTags();
+    }
+  }, [view, storyContext.id]);
+
+  const loadTags = async () => {
+    try {
+      const response = await tagsService.getAll();
+      // Tags service returns { tags: [...] } or just the array
+      const tags = (response as any)?.tags || (Array.isArray(response) ? response : []);
+      setAvailableTags(Array.isArray(tags) ? tags : []);
+    } catch (error) {
+      console.error('Failed to load tags:', error);
+      setAvailableTags([]);
+    }
+  };
+
+  const handleAddTag = async (tagId: number) => {
+    if (!storyContext.id) return;
+    try {
+      await tagsService.addToProject(tagId, storyContext.id);
+      await loadTags();
+      setShowTagsMenu(false);
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleRemoveTag = async (tagId: number) => {
+    if (!storyContext.id) return;
+    try {
+      await tagsService.removeFromProject(tagId, storyContext.id);
+      await loadTags();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (index: number) => {
+    setDraggedSceneIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedSceneIndex === null || draggedSceneIndex === dropIndex) {
+      setDraggedSceneIndex(null);
+      return;
+    }
+
+    const newScenes = [...scenes];
+    const draggedScene = newScenes[draggedSceneIndex];
+    newScenes.splice(draggedSceneIndex, 1);
+    newScenes.splice(dropIndex, 0, draggedScene);
+
+    // Update sequence numbers
+    const updatedScenes = newScenes.map((scene, idx) => ({
+      ...scene,
+      sequenceNumber: idx + 1,
+    }));
+
+    setScenes(updatedScenes);
+    setDraggedSceneIndex(null);
+
+    // Save reordered scenes
+    try {
+      const updatedContext = { ...storyContext, lastUpdated: Date.now() };
+      const apiAvailable = await checkApiAvailability();
+      if (apiAvailable) {
+        await apiService.saveProject({
+          context: updatedContext,
+          scenes: updatedScenes,
+          settings: currentSettings
+        });
+      } else {
+        await saveProjectToDB({
+          context: updatedContext,
+          scenes: updatedScenes,
+          settings: currentSettings
+        });
+      }
+      setStoryContext(updatedContext);
+    } catch (error) {
+      console.error('Failed to save reordered scenes:', error);
+    }
+  };
+
+  // Close export menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleAutoSuggestSettings = async () => {
     setIsAutoFilling(true);
@@ -446,8 +1005,9 @@ const App: React.FC = () => {
       );
       
       setCurrentSettings(newSettings);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error auto-suggesting settings:", error);
+      alert(`Failed to suggest settings: ${error.message || 'Please check your Gemini API key and ensure the Generative Language API is enabled.'}`);
     } finally {
       setIsAutoFilling(false);
     }
@@ -464,8 +1024,9 @@ const App: React.FC = () => {
       const recentHistory = scenes.slice(-5);
       const idea = await suggestNextScene(storyContext, recentHistory);
       setCurrentInput(idea);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error auto-drafting scene:", error);
+      alert(`Failed to generate idea: ${error.message || 'Please check your Gemini API key and ensure the Generative Language API is enabled in Google Cloud Console.'}`);
     } finally {
       setIsAutoFilling(false);
     }
@@ -548,15 +1109,38 @@ const App: React.FC = () => {
         });
       }
       
-      // Update context timestamp in state
+      // Update context timestamp in state - this will trigger auto-save useEffect
       setStoryContext(updatedContext);
       setSaveStatus('saved');
       
-      setTimeout(() => setSaveStatus('idle'), 2000);
+      // Also trigger immediate save to ensure it's saved
+      setTimeout(async () => {
+        try {
+          const apiAvailable = await checkApiAvailability();
+          if (apiAvailable) {
+            await apiService.saveProject({
+              context: updatedContext,
+              scenes: updatedScenesList,
+              settings: optimizedSettings
+            });
+          } else {
+            await saveProjectToDB({
+              context: updatedContext,
+              scenes: updatedScenesList,
+              settings: optimizedSettings
+            });
+          }
+        } catch (e) {
+          console.error("Post-generation save failed:", e);
+        }
+        setSaveStatus('idle');
+      }, 2000);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Critical error in flow:", error);
-      setScenes(prev => prev.map(s => s.status === 'generating' ? { ...s, status: 'failed', enhancedPrompt: 'Error generating prompt.' } : s));
+      const errorMessage = error.message || 'Failed to generate scene. Please check your Gemini API key and ensure the Generative Language API is enabled in Google Cloud Console.';
+      alert(`Error: ${errorMessage}`);
+      setScenes(prev => prev.map(s => s.status === 'generating' ? { ...s, status: 'failed', enhancedPrompt: errorMessage } : s));
       setSaveStatus('error');
     } finally {
       setIsProcessing(false);
@@ -564,6 +1148,17 @@ const App: React.FC = () => {
   };
 
   // --- Views ---
+
+  // Theme state
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('theme');
+    return (saved as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('light', theme === 'light');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Show loading state
   if (authLoading) {
@@ -583,7 +1178,7 @@ const App: React.FC = () => {
   }
 
   // Show admin dashboard for admin users
-  if (currentUser?.role === 'admin') {
+  if (currentUser?.role === 'admin' && adminViewMode === 'admin') {
     return <AdminDashboard user={currentUser} onLogout={handleLogout} />;
   }
 
@@ -601,6 +1196,17 @@ const App: React.FC = () => {
             <p className="text-zinc-500 uppercase tracking-widest text-xs">Production Library & Director Suite</p>
             <div className="mt-4 flex items-center justify-center gap-4">
               <span className="text-xs text-zinc-600">Logged in as: {currentUser?.username}</span>
+              {currentUser?.role === 'admin' && (
+                <button
+                  onClick={() => {
+                    localStorage.setItem('admin_view_mode', 'admin');
+                    window.location.reload();
+                  }}
+                  className="text-xs px-3 py-1 rounded bg-amber-600 text-white hover:bg-amber-500 transition-colors"
+                >
+                  Admin Panel
+                </button>
+              )}
               <button
                 onClick={() => setView('dashboard')}
                 className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
@@ -613,10 +1219,182 @@ const App: React.FC = () => {
               >
                 Logout
               </button>
+              {/* Theme Toggle */}
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              >
+                {theme === 'dark' ? '☀️' : '🌙'}
+              </button>
+              {/* Notifications Button */}
+              <button
+                onClick={async () => {
+                  try {
+                    const data = await activityService.getNotifications();
+                    setNotifications((data as any)?.notifications || []);
+                    setUnreadNotificationCount((data as any)?.unread_count || 0);
+                    setShowActivityPanel(true);
+                  } catch (error) {
+                    showToast('Failed to load notifications', 'error');
+                  }
+                }}
+                className="relative text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                title="Activity & Notifications"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M10 2a6 6 0 00-6 6c0 1.887-.454 3.665-1.257 5.234a.75.75 0 00.515 1.076 32.94 32.94 0 003.256.508 3.5 3.5 0 006.972 0 32.933 32.933 0 003.256-.508.75.75 0 00.515-1.076A11.71 11.71 0 0116 8a6 6 0 00-6-6zM8.05 14.943a33.54 33.54 0 003.9 0 2 2 0 01-3.9 0z" clipRule="evenodd" />
+                </svg>
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+              {/* Settings Button */}
+              <button
+                onClick={() => setShowSettingsPanel(true)}
+                className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                title="Settings"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.93 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                </svg>
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Library Controls */}
+          {projects.length > 0 && (
+            <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
+              {/* Search */}
+              <div className="flex-1 w-full sm:max-w-md">
+                <input
+                  type="text"
+                  value={librarySearchTerm}
+                  onChange={(e) => setLibrarySearchTerm(e.target.value)}
+                  placeholder="Search projects..."
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2 text-sm focus:border-amber-500 outline-none"
+                />
+              </div>
+
+              {/* Sort & View Toggle */}
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+                  className={`px-3 py-1.5 rounded text-xs border transition-colors ${
+                    showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0
+                      ? 'bg-amber-600 border-amber-500 text-white'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                  }`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 inline mr-1">
+                    <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                  </svg>
+                  Advanced
+                </button>
+                <select
+                  value={librarySortBy}
+                  onChange={(e) => setLibrarySortBy(e.target.value as any)}
+                  className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-amber-500 outline-none"
+                >
+                  <option value="date">Sort by Date</option>
+                  <option value="title">Sort by Title</option>
+                  <option value="genre">Sort by Genre</option>
+                </select>
+
+                <div className="flex bg-zinc-900 border border-zinc-700 rounded-lg p-1">
+                  <button
+                    onClick={() => setLibraryViewMode('grid')}
+                    className={`p-2 rounded ${libraryViewMode === 'grid' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                    title="Grid View"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                      <path d="M2 4.5A1.5 1.5 0 013.5 3h13A1.5 1.5 0 0118 4.5v11a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 012 15.5v-11zM3.5 4a.5.5 0 00-.5.5v11a.5.5 0 00.5.5h13a.5.5 0 00.5-.5v-11a.5.5 0 00-.5-.5h-13z" />
+                      <path d="M6 6a.5.5 0 01.5-.5h7a.5.5 0 01.5.5v7a.5.5 0 01-.5.5h-7A.5.5 0 016 13V6z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setLibraryViewMode('list')}
+                    className={`p-2 rounded ${libraryViewMode === 'list' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                    title="List View"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                      <path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Advanced Search Panel */}
+          {showAdvancedSearch && (
+            <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold">Advanced Search & Filters</h3>
+                <button
+                  onClick={() => setShowAdvancedSearch(false)}
+                  className="text-zinc-400 hover:text-white"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs text-zinc-400 uppercase mb-1">Genre Filter</label>
+                  <input
+                    type="text"
+                    value={libraryFilterGenre}
+                    onChange={(e) => setLibraryFilterGenre(e.target.value)}
+                    placeholder="Filter by genre..."
+                    className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 uppercase mb-1">Tags</label>
+                  <div className="flex flex-wrap gap-2">
+                    {availableTags.slice(0, 5).map((tag: any) => (
+                      <button
+                        key={tag.id}
+                        onClick={() => {
+                          setLibraryFilterTags(prev =>
+                            prev.includes(tag.id)
+                              ? prev.filter(id => id !== tag.id)
+                              : [...prev, tag.id]
+                          );
+                        }}
+                        className={`px-2 py-1 text-xs rounded ${
+                          libraryFilterTags.includes(tag.id)
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        }`}
+                        style={{ color: libraryFilterTags.includes(tag.id) ? undefined : tag.color }}
+                      >
+                        {tag.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={() => {
+                      setLibraryFilterGenre('');
+                      setLibraryFilterTags([]);
+                      setLibrarySearchTerm('');
+                    }}
+                    className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className={libraryViewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-3'}>
             {/* New Project Card */}
             <button 
               onClick={handleCreateNew}
@@ -650,45 +1428,213 @@ const App: React.FC = () => {
                <span className="text-sm font-bold text-zinc-400 group-hover:text-white">Import JSON</span>
             </button>
 
-            {/* Existing Projects */}
-            {projects.length === 0 ? (
-                <div className="col-span-full text-center py-10 text-zinc-500 text-sm">
-                   No projects found. Create or import one to begin.
+            {/* Advanced Search Panel */}
+            {showAdvancedSearch && (
+              <div className="col-span-full bg-zinc-900 border border-zinc-800 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold">Advanced Search & Filters</h3>
+                  <button
+                    onClick={() => setShowAdvancedSearch(false)}
+                    className="text-zinc-400 hover:text-white"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                    </svg>
+                  </button>
                 </div>
-            ) : (
-                projects.map(p => (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-zinc-400 uppercase mb-1">Genre Filter</label>
+                    <input
+                      type="text"
+                      value={libraryFilterGenre}
+                      onChange={(e) => setLibraryFilterGenre(e.target.value)}
+                      placeholder="Filter by genre..."
+                      className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 uppercase mb-1">Tags</label>
+                    <div className="flex flex-wrap gap-2">
+                      {availableTags.slice(0, 5).map((tag: any) => (
+                        <button
+                          key={tag.id}
+                          onClick={() => {
+                            setLibraryFilterTags(prev =>
+                              prev.includes(tag.id)
+                                ? prev.filter(id => id !== tag.id)
+                                : [...prev, tag.id]
+                            );
+                          }}
+                          className={`px-2 py-1 text-xs rounded ${
+                            libraryFilterTags.includes(tag.id)
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          }`}
+                          style={{ color: libraryFilterTags.includes(tag.id) ? undefined : tag.color }}
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => {
+                        setLibraryFilterGenre('');
+                        setLibraryFilterTags([]);
+                        setLibrarySearchTerm('');
+                      }}
+                      className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Existing Projects */}
+            {(() => {
+              // Filter and sort projects
+              let filteredProjects = projects.filter(p => {
+                // Text search
+                if (librarySearchTerm) {
+                  const search = librarySearchTerm.toLowerCase();
+                  const matchesSearch = (
+                    p.context.title.toLowerCase().includes(search) ||
+                    p.context.genre?.toLowerCase().includes(search) ||
+                    p.context.plotSummary?.toLowerCase().includes(search) ||
+                    p.context.characters?.toLowerCase().includes(search) ||
+                    p.scenes.some(s => s.rawIdea.toLowerCase().includes(search))
+                  );
+                  if (!matchesSearch) return false;
+                }
+
+                // Genre filter
+                if (libraryFilterGenre) {
+                  const genre = libraryFilterGenre.toLowerCase();
+                  if (!p.context.genre?.toLowerCase().includes(genre)) return false;
+                }
+
+                // Tag filter (would need to fetch project tags - simplified for now)
+                // This would require joining with project_tags table
+
+                return true;
+              });
+
+              // Sort projects
+              filteredProjects = [...filteredProjects].sort((a, b) => {
+                switch (librarySortBy) {
+                  case 'title':
+                    return (a.context.title || '').localeCompare(b.context.title || '');
+                  case 'genre':
+                    return (a.context.genre || '').localeCompare(b.context.genre || '');
+                  case 'date':
+                  default:
+                    return b.context.lastUpdated - a.context.lastUpdated;
+                }
+              });
+
+              if (filteredProjects.length === 0) {
+                return (
+                  <div className={`${libraryViewMode === 'grid' ? 'col-span-full' : 'w-full'} text-center py-10 text-zinc-500 text-sm`}>
+                    {librarySearchTerm ? 'No projects match your search.' : 'No projects found. Create or import one to begin.'}
+                  </div>
+                );
+              }
+
+              return filteredProjects.map(p => (
                   <div 
                     key={p.context.id} 
                     onClick={() => handleOpenProject(p)}
-                    className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all cursor-pointer relative group flex flex-col min-h-[200px]"
+                    className={`bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all cursor-pointer relative group flex flex-col ${
+                      libraryViewMode === 'grid' ? 'min-h-[200px]' : 'flex-row min-h-[120px]'
+                    }`}
                   >
-                    <div className="h-2 bg-gradient-to-r from-amber-600 to-amber-800"></div>
-                    <div className="p-6 flex-1 flex flex-col">
-                      <h3 className="text-lg font-serif font-bold text-white mb-1 line-clamp-1">{p.context.title}</h3>
-                      <p className="text-xs text-amber-500 uppercase tracking-wider mb-4">{p.context.genre}</p>
-                      <p className="text-sm text-zinc-500 line-clamp-3 mb-4 flex-1">{p.context.plotSummary}</p>
-                      
-                      <div className="flex items-center justify-between mt-auto pt-4 border-t border-zinc-800/50">
-                        <span className="text-[10px] text-zinc-600">
-                          {new Date(p.context.lastUpdated).toLocaleDateString()}
-                        </span>
-                        <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">
-                          {p.scenes.length} Scenes
-                        </span>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={(e) => handleDeleteProject(e, p.context.id)}
-                      className="absolute top-4 right-4 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Delete Project"
-                    >
-                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                    {libraryViewMode === 'grid' ? (
+                      <>
+                        <div className="h-2 bg-gradient-to-r from-amber-600 to-amber-800"></div>
+                        <div className="p-6 flex-1 flex flex-col">
+                          <h3 className="text-lg font-serif font-bold text-white mb-1 line-clamp-1">{p.context.title}</h3>
+                          <p className="text-xs text-amber-500 uppercase tracking-wider mb-4">{p.context.genre}</p>
+                          <p className="text-sm text-zinc-500 line-clamp-3 mb-4 flex-1">{p.context.plotSummary}</p>
+                          
+                          <div className="flex items-center justify-between mt-auto pt-4 border-t border-zinc-800/50">
+                            <span className="text-[10px] text-zinc-600">
+                              {new Date(p.context.lastUpdated).toLocaleDateString()}
+                            </span>
+                            <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">
+                              {p.scenes.length} Scenes
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-2 bg-gradient-to-b from-amber-600 to-amber-800"></div>
+                        <div className="p-4 flex-1 flex flex-col">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-serif font-bold text-white mb-1">{p.context.title}</h3>
+                              <p className="text-xs text-amber-500 uppercase tracking-wider">{p.context.genre}</p>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-zinc-500">
+                              <span>{new Date(p.context.lastUpdated).toLocaleDateString()}</span>
+                              <span className="bg-zinc-800 px-2 py-0.5 rounded">{p.scenes.length} Scenes</span>
+                            </div>
+                          </div>
+                          <p className="text-sm text-zinc-500 line-clamp-2">{p.context.plotSummary}</p>
+                        </div>
+                      </>
+                    )}
+                    <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => handleDuplicateProject(e, p)}
+                        className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"
+                        title="Duplicate Project"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
+                          <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProjectForSharing(p);
+                          setShowSharingModal(true);
+                        }}
+                        className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-amber-500"
+                        title="Share Project"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path d="M13 4.5a2.5 2.5 0 11.702 1.737L6.97 9.604a2.518 2.518 0 010 .792l6.733 3.367a2.5 2.5 0 11-.671 1.341l-6.733-3.367a2.5 2.5 0 110-3.475l6.733-3.366A2.52 2.52 0 0113 4.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => handleArchiveProject(e, p.context.id, true)}
+                        className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-yellow-500"
+                        title="Archive Project"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 3a1 1 0 00-1 1v1a1 1 0 001 1h16a1 1 0 001-1V4a1 1 0 00-1-1H2z" />
+                          <path fillRule="evenodd" d="M2 7.5h16l-.811 7.71a2 2 0 01-1.99 1.79H4.801a2 2 0 01-1.99-1.79L2 7.5zM10 9a.75.75 0 01.75.75v2.546l.975-.243a.75.75 0 11.15 1.494l-2.25.562a.75.75 0 01-.65-.75V9.75A.75.75 0 0110 9z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteProject(e, p.context.id)}
+                        className="p-1.5 bg-red-900/30 hover:bg-red-900/50 rounded text-red-400 hover:text-red-300"
+                        title="Delete Project"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                       </svg>
-                    </button>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                ))
-            )}
+                ));
+            })()}
           </div>
         </main>
       </div>
@@ -728,6 +1674,29 @@ const App: React.FC = () => {
             </div>
 
             <div className="p-8 space-y-6">
+              {/* Scene Templates Button */}
+              {view === 'studio' && storyContext.id && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const templates = await sceneTemplatesService.getAll();
+                        setSceneTemplates((templates as any)?.templates || []);
+                        setShowSceneTemplates(true);
+                      } catch (error) {
+                        showToast('Failed to load scene templates', 'error');
+                      }
+                    }}
+                    className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+                    title="Use Scene Template"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                      <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+                    </svg>
+                    Scene Templates
+                  </button>
+                </div>
+              )}
               
               {/* Magic Generate Section (Now Available for Both) */}
               <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-800/50 flex flex-col gap-2">
@@ -901,48 +1870,499 @@ const App: React.FC = () => {
              )}
           </button>
 
-          <button 
-             onClick={downloadStoryJSON}
-             className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-              <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
-              <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
-            </svg>
-            Export JSON
-          </button>
+          {/* Export Dropdown */}
+          <div className="relative" ref={exportMenuRef}>
+            <button 
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+              </svg>
+              Export
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+              </svg>
+            </button>
+            
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50">
+                <button
+                  onClick={() => handleExport('json')}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📄</span> Export as JSON
+                </button>
+                <button
+                  onClick={() => handleExport('markdown')}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📝</span> Export as Markdown
+                </button>
+                <button
+                  onClick={() => handleExport('csv')}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📊</span> Export as CSV
+                </button>
+                <button
+                  onClick={() => handleExport('pdf')}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📄</span> Export as PDF
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Characters Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => setShowCharactersPanel(true)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Character Management"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM3 18a6 6 0 1112 0v1H3v-1z" />
+              </svg>
+              Characters
+            </button>
+          )}
+
+          {/* Locations Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => setShowLocationsPanel(true)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Location Management"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              </svg>
+              Locations
+            </button>
+          )}
+
+          {/* Analytics Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => setShowAnalyticsPanel(true)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Project Analytics"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M10 2a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V2.75A.75.75 0 0110 2zM5.404 4.343a.75.75 0 010 1.06 6.5 6.5 0 109.192 0 .75.75 0 111.06-1.06 8 8 0 11-11.313 0 .75.75 0 011.06 0zM8 8a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 8zm3.25.75a.75.75 0 00-1.5 0v5.5a.75.75 0 001.5 0v-5.5z" />
+              </svg>
+              Analytics
+            </button>
+          )}
+
+          {/* Comments Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => setShowCommentsPanel(true)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Project Comments (Ctrl+C)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path fillRule="evenodd" d="M10 2c-2.236 0-4.43.18-6.57.524C1.993 2.755 1 4.014 1 5.426v5.148c0 1.413.993 2.67 2.43 2.902.848.137 1.705.248 2.57.331v4.091c0 .868.706 1.57 1.576 1.57a1.57 1.57 0 00.428-.06l4.344-1.16c.808-.216 1.632-.392 2.47-.523 1.437-.232 2.43-1.49 2.43-2.902V5.426c0-1.413-.993-2.67-2.43-2.902A41.926 41.926 0 0010 2zm0 1.5c-2.1 0-4.2.16-6.3.48C2.5 4.18 2 4.75 2 5.426v5.148c0 .676.5 1.246 1.7 1.446a40.4 40.4 0 006.3.48c2.1 0 4.2-.16 6.3-.48 1.2-.2 1.7-.77 1.7-1.446V5.426c0-.676-.5-1.246-1.7-1.446a40.4 40.4 0 00-6.3-.48z" clipRule="evenodd" />
+              </svg>
+              Comments
+            </button>
+          )}
+
+          {/* Undo/Redo Buttons */}
+          {view === 'studio' && (
+            <div className="flex gap-1">
+              <button
+                onClick={handleUndo}
+                disabled={historyIndex <= 0}
+                className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Undo (Ctrl+Z)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                  <path fillRule="evenodd" d="M7.793 2.232a.75.75 0 01-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 010 10.75H10.75a.75.75 0 010-1.5h2.875a3.875 3.875 0 000-7.75H3.622l4.146 3.957a.75.75 0 01-1.036 1.086l-5.5-5.25a.75.75 0 010-1.086l5.5-5.25a.75.75 0 011.06.025z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={historyIndex >= history.length - 1}
+                className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Redo (Ctrl+Shift+Z)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                  <path fillRule="evenodd" d="M12.207 2.232a.75.75 0 00.025 1.06l4.146 3.958H6.375a5.375 5.375 0 000 10.75H9.25a.75.75 0 000-1.5H6.375a3.875 3.875 0 010-7.75h10.003l-4.146 3.957a.75.75 0 001.036 1.086l5.5-5.25a.75.75 0 000-1.086l-5.5-5.25a.75.75 0 00-1.06.025z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Save as Template Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => setShowSaveTemplateModal(true)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Save as Template"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+              </svg>
+              Save Template
+            </button>
+          )}
+
+          {/* Tags Button */}
+          {view === 'studio' && storyContext.id && (
+            <div className="relative">
+              <button
+                onClick={() => setShowTagsMenu(!showTagsMenu)}
+                className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                  <path fillRule="evenodd" d="M5.5 3A2.5 2.5 0 003 5.5v2.879a2.5 2.5 0 00.732 1.732l4.5 4.5a2.5 2.5 0 003.536 0l2.878-2.878a2.5 2.5 0 001.732-.732V16.5a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 013 16.5V13.621a2.5 2.5 0 00-.732-1.732L.464 9.464A2.5 2.5 0 010 7.879V5.5A2.5 2.5 0 012.5 3h3z" clipRule="evenodd" />
+                </svg>
+                Tags
+              </button>
+              
+              {showTagsMenu && (
+                <div className="absolute right-0 mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 p-3">
+                  <div className="text-xs text-zinc-500 uppercase mb-2">Available Tags</div>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {availableTags.length === 0 ? (
+                      <div className="text-xs text-zinc-500 py-2">No tags available. Create tags in your dashboard.</div>
+                    ) : (
+                      availableTags.map((tag: any) => (
+                        <button
+                          key={tag.id}
+                          onClick={() => handleAddTag(tag.id)}
+                          className="w-full text-left px-2 py-1 text-xs rounded hover:bg-zinc-800 flex items-center gap-2"
+                          style={{ color: tag.color || '#6366f1' }}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: tag.color || '#6366f1' }}></span>
+                          {tag.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
       {/* Main Workspace */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* Feed / Storyboard */}
-        <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
-          <div className="max-w-5xl mx-auto space-y-6 pb-32">
-            {scenes.length === 0 ? (
-               <div className="flex flex-col items-center justify-center h-96 text-zinc-600 border-2 border-dashed border-zinc-800 rounded-xl bg-zinc-900/50">
-                  <p className="font-serif text-xl mb-2 text-zinc-400">The Storyboard is Empty</p>
-                  <p className="text-sm max-w-md text-center">
-                    {storyContext.initialContext 
-                      ? "Ready to continue. The Director AI knows the context of your previous clip. Describe the next 8 seconds below." 
-                      : "Describe the opening 8-second clip below."}
-                  </p>
-               </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-6">
-                {scenes.map((scene) => (
-                  <div key={scene.id} className="w-full">
-                    <SceneCard scene={scene} />
-                  </div>
-                ))}
-                <div ref={bottomRef}></div>
-              </div>
-            )}
+        {/* View Toggle */}
+        {scenes.length > 0 && (
+          <div className="absolute top-20 right-6 z-10 flex gap-2 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+            <button
+              onClick={() => setStudioViewMode('storyboard')}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                studioViewMode === 'storyboard'
+                  ? 'bg-amber-600 text-white'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Storyboard
+            </button>
+            <button
+              onClick={() => setStudioViewMode('timeline')}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                studioViewMode === 'timeline'
+                  ? 'bg-amber-600 text-white'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Timeline
+            </button>
           </div>
-        </div>
+        )}
+
+        {/* Feed / Storyboard or Timeline */}
+        {studioViewMode === 'timeline' ? (
+          <TimelineView
+            scenes={scenes}
+            onSceneClick={(scene) => {
+              // Scroll to scene in storyboard view
+              setStudioViewMode('storyboard');
+              setTimeout(() => {
+                const sceneElement = document.querySelector(`[data-scene-id="${scene.id}"]`);
+                if (sceneElement) {
+                  sceneElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }, 100);
+            }}
+          />
+        ) : (
+          <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
+            <div className="max-w-5xl mx-auto space-y-6 pb-32">
+              {scenes.length === 0 ? (
+                 <div className="flex flex-col items-center justify-center h-96 text-zinc-600 border-2 border-dashed border-zinc-800 rounded-xl bg-zinc-900/50">
+                    <p className="font-serif text-xl mb-2 text-zinc-400">The Storyboard is Empty</p>
+                    <p className="text-sm max-w-md text-center">
+                      {storyContext.initialContext 
+                        ? "Ready to continue. The Director AI knows the context of your previous clip. Describe the next 8 seconds below." 
+                        : "Describe the opening 8-second clip below."}
+                    </p>
+                 </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-6">
+                  {scenes.map((scene, index) => (
+                    <div
+                      key={scene.id}
+                      data-scene-id={scene.id}
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDrop={(e) => handleDrop(e, index)}
+                      className={`w-full cursor-move transition-opacity ${
+                        draggedSceneIndex === index ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <SceneCard 
+                        scene={scene} 
+                        onNotesClick={(sceneId) => {
+                          setSelectedSceneId(sceneId);
+                          setShowSceneNotesPanel(true);
+                        }}
+                        onDelete={async (sceneId) => {
+                          try {
+                            const apiAvailable = await checkApiAvailability();
+                            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+                            if (apiAvailable) {
+                              const token = localStorage.getItem('auth_token');
+                              await fetch(`${API_BASE_URL}/clips/${sceneId}`, {
+                                method: 'DELETE',
+                                headers: {
+                                  'Authorization': `Bearer ${token}`,
+                                },
+                              });
+                            }
+                            setScenes(prev => {
+                              const filtered = prev.filter(s => s.id !== sceneId);
+                              // Re-sequence remaining scenes
+                              return filtered.map((s, idx) => ({
+                                ...s,
+                                sequenceNumber: idx + 1
+                              }));
+                            });
+                            showToast('Scene deleted successfully', 'success');
+                          } catch (error: any) {
+                            showToast('Failed to delete scene', 'error');
+                          }
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <div ref={bottomRef}></div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
+
+      {/* Characters Panel */}
+      {showCharactersPanel && storyContext.id && (
+        <CharactersPanel
+          projectId={storyContext.id}
+          storyContext={storyContext}
+          scenes={scenes}
+          onClose={() => setShowCharactersPanel(false)}
+        />
+      )}
+
+      {/* Locations Panel */}
+      {showLocationsPanel && storyContext.id && (
+        <LocationsPanel
+          projectId={storyContext.id}
+          storyContext={storyContext}
+          scenes={scenes}
+          onClose={() => setShowLocationsPanel(false)}
+        />
+      )}
+
+      {/* Analytics Panel */}
+      {showAnalyticsPanel && storyContext.id && (
+        <AnalyticsPanel
+          projectId={storyContext.id}
+          onClose={() => setShowAnalyticsPanel(false)}
+        />
+      )}
+
+      {/* Scene Templates Modal */}
+      {showSceneTemplates && (
+        <SceneTemplatesModal
+          templates={sceneTemplates}
+          onSelect={handleSelectSceneTemplate}
+          onClose={() => setShowSceneTemplates(false)}
+          onSaveCurrentAsTemplate={() => {
+            setShowSceneTemplates(false);
+            setShowSaveSceneTemplateModal(true);
+          }}
+        />
+      )}
+
+      {/* Save Scene Template Modal */}
+      {showSaveSceneTemplateModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md p-6">
+            <h2 className="text-xl font-bold mb-4">Save Scene as Template</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-zinc-400 uppercase mb-1">Template Name</label>
+                <input
+                  type="text"
+                  value={sceneTemplateName}
+                  onChange={(e) => setSceneTemplateName(e.target.value)}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                  placeholder="e.g. Action Chase Scene"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveCurrentAsSceneTemplate}
+                  className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                >
+                  Save Template
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSaveSceneTemplateModal(false);
+                    setSceneTemplateName('');
+                  }}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Panel */}
+      {showActivityPanel && (
+        <ActivityPanel
+          onClose={() => setShowActivityPanel(false)}
+        />
+      )}
+
+      {/* Settings Panel */}
+      {showSettingsPanel && (
+        <SettingsPanel
+          onClose={() => setShowSettingsPanel(false)}
+          theme={theme}
+          onThemeChange={setTheme}
+        />
+      )}
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* Comments Panel */}
+      {showCommentsPanel && storyContext.id && (
+        <CommentsPanel
+          projectId={storyContext.id}
+          onClose={() => setShowCommentsPanel(false)}
+        />
+      )}
+
+      {/* Scene Notes Panel */}
+      {showSceneNotesPanel && selectedSceneId && (
+        <SceneNotesPanel
+          sceneId={selectedSceneId}
+          onClose={() => {
+            setShowSceneNotesPanel(false);
+            setSelectedSceneId(null);
+          }}
+        />
+      )}
+
+      {/* Template Selector */}
+      {showTemplateSelector && (
+        <TemplateSelector
+          onSelect={handleTemplateSelect}
+          onClose={() => {
+            setShowTemplateSelector(false);
+            // If closed without selecting, create blank project
+            setStoryContext({ ...DEFAULT_CONTEXT, id: generateId() });
+            setScenes([]);
+            setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
+            setSetupTab('new');
+            setView('setup');
+          }}
+        />
+      )}
+
+      {/* Sharing Modal */}
+      {showSharingModal && selectedProjectForSharing && (
+        <SharingModal
+          project={selectedProjectForSharing}
+          onClose={() => {
+            setShowSharingModal(false);
+            setSelectedProjectForSharing(null);
+          }}
+        />
+      )}
+
+      {/* Save Template Modal */}
+      {showSaveTemplateModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+              <h2 className="text-xl font-bold">Save as Template</h2>
+              <button
+                onClick={() => {
+                  setShowSaveTemplateModal(false);
+                  setTemplateName('');
+                }}
+                className="text-zinc-400 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Template Name</label>
+              <input
+                type="text"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="e.g. My Action Template"
+                className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-white focus:border-amber-500 outline-none"
+                autoFocus
+              />
+              <p className="text-xs text-zinc-500 mt-2">
+                This will save your current project settings, genre, characters, and plot summary as a reusable template.
+              </p>
+            </div>
+            <div className="p-4 border-t border-zinc-800 flex gap-2">
+              <button
+                onClick={() => {
+                  setShowSaveTemplateModal(false);
+                  setTemplateName('');
+                }}
+                className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAsTemplate}
+                disabled={!templateName.trim()}
+                className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm disabled:opacity-50"
+              >
+                Save Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Control Deck */}
       <div className="border-t border-zinc-800 bg-black p-4 flex-shrink-0 z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">

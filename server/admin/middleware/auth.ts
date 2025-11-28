@@ -1,6 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getPool } from '../../db';
+
+// Ensure .env is loaded (in case middleware is imported before main server loads it)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -27,7 +35,23 @@ export async function authenticateToken(
       return;
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    // Verify token with better error handling
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET) as any;
+    } catch (jwtError: any) {
+      if (jwtError.name === 'TokenExpiredError') {
+        console.error('Token expired:', jwtError.expiredAt);
+        res.status(403).json({ error: 'Token expired', expiredAt: jwtError.expiredAt });
+        return;
+      }
+      if (jwtError.name === 'JsonWebTokenError') {
+        console.error('Invalid token:', jwtError.message);
+        res.status(403).json({ error: 'Invalid token', details: jwtError.message });
+        return;
+      }
+      throw jwtError;
+    }
     
     // Verify user still exists and is active
     const pool = getPool();
@@ -57,9 +81,16 @@ export async function authenticateToken(
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
-      res.status(403).json({ error: 'Invalid token' });
+      console.error('JWT Error:', error.message);
+      res.status(403).json({ error: 'Invalid token', details: error.message });
       return;
     }
+    if (error instanceof jwt.TokenExpiredError) {
+      console.error('Token expired:', error.message);
+      res.status(403).json({ error: 'Token expired' });
+      return;
+    }
+    console.error('Authentication error:', error);
     res.status(500).json({ error: 'Authentication error' });
   }
 }

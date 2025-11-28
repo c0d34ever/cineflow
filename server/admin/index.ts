@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createConnection } from '../db';
 import authRouter from './routes/auth';
 import usersRouter from './routes/users';
@@ -10,7 +12,10 @@ import apiKeysRouter from './routes/apiKeys';
 import { initDatabase } from '../db/schema';
 import { authenticateToken, requireAdmin } from './middleware/auth';
 
-dotenv.config();
+// Ensure we load .env from the server directory (parent of admin)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 const PORT = process.env.ADMIN_PORT || 5001;

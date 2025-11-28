@@ -1,4 +1,4 @@
-import { getPool } from './index';
+import { getPool } from '../index';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -27,7 +27,7 @@ export async function runMigrations(): Promise<void> {
     `);
 
     // Get all migration files
-    const migrationsDir = path.join(__dirname, 'migrations');
+    const migrationsDir = __dirname;
     const files = fs.readdirSync(migrationsDir)
       .filter(file => file.endsWith('.sql'))
       .sort();
@@ -39,6 +39,25 @@ export async function runMigrations(): Promise<void> {
       'SELECT name FROM migrations'
     );
     const executedNames = new Set(executed.map(m => m.name));
+
+    // Verify critical tables exist - if migrations are marked as executed but tables don't exist, re-run them
+    if (executedNames.size > 0) {
+      const [tables] = await connection.query<Array<{[key: string]: string}>>(
+        "SHOW TABLES"
+      );
+      const tableNames = new Set(tables.map(t => Object.values(t)[0] as string));
+      
+      // Check if critical tables exist
+      const criticalTables = ['projects', 'users', 'scenes'];
+      const missingTables = criticalTables.filter(t => !tableNames.has(t));
+      
+      if (missingTables.length > 0) {
+        console.log(`⚠️  Critical tables missing (${missingTables.join(', ')}), but migrations marked as executed.`);
+        console.log(`🔄 Clearing migrations table to re-run migrations...`);
+        await connection.query('DELETE FROM migrations');
+        executedNames.clear(); // Clear the set so all migrations will run
+      }
+    }
 
     // Run pending migrations
     for (const file of files) {
@@ -54,18 +73,47 @@ export async function runMigrations(): Promise<void> {
       const filePath = path.join(migrationsDir, file);
       const sql = fs.readFileSync(filePath, 'utf-8');
 
-      // Split by semicolon and execute each statement
-      const statements = sql
+      // Remove comments and split by semicolon
+      const cleanedSql = sql
+        .split('\n')
+        .map(line => {
+          // Remove full-line comments
+          const commentIndex = line.indexOf('--');
+          if (commentIndex >= 0) {
+            return line.substring(0, commentIndex).trim();
+          }
+          return line.trim();
+        })
+        .filter(line => line.length > 0)
+        .join('\n');
+
+      // Split by semicolon and filter empty statements
+      const statements = cleanedSql
         .split(';')
         .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--'));
+        .filter(s => s.length > 0);
 
       await connection.beginTransaction();
 
       try {
         for (const statement of statements) {
-          if (statement.trim()) {
-            await connection.query(statement);
+          if (statement.trim() && !statement.match(/^\s*$/)) {
+            console.log(`  Executing: ${statement.substring(0, 50)}...`);
+            try {
+              await connection.query(statement);
+            } catch (error: any) {
+              // Handle specific errors that are safe to ignore
+              if (error.code === 'ER_DUP_FIELDNAME' || 
+                  error.code === 'ER_DUP_KEYNAME' || 
+                  error.code === 'ER_DUP_ENTRY' ||
+                  error.code === 'ER_CANT_DROP_FIELD_OR_KEY') {
+                console.log(`  ⚠️  Warning: ${error.code} - ${error.message.substring(0, 100)}`);
+                console.log(`  ⏭️  Skipping (likely already applied)`);
+                // Continue execution - this is a non-fatal error
+              } else {
+                throw error; // Re-throw other errors
+              }
+            }
           }
         }
 

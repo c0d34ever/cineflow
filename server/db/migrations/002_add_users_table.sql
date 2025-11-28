@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Add user_id to projects table
+-- Note: If column/key already exists, the migration runner will handle the error gracefully
 ALTER TABLE projects 
 ADD COLUMN user_id INT NULL AFTER id,
 ADD FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
