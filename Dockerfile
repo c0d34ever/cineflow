@@ -65,23 +65,22 @@ COPY --from=frontend-builder /app/dist ./dist
 # Copy entire server/dist directory from builder
 COPY --from=backend-builder /app/server/dist ./server/dist-temp
 
-# Find and move index.js to correct location
+# Move files from nested server/ directory to dist root (because rootDir="../")
 RUN mkdir -p /app/server/dist && \
-    if [ -f /app/server/dist-temp/index.js ]; then \
-      echo "Found index.js at root of dist"; \
-      cp -r /app/server/dist-temp/* /app/server/dist/; \
-    elif [ -f /app/server/dist-temp/server/index.js ]; then \
-      echo "Found index.js in nested server/ directory"; \
+    if [ -d /app/server/dist-temp/server ]; then \
+      echo "Moving files from nested server/ directory..."; \
       cp -r /app/server/dist-temp/server/* /app/server/dist/; \
+      cp /app/server/dist-temp/types.js /app/server/dist/ 2>/dev/null || true; \
+    elif [ -f /app/server/dist-temp/index.js ]; then \
+      echo "Found index.js at root level"; \
+      cp -r /app/server/dist-temp/* /app/server/dist/; \
     else \
-      echo "ERROR: index.js not found! Searching..."; \
-      find /app/server/dist-temp -name "index.js" -type f; \
+      echo "ERROR: index.js not found!"; \
       find /app/server/dist-temp -type f | head -20; \
       exit 1; \
     fi && \
     rm -rf /app/server/dist-temp && \
-    test -f /app/server/dist/index.js || (echo "ERROR: index.js still not found after copy!" && find /app/server/dist -type f && exit 1) && \
-    echo "SUCCESS: index.js found at /app/server/dist/index.js"
+    test -f /app/server/dist/index.js && echo "SUCCESS: index.js found at /app/server/dist/index.js" || (echo "ERROR: index.js still missing!" && ls -la /app/server/dist/ && exit 1)
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
