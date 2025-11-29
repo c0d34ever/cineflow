@@ -4,6 +4,8 @@ import { TechnicalStyle, DirectorSettings, Scene, StoryContext } from './types';
 import DirectorPanel from './components/DirectorPanel';
 import SceneCard from './components/SceneCard';
 import Auth from './components/Auth';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
 import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import CommentsPanel from './components/CommentsPanel';
@@ -1536,6 +1538,25 @@ const App: React.FC = () => {
           <p className="text-zinc-500">Loading...</p>
         </div>
       </div>
+    );
+  }
+
+  // Handle password reset routing (before auth check)
+  const hash = window.location.hash;
+  if (hash === '#forgot-password') {
+    return <ForgotPassword onBack={() => { window.location.hash = ''; }} />;
+  }
+  
+  if (hash.startsWith('#reset-password') || hash.includes('token=')) {
+    const urlParams = new URLSearchParams(hash.substring(1));
+    const token = urlParams.get('token') || new URLSearchParams(window.location.search).get('token');
+    const email = urlParams.get('email') || new URLSearchParams(window.location.search).get('email');
+    return (
+      <ResetPassword 
+        token={token || undefined} 
+        email={email ? decodeURIComponent(email) : undefined}
+        onSuccess={() => { window.location.hash = ''; }}
+      />
     );
   }
 

@@ -66,7 +66,9 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
 
     try {
       setUploading(true);
+      // Prevent modal from closing during upload
       await mediaService.uploadImage(projectId, file, sceneId);
+      // Reload media after successful upload
       await loadMedia();
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -101,9 +103,28 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
     }
   };
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col">
+    <div 
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !uploading) {
+          onClose();
+        }
+      }}
+    >
+      <div 
+        className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        style={{ willChange: 'transform' }}
+      >
         {/* Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <h2 className="text-xl font-bold">Media Library</h2>
@@ -168,6 +189,14 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
                       src={`${API_BASE_URL.replace('/api', '')}${item.thumbnail_path}`}
                       alt={item.alt_text || item.file_name}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Fallback to full image if thumbnail fails
+                        const target = e.target as HTMLImageElement;
+                        if (target.src !== `${API_BASE_URL.replace('/api', '')}${item.file_path}`) {
+                          target.src = `${API_BASE_URL.replace('/api', '')}${item.file_path}`;
+                        }
+                      }}
+                      loading="lazy"
                     />
                     {item.is_primary && (
                       <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">

@@ -127,10 +127,15 @@ RUN echo "=== Starting file copy process ===" && \
     test -f /app/server/types.js && echo "SUCCESS: types.js found at /app/server/types.js" || (echo "ERROR: types.js not found at /app/server/types.js - checking where it is..." && find /app -name "types.js" -type f 2>&1 && exit 1) && \
     rm -rf /app/server/dist-temp
 
+# Create uploads directory and set permissions
+RUN mkdir -p /app/server/uploads /app/server/uploads/thumbnails && \
+    chmod -R 755 /app/server/uploads
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app
+    chown -R nodejs:nodejs /app && \
+    chown -R nodejs:nodejs /app/server/uploads
 
 USER nodejs
 

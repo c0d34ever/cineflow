@@ -135,6 +135,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               {loading ? 'Processing...' : isLogin ? 'Login' : 'Register'}
             </button>
           </form>
+
+          {isLogin && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => window.location.hash = '#forgot-password'}
+                className="text-sm text-amber-500 hover:text-amber-400 transition-colors"
+              >
+                Forgot Password?
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

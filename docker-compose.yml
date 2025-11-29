@@ -48,6 +48,8 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:80,http://209.182.232.185:8081,https://209.182.232.185:8081,http://youtilitybox.com,https://youtilitybox.com,http://www.youtilitybox.com,https://www.youtilitybox.com,https://cineflow.youtilitybox.com,http://cineflow.youtilitybox.com}
     ports:
       - "5000:5000"
+    volumes:
+      - ./uploads:/app/server/uploads
     networks:
       - cineflow-network
 

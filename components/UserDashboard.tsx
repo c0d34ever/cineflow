@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiKeysService, settingsService, favoritesService, userGeminiKeyService, tagsService } from '../apiServices';
+import { apiKeysService, settingsService, favoritesService, userGeminiKeyService, tagsService, authService } from '../apiServices';
 
 interface User {
   id: number;
@@ -27,7 +27,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   theme = 'dark',
   unreadNotificationCount = 0
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'api-keys' | 'settings' | 'favorites' | 'gemini-key' | 'tags'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'api-keys' | 'settings' | 'favorites' | 'gemini-key' | 'tags' | 'password'>('profile');
   const [geminiKey, setGeminiKey] = useState('');
   const [geminiKeyMasked, setGeminiKeyMasked] = useState('');
   const [geminiKeyInput, setGeminiKeyInput] = useState('');
@@ -41,6 +41,14 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   const [tags, setTags] = useState<any[]>([]);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#6366f1');
+  
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -252,7 +260,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
 
         {/* Tabs */}
         <div className="flex border-b border-zinc-800 mb-6">
-          {(['profile', 'api-keys', 'gemini-key', 'tags', 'settings', 'favorites'] as const).map((tab) => (
+          {(['profile', 'api-keys', 'gemini-key', 'tags', 'settings', 'favorites', 'password'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -564,6 +572,113 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'password' && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold mb-4">Change Password</h2>
+              
+              {passwordSuccess && (
+                <div className="mb-4 p-3 bg-green-900/30 border border-green-800 rounded text-green-400 text-sm">
+                  Password changed successfully!
+                </div>
+              )}
+
+              {passwordError && (
+                <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded text-red-400 text-sm">
+                  {passwordError}
+                </div>
+              )}
+
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setPasswordError('');
+                  setPasswordSuccess(false);
+
+                  if (newPassword.length < 6) {
+                    setPasswordError('New password must be at least 6 characters');
+                    return;
+                  }
+
+                  if (newPassword !== confirmPassword) {
+                    setPasswordError('Passwords do not match');
+                    return;
+                  }
+
+                  setChangingPassword(true);
+                  try {
+                    await authService.changePassword(currentPassword, newPassword);
+                    setPasswordSuccess(true);
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                    setTimeout(() => setPasswordSuccess(false), 3000);
+                  } catch (error: any) {
+                    setPasswordError(error.message || 'Failed to change password');
+                  } finally {
+                    setChangingPassword(false);
+                  }
+                }}
+                className="space-y-4 max-w-md"
+              >
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 uppercase mb-1">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-white focus:border-amber-500 outline-none"
+                    placeholder="Enter current password"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 uppercase mb-1">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-white focus:border-amber-500 outline-none"
+                    placeholder="Enter new password (min 6 characters)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 uppercase mb-1">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-white focus:border-amber-500 outline-none"
+                    placeholder="Confirm new password"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={changingPassword}
+                  className={`w-full py-3 rounded-lg font-bold text-sm uppercase tracking-wide transition-colors ${
+                    changingPassword
+                      ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      : 'bg-amber-600 hover:bg-amber-500 text-white'
+                  }`}
+                >
+                  {changingPassword ? 'Changing...' : 'Change Password'}
+                </button>
+              </form>
             </div>
           )}
         </div>

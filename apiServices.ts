@@ -254,6 +254,21 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  forgotPassword: (email: string) =>
+    apiCall('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, email: string, password: string) =>
+    apiCall('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, email, password }),
+    }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiCall('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
   getMe: () => apiCall('/auth/me'),
 };
 
