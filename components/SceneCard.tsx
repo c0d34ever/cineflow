@@ -39,9 +39,12 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
       // Ensure we have an array and filter out any null/undefined items
       const validMedia = Array.isArray(media) ? media.filter(item => item && item.id) : [];
       setSceneImages(validMedia);
-      console.log(`Loaded ${validMedia.length} images for scene ${scene.id}`, validMedia);
-    } catch (error) {
+      if (validMedia.length > 0) {
+        console.log(`Loaded ${validMedia.length} images for scene ${scene.id}`, validMedia);
+      }
+    } catch (error: any) {
       console.error('Failed to load scene images:', error);
+      // Don't show error to user - just log it and set empty array
       setSceneImages([]);
     } finally {
       setLoadingImages(false);

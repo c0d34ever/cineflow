@@ -26,8 +26,24 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
       window.location.reload();
       throw new Error('Authentication required');
     }
-    const error = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || 'Request failed');
+    
+    // Try to get error message from response
+    let errorMessage = 'Request failed';
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+    } catch {
+      // If JSON parsing fails, use status text
+      errorMessage = `HTTP ${response.status}: ${response.statusText || 'Request failed'}`;
+    }
+    
+    console.error(`API call failed: ${endpoint}`, {
+      status: response.status,
+      statusText: response.statusText,
+      error: errorMessage
+    });
+    
+    throw new Error(errorMessage);
   }
 
   return response.json();
@@ -376,7 +392,19 @@ export const mediaService = {
   getSceneMedia: (sceneId: string): Promise<any[]> => {
     return apiCall(`/media/scene/${sceneId}`).then((data: any) => {
       // Handle both { media: [...] } and [...] response formats
-      return Array.isArray(data) ? data : (data.media || []);
+      if (Array.isArray(data)) {
+        return data;
+      }
+      // Backend returns { media: [...] }
+      if (data && data.media && Array.isArray(data.media)) {
+        return data.media;
+      }
+      // If no media found, return empty array
+      return [];
+    }).catch((error: any) => {
+      console.error('getSceneMedia error:', error);
+      // Return empty array on error instead of throwing
+      return [];
     });
   },
 
