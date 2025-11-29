@@ -17,7 +17,7 @@ services:
       DB_USER: ${DB_USER:-youtigyk_cineflow}
       DB_PASSWORD: ${DB_PASSWORD:-Sun12day46fun}
       DB_NAME: ${DB_NAME:-youtigyk_cineflow}
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-in-production}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-this-in-production-min-32-chars}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       ADMIN_CORS_ORIGIN: ${ADMIN_CORS_ORIGIN:-*}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@cineflow.ai}
