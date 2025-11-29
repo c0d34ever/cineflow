@@ -67,12 +67,18 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const uploadsPath = path.join(__dirname, '../uploads');
 const thumbnailsPath = path.join(uploadsPath, 'thumbnails');
 
+console.log(`[Server] Uploads directory: ${uploadsPath}`);
+console.log(`[Server] Thumbnails directory: ${thumbnailsPath}`);
+console.log(`[Server] Uploads directory exists: ${fs.existsSync(uploadsPath)}`);
+
 try {
   if (!fs.existsSync(uploadsPath)) {
     fs.mkdirSync(uploadsPath, { recursive: true, mode: 0o755 });
+    console.log(`[Server] Created uploads directory: ${uploadsPath}`);
   }
   if (!fs.existsSync(thumbnailsPath)) {
     fs.mkdirSync(thumbnailsPath, { recursive: true, mode: 0o755 });
+    console.log(`[Server] Created thumbnails directory: ${thumbnailsPath}`);
   }
 } catch (error: any) {
   console.warn('Warning: Could not create uploads directory:', error.message);
@@ -80,7 +86,14 @@ try {
 }
 
 // Serve uploaded files statically
-app.use('/uploads', express.static(uploadsPath));
+app.use('/uploads', express.static(uploadsPath, {
+  setHeaders: (res, filePath) => {
+    // Log file requests for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Static] Serving file: ${filePath}`);
+    }
+  }
+}));
 
 // Request logging middleware
 app.use((req, res, next) => {
