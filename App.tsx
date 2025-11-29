@@ -104,6 +104,8 @@ const App: React.FC = () => {
   const [showTagsMenu, setShowTagsMenu] = useState(false);
   const [comicExists, setComicExists] = useState(false);
   const [isRegeneratingComic, setIsRegeneratingComic] = useState(false);
+  const [showCoverImageSelector, setShowCoverImageSelector] = useState(false);
+  const [selectedCoverImageId, setSelectedCoverImageId] = useState<string | null>(null);
   const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedSceneIds, setSelectedSceneIds] = useState<Set<string>>(new Set());
