@@ -25,6 +25,7 @@ import analyticsRouter from './routes/analytics.js';
 import sceneTemplatesRouter from './routes/sceneTemplates.js';
 import activityRouter from './routes/activity.js';
 import { initDatabase } from './db/schema.js';
+import { authenticateToken } from './middleware/auth.js';
 
 // Ensure we load .env from the server directory
 const __filename = fileURLToPath(import.meta.url);
@@ -65,8 +66,8 @@ app.get('/health', (req, res) => {
 // API Routes
 // Authentication (available to all users)
 app.use('/api/auth', authRouter);
-// Regular user operations
-app.use('/api/projects', projectsRouter);
+// Regular user operations (require authentication)
+app.use('/api/projects', authenticateToken, projectsRouter);
 app.use('/api/gemini', geminiRouter);
 app.use('/api/api-keys', apiKeysRouter);
 app.use('/api/tags', tagsRouter);

@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent } from '../services/geminiService.js';
 import { StoryContext, DirectorSettings, Scene } from '../../types.js';
-import { authenticateToken, AuthRequest } from '../admin/middleware/auth.js';
+import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = express.Router();
 

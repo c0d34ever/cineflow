@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { getPool } from '../db/index.js';
-import { AuthRequest, authenticateToken } from '../admin/middleware/auth.js';
+import { AuthRequest, authenticateToken } from '../middleware/auth.js';
 import crypto from 'crypto';
 
 const router = express.Router();

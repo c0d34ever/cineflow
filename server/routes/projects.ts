@@ -1,6 +1,7 @@
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import { getPool } from '../db/index.js';
 import { StoryContext, Scene, DirectorSettings } from '../../types.js';
+import { AuthRequest, authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -40,12 +41,14 @@ interface DirectorSettingsRow {
   transition: string;
 }
 
-// GET /api/projects - Get all projects
-router.get('/', async (req: Request, res: Response) => {
+// GET /api/projects - Get all projects (user's own projects)
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user!.id;
     const pool = getPool();
     const [projects] = await pool.query(
-      'SELECT * FROM projects ORDER BY last_updated DESC'
+      'SELECT * FROM projects WHERE user_id = ? ORDER BY last_updated DESC',
+      [userId]
     ) as [ProjectRow[], any];
 
     const projectsWithData = await Promise.all(
@@ -165,12 +168,13 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // GET /api/projects/:id - Get single project
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user!.id;
     const pool = getPool();
     const [projects] = await pool.query(
-      'SELECT * FROM projects WHERE id = ?',
-      [req.params.id]
+      'SELECT * FROM projects WHERE id = ? AND user_id = ?',
+      [req.params.id, userId]
     ) as [ProjectRow[], any];
 
     if (projects.length === 0) {
@@ -289,8 +293,9 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/projects - Create or update project
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user!.id;
     const { context, scenes, settings } = req.body;
 
     if (!context || !context.id) {
@@ -303,10 +308,16 @@ router.post('/', async (req: Request, res: Response) => {
     try {
       await connection.beginTransaction();
 
+      // Check if project exists and belongs to user
+      const [existing] = await connection.query(
+        'SELECT id FROM projects WHERE id = ? AND user_id = ?',
+        [context.id, userId]
+      ) as [any[], any];
+
       // Upsert project
       await connection.query(
-        `INSERT INTO projects (id, title, genre, plot_summary, characters, initial_context, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO projects (id, user_id, title, genre, plot_summary, characters, initial_context, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            title = VALUES(title),
            genre = VALUES(genre),
@@ -316,6 +327,7 @@ router.post('/', async (req: Request, res: Response) => {
            last_updated = VALUES(last_updated)`,
         [
           context.id,
+          userId,
           context.title || '',
           context.genre || '',
           context.plotSummary || '',
@@ -424,10 +436,19 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/projects/:id - Delete project
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user!.id;
     const pool = getPool();
-    await pool.query('DELETE FROM projects WHERE id = ?', [req.params.id]);
+    const [result] = await pool.query(
+      'DELETE FROM projects WHERE id = ? AND user_id = ?',
+      [req.params.id, userId]
+    ) as [any, any];
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting project:', error);
