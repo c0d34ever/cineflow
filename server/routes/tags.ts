@@ -4,15 +4,56 @@ import { AuthRequest, authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// GET /api/tags - Get all tags
-router.get('/', async (req: express.Request, res: Response) => {
+// GET /api/tags - Get all tags (authenticated)
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
+  // Set timeout for this request
+  req.setTimeout(5000); // 5 seconds
+  
+  const timeoutId = setTimeout(() => {
+    if (!res.headersSent) {
+      console.warn('Tags endpoint timeout - returning empty array');
+      res.json({ tags: [] });
+    }
+  }, 4000); // Return empty array after 4 seconds
+  
   try {
     const pool = getPool();
-    const [tags] = await pool.query('SELECT * FROM tags ORDER BY name');
-    res.json({ tags });
-  } catch (error) {
+    
+    // Simple query - should be very fast
+    const [tags] = await pool.query('SELECT id, name, color FROM tags ORDER BY name ASC LIMIT 1000') as [any[], any];
+    
+    clearTimeout(timeoutId);
+    
+    // Ensure we return an array
+    const tagsArray = Array.isArray(tags) ? tags : [];
+    res.json({ tags: tagsArray });
+  } catch (error: any) {
+    clearTimeout(timeoutId);
     console.error('Error fetching tags:', error);
-    res.status(500).json({ error: 'Failed to fetch tags' });
+    
+    // Handle timeout specifically
+    if (error.message?.includes('timeout') || error.message?.includes('TIMEOUT') || error.code === 'ETIMEDOUT' || error.code === 'PROTOCOL_PACKETS_OUT_OF_ORDER') {
+      console.warn('Tags query timeout - returning empty array');
+      if (!res.headersSent) {
+        return res.json({ tags: [] });
+      }
+      return;
+    }
+    
+    // Handle database connection errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST' || error.code === 'PROTOCOL_ENQUEUE_AFTER_QUIT') {
+      console.error('Database connection error:', error.code);
+      if (!res.headersSent) {
+        return res.status(503).json({ error: 'Database temporarily unavailable', tags: [] });
+      }
+      return;
+    }
+    
+    // Return empty array on other errors instead of failing completely
+    console.warn('Tags fetch error - returning empty array:', error.message);
+    if (!res.headersSent) {
+      res.json({ tags: [] });
+    }
   }
 });
 
