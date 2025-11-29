@@ -27,10 +27,23 @@ import activityRouter from './routes/activity.js';
 import { initDatabase } from './db/schema.js';
 import { authenticateToken } from './middleware/auth.js';
 
-// Ensure we load .env from the server directory
+// Ensure we load .env from multiple locations
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.join(__dirname, '.env') });
+
+// Try loading .env from multiple locations (for Docker and local dev)
+dotenv.config({ path: path.join(__dirname, '.env') }); // server/.env
+dotenv.config({ path: path.join(__dirname, '../.env') }); // root .env
+dotenv.config(); // Also load from process.env (Docker passes env vars directly)
+
+// Log environment variable status on startup
+console.log('[Server] Environment check:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY ? `Set (${process.env.GEMINI_API_KEY.length} chars, starts with: ${process.env.GEMINI_API_KEY.substring(0, 8)}...)` : 'NOT SET',
+  DB_HOST: process.env.DB_HOST,
+  JWT_SECRET: process.env.JWT_SECRET ? 'Set' : 'NOT SET',
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -59,7 +72,24 @@ app.get('/health', (req, res) => {
     status: 'ok', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    geminiApiKey: process.env.GEMINI_API_KEY ? 'configured' : 'not configured'
+  });
+});
+
+// Diagnostic endpoint for API key status (for debugging)
+app.get('/api/debug/env', (req, res) => {
+  res.json({
+    geminiApiKey: {
+      exists: !!process.env.GEMINI_API_KEY,
+      length: process.env.GEMINI_API_KEY?.length || 0,
+      startsWith: process.env.GEMINI_API_KEY?.substring(0, 8) || 'N/A',
+      masked: process.env.GEMINI_API_KEY 
+        ? process.env.GEMINI_API_KEY.substring(0, 8) + '...' + process.env.GEMINI_API_KEY.substring(process.env.GEMINI_API_KEY.length - 4)
+        : 'NOT SET'
+    },
+    nodeEnv: process.env.NODE_ENV,
+    allEnvKeys: Object.keys(process.env).filter(k => k.includes('GEMINI') || k.includes('API_KEY'))
   });
 });
 

@@ -23,18 +23,26 @@ router.post('/generate-story', authenticateToken, async (req: AuthRequest, res: 
     res.json(result);
   } catch (error: any) {
     console.error('Error generating story:', error);
+    console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     
     // Provide user-friendly error messages
     let errorMessage = 'Failed to generate story concept';
-    if (error.status === 403 || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('SERVICE_DISABLED')) {
+    let statusCode = error.status || 500;
+    
+    if (error.status === 403 || error.statusCode === 403 || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('SERVICE_DISABLED')) {
       errorMessage = 'Gemini API is not enabled. Please enable the Generative Language API in Google Cloud Console: https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview';
-    } else if (error.message?.includes('API key')) {
-      errorMessage = 'Invalid or missing Gemini API key. Please check your API key in settings.';
+      statusCode = 403;
+    } else if (error.message?.includes('API key') || error.message?.includes('not set') || error.message?.includes('Gemini API key is not set')) {
+      errorMessage = 'Invalid or missing Gemini API key. Please check your API key in settings or contact support if using the default key.';
+      statusCode = 500;
     } else if (error.message) {
       errorMessage = error.message;
     }
     
-    res.status(error.status || 500).json({ error: errorMessage });
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
