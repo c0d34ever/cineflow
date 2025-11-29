@@ -1236,10 +1236,10 @@ async function generateComicHTML(
       });
       
       // Process lines to identify narration and captions
-      const lines = panelContent.split('\n');
+      const contentLines = panelContent.split('\n');
       const processedLines: string[] = [];
       
-      for (const line of lines) {
+      for (const line of contentLines) {
         const trimmed = line.trim();
         
         // Skip empty lines
