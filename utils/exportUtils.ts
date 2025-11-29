@@ -153,7 +153,60 @@ export function exportToCSV(data: ExportData): string {
  */
 export type PDFStyle = 'comic' | 'raw';
 
-export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic'): Promise<void> {
+export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', episodeId?: string): Promise<void> {
+  // For comic style, check if comic exists in database first
+  if (style === 'comic') {
+    try {
+      const { comicsService } = await import('../apiServices');
+      const existing = await comicsService.get(data.context.id, episodeId);
+      
+      if (existing.exists && existing.comic?.htmlContent) {
+        // Use existing comic
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          alert('Please allow popups to export PDF');
+          return;
+        }
+        
+        printWindow.document.write(existing.comic.htmlContent);
+        printWindow.document.close();
+        
+        setTimeout(() => {
+          printWindow.print();
+        }, 1500);
+        return;
+      }
+      
+      // Generate new comic if it doesn't exist
+      const response = await comicsService.generate({
+        projectId: data.context.id,
+        episodeId: episodeId,
+        projectContext: data.context,
+        scenes: data.scenes
+      });
+      
+      if (response.comic?.htmlContent) {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          alert('Please allow popups to export PDF');
+          return;
+        }
+        
+        printWindow.document.write(response.comic.htmlContent);
+        printWindow.document.close();
+        
+        setTimeout(() => {
+          printWindow.print();
+        }, 1500);
+        return;
+      }
+    } catch (error) {
+      console.error('Error with comic export:', error);
+      // Fall through to regular export
+    }
+  }
+  
+  // Regular export (raw style or fallback)
   const markdown = exportToMarkdown(data);
   
   // Convert markdown to HTML with chosen style

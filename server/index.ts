@@ -25,6 +25,7 @@ import analyticsRouter from './routes/analytics.js';
 import sceneTemplatesRouter from './routes/sceneTemplates.js';
 import activityRouter from './routes/activity.js';
 import mediaRouter from './routes/media.js';
+import comicsRouter from './routes/comics.js';
 import { initDatabase } from './db/schema.js';
 import { authenticateToken } from './middleware/auth.js';
 
@@ -121,6 +122,7 @@ app.use('/api/analytics', analyticsRouter);
 app.use('/api/scene-templates', sceneTemplatesRouter);
 app.use('/api/activity', activityRouter);
 app.use('/api/media', mediaRouter);
+app.use('/api/comics', authenticateToken, comicsRouter);
 
 // 404 handler
 app.use((req, res) => {

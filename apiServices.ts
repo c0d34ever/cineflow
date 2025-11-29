@@ -438,6 +438,28 @@ export const adminApiKeysService = {
   getStats: () => adminApiCall('/api-keys/stats'),
 };
 
+// Comics Service
+export const comicsService = {
+  get: (projectId: string, episodeId?: string) => {
+    const params = episodeId ? `?episodeId=${episodeId}` : '';
+    return apiCall(`/comics/${projectId}${params}`);
+  },
+  generate: (data: {
+    projectId: string;
+    episodeId?: string;
+    projectContext: any;
+    scenes: any[];
+  }) => apiCall('/comics/generate', { method: 'POST', body: JSON.stringify(data) }),
+  download: (projectId: string, episodeId?: string) => {
+    const params = episodeId ? `?episodeId=${episodeId}` : '';
+    return fetch(`${API_BASE_URL}/comics/${projectId}/download${params}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+      },
+    });
+  },
+};
+
 // Export all services
 export default {
   apiKeys: apiKeysService,
@@ -452,4 +474,5 @@ export default {
   adminProjects: adminProjectsService,
   adminApiKeys: adminApiKeysService,
   media: mediaService,
+  comics: comicsService,
 };

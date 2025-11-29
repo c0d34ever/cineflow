@@ -904,3 +904,257 @@ export const generateEpisodeContent = async (
   }
 };
 
+/**
+ * Generate simplified comic book content from scenes
+ * Removes technical details, focuses on dialogues, tone, and visual storytelling
+ */
+export const generateComicContent = async (
+  projectContext: StoryContext,
+  scenes: Scene[],
+  userId?: number
+): Promise<{ comicContent: string; htmlContent: string }> => {
+  const ai = await getAIClient(userId);
+
+  const systemInstruction = `You are a professional comic book writer and artist.
+  Transform film/TV scenes into comic book format.
+  
+  IMPORTANT RULES:
+  1. REMOVE all technical camera details (lens, angle, movement, zoom, etc.)
+  2. REMOVE all production notes and technical specifications
+  3. FOCUS on:
+     - Dialogue with emotional tone indicators (whispered, shouted, sarcastic, etc.)
+     - Visual descriptions that paint a picture
+     - Character emotions and expressions
+     - Action and movement in simple terms
+     - Panel-by-panel storytelling
+  
+  4. Format each scene as:
+     **PANEL [number]**
+     [Visual description - what we see]
+     
+     [Character Name] (tone): "[Dialogue]"
+     
+     [Narration or thought bubble if needed]
+  
+  5. Use comic book conventions:
+     - Sound effects (BANG!, WHOOSH!, etc.)
+     - Thought bubbles for internal monologue
+     - Captions for narration
+     - Bold for emphasis in dialogue
+  
+  6. Keep it engaging and visual, like a real comic book page.`;
+
+  // Prepare scene data (simplified, no technical details)
+  const scenesData = scenes.map((scene, index) => ({
+    sequence: index + 1,
+    sceneId: scene.directorSettings.customSceneId || `SEQ #${scene.sequenceNumber.toString().padStart(2, '0')}`,
+    visualDirection: scene.enhancedPrompt,
+    dialogue: scene.directorSettings.dialogue || '',
+    context: scene.contextSummary || ''
+  }));
+
+  const prompt = `
+    PROJECT:
+    Title: ${projectContext.title || 'Untitled'}
+    Genre: ${projectContext.genre || 'General'}
+    Plot: ${projectContext.plotSummary || ''}
+    Characters: ${projectContext.characters || ''}
+    
+    SCENES TO CONVERT:
+    ${scenesData.map(s => `
+      Scene ${s.sequence} (${s.sceneId}):
+      Visual: ${s.visualDirection.substring(0, 500)}
+      ${s.dialogue ? `Dialogue: "${s.dialogue}"` : ''}
+      ${s.context ? `Context: ${s.context}` : ''}
+    `).join('\n---\n')}
+    
+    Convert these scenes into comic book format. Remove all technical details.
+    Focus on visual storytelling, dialogue with tone, and comic book conventions.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+        temperature: 0.8, // More creative
+        maxOutputTokens: 8000
+      }
+    });
+
+    const comicContent = response.text;
+    
+    // Generate HTML version with comic styling
+    const htmlContent = await generateComicHTML(projectContext, comicContent, scenes);
+
+    return { comicContent, htmlContent };
+  } catch (error: any) {
+    console.error("Error generating comic content:", error);
+    throw error;
+  }
+};
+
+/**
+ * Generate HTML version of comic content with DC/Marvel styling
+ */
+async function generateComicHTML(
+  projectContext: StoryContext,
+  comicContent: string,
+  scenes: Scene[]
+): Promise<string> {
+  // Convert comic content to HTML with comic styling
+  let html = comicContent;
+  
+  // Convert panel markers to styled divs
+  html = html.replace(/\*\*PANEL (\d+)\*\*/g, '<div class="comic-panel-number">PANEL $1</div>');
+  
+  // Convert dialogue with tone to speech bubbles
+  html = html.replace(/([A-Z][a-zA-Z\s]+)\s*\(([^)]+)\):\s*"([^"]+)"/g, 
+    '<div class="speech-bubble" data-tone="$2"><strong>$1</strong>: "$3"</div>');
+  
+  // Convert simple dialogue
+  html = html.replace(/"([^"]+)"/g, '<div class="speech-bubble">"$1"</div>');
+  
+  // Convert thought bubbles (internal monologue)
+  html = html.replace(/\*([^*]+)\*/g, '<div class="thought-bubble">$1</div>');
+  
+  // Convert sound effects
+  html = html.replace(/([A-Z][A-Z\s!]+!?)/g, (match) => {
+    if (match.length > 3 && match.length < 20 && /^[A-Z\s!]+$/.test(match)) {
+      return `<div class="sound-effect">${match}</div>`;
+    }
+    return match;
+  });
+  
+  // Convert visual descriptions to captions
+  const lines = html.split('\n');
+  const processedLines = lines.map(line => {
+    if (line.trim() && !line.includes('<div') && !line.includes('PANEL')) {
+      if (line.length > 20 && !line.includes('"')) {
+        return `<div class="comic-caption">${line.trim()}</div>`;
+      }
+    }
+    return line;
+  });
+  html = processedLines.join('\n');
+
+  // Wrap in comic book HTML structure
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>${projectContext.title} - Comic Book</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap');
+    
+    @media print {
+      @page {
+        margin: 1cm;
+        size: A4;
+      }
+      .comic-page {
+        page-break-after: always;
+      }
+    }
+    
+    body {
+      font-family: 'Comic Neue', cursive, sans-serif;
+      line-height: 1.6;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F5 100%);
+    }
+    
+    h1 {
+      font-family: 'Bangers', cursive;
+      font-size: 4em;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      text-align: center;
+      margin: 30px 0 40px;
+      color: #DC143C;
+      text-shadow: 4px 4px 0px #000, 8px 8px 0px rgba(0,0,0,0.3);
+    }
+    
+    .comic-panel-number {
+      font-family: 'Bangers', cursive;
+      font-size: 1.5em;
+      color: #1E88E5;
+      text-shadow: 2px 2px 0px #000;
+      margin: 30px 0 10px;
+      border-bottom: 3px solid #000;
+      padding-bottom: 5px;
+    }
+    
+    .speech-bubble {
+      background: #fff;
+      border: 5px solid #000;
+      border-radius: 30px;
+      padding: 18px 25px;
+      margin: 20px 0;
+      position: relative;
+      font-family: 'Comic Neue', cursive;
+      font-size: 1.2em;
+      font-weight: bold;
+      color: #000;
+      box-shadow: 5px 5px 0px rgba(0,0,0,0.3);
+      max-width: 85%;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -15px;
+      left: 20%;
+      width: 0;
+      height: 0;
+      border: 15px solid transparent;
+      border-top-color: #000;
+      border-bottom: none;
+    }
+    
+    .thought-bubble {
+      background: #fff;
+      border: 3px dashed #000;
+      border-radius: 50px;
+      padding: 15px 20px;
+      margin: 15px 0;
+      font-style: italic;
+      color: #333;
+    }
+    
+    .sound-effect {
+      font-family: 'Bangers', cursive;
+      font-size: 3em;
+      color: #DC143C;
+      text-shadow: 3px 3px 0px #000;
+      text-align: center;
+      margin: 20px 0;
+      transform: rotate(-5deg);
+      display: inline-block;
+    }
+    
+    .comic-caption {
+      font-size: 1em;
+      color: #333;
+      font-style: italic;
+      margin: 10px 0;
+      padding-left: 20px;
+      border-left: 3px solid #000;
+    }
+  </style>
+</head>
+<body>
+  <h1>${projectContext.title}</h1>
+  <div class="comic-content">
+    ${html}
+  </div>
+</body>
+</html>
+  `;
+}
+
