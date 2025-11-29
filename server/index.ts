@@ -92,8 +92,29 @@ app.use('/uploads', express.static(uploadsPath, {
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[Static] Serving file: ${filePath}`);
     }
-  }
+  },
+  fallthrough: false // Don't fall through to next middleware if file not found
 }));
+
+// Debug endpoint to check uploads directory
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/debug/uploads', (req, res) => {
+    try {
+      const files = fs.readdirSync(uploadsPath);
+      const thumbnails = fs.readdirSync(thumbnailsPath);
+      res.json({
+        uploadsPath,
+        thumbnailsPath,
+        uploadsExists: fs.existsSync(uploadsPath),
+        thumbnailsExists: fs.existsSync(thumbnailsPath),
+        uploadFiles: files,
+        thumbnailFiles: thumbnails
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message, uploadsPath, thumbnailsPath });
+    }
+  });
+}
 
 // Request logging middleware
 app.use((req, res, next) => {

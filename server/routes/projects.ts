@@ -470,9 +470,14 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     } finally {
       connection.release();
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving project:', error);
-    res.status(500).json({ error: 'Failed to save project' });
+    const errorMessage = error?.message || 'Failed to save project';
+    const statusCode = error?.statusCode || 500;
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    });
   }
 });
 

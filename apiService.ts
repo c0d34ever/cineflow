@@ -60,7 +60,16 @@ export const apiService = {
       body: JSON.stringify(data),
     });
     if (!response.ok) {
-      throw new Error('Failed to save project');
+      const errorText = await response.text();
+      let errorMessage = 'Failed to save project';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      console.error('Save project error:', response.status, errorMessage);
+      throw new Error(errorMessage);
     }
   },
 
