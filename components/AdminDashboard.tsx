@@ -42,10 +42,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           'Authorization': `Bearer ${token}`,
         },
       });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        throw new Error(`Failed to load stats: ${response.status}`);
+      }
+      
       const data = await response.json();
       setStats(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading stats:', error);
+      // Don't show error if it's a network error (service might be down)
+      if (error.message && !error.message.includes('Failed to fetch')) {
+        // Only log, don't show to user
+      }
     } finally {
       setLoading(false);
     }
@@ -60,9 +74,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           'Authorization': `Bearer ${token}`,
         },
       });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        throw new Error(`Failed to load users: ${response.status}`);
+      }
+      
       const data = await response.json();
       setUsers(data.users || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading users:', error);
     } finally {
       setLoading(false);
@@ -77,8 +101,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         search: searchTerm || undefined 
       });
       setProjects(data.projects || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading projects:', error);
+      if (error.message && error.message.includes('Authentication required')) {
+        localStorage.removeItem('auth_token');
+        window.location.reload();
+        return;
+      }
     } finally {
       setLoading(false);
     }
@@ -89,8 +118,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     try {
       const data = await adminApiKeysService.getAll({ limit: 100 });
       setApiKeys(data.apiKeys || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading API keys:', error);
+      if (error.message && error.message.includes('Authentication required')) {
+        localStorage.removeItem('auth_token');
+        window.location.reload();
+        return;
+      }
     } finally {
       setLoading(false);
     }
@@ -100,8 +134,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     try {
       const data = await adminApiKeysService.getStats();
       setApiKeyStats(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading API key stats:', error);
+      // Don't show error if it's a network error (service might be down)
+      if (error.message && error.message.includes('Authentication required')) {
+        localStorage.removeItem('auth_token');
+        window.location.reload();
+        return;
+      }
     }
   };
 

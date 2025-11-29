@@ -230,8 +230,11 @@ const App: React.FC = () => {
       const data = await authService.getMe();
       setCurrentUser(data.user);
       setIsAuthenticated(true);
-    } catch (error) {
+    } catch (error: any) {
+      // Clear invalid token
       localStorage.removeItem('auth_token');
+      setIsAuthenticated(false);
+      setCurrentUser(null);
     } finally {
       setAuthLoading(false);
     }
@@ -488,8 +491,15 @@ const App: React.FC = () => {
         const list = await getProjectsFromDB();
         setProjects(list);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to load library", e);
+      // If it's an auth error, clear token and reload
+      if (e.message && (e.message.includes('Authentication required') || e.message.includes('401'))) {
+        localStorage.removeItem('auth_token');
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        return;
+      }
       // Fallback to IndexedDB
       try {
         const list = await getProjectsFromDB();

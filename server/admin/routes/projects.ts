@@ -1,13 +1,16 @@
-import express, { Response } from 'express';
+import express, { Response, NextFunction } from 'express';
 import { getPool } from '../../db/index.js';
 import { AuthRequest, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // GET /api/projects - Get all projects (admin view)
-router.get('/', requireAdmin, async (req: AuthRequest, res: Response) => {
+router.get('/', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const pool = getPool();
+    if (!pool) {
+      throw new Error('Database connection not available');
+    }
     const { page = 1, limit = 50, userId, search } = req.query;
 
     let query = `
@@ -36,14 +39,14 @@ router.get('/', requireAdmin, async (req: AuthRequest, res: Response) => {
     const offset = (parseInt(page as string) - 1) * limitNum;
     params.push(limitNum, offset);
 
-    const [projects] = await pool.query(query, params);
+    const [projectsResult] = await pool.query(query, params) as [any[], any];
 
     // Get total count
-    const [countResult] = await pool.query('SELECT COUNT(*) as total FROM projects');
-    const total = (countResult as any[])[0].total;
+    const [countResult] = await pool.query('SELECT COUNT(*) as total FROM projects') as [any[], any];
+    const total = Array.isArray(countResult) && countResult.length > 0 ? countResult[0].total : 0;
 
     res.json({
-      projects,
+      projects: Array.isArray(projectsResult) ? projectsResult : [],
       pagination: {
         page: parseInt(page as string),
         limit: limitNum,
@@ -51,9 +54,16 @@ router.get('/', requireAdmin, async (req: AuthRequest, res: Response) => {
         pages: Math.ceil(total / limitNum),
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching projects:', error);
-    res.status(500).json({ error: 'Failed to fetch projects' });
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to fetch projects',
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    } else {
+      next(error);
+    }
   }
 });
 
