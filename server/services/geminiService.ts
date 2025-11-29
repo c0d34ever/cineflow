@@ -1237,26 +1237,26 @@ async function generateComicHTML(
       
       // Process lines to identify narration and captions
       const contentLines = panelContent.split('\n');
-      const processedLines: string[] = [];
+      const finalProcessedLines: string[] = [];
       
       for (const line of contentLines) {
         const trimmed = line.trim();
         
         // Skip empty lines
         if (!trimmed) {
-          processedLines.push('');
+          finalProcessedLines.push('');
           continue;
         }
         
         // Skip if already converted to HTML
         if (trimmed.startsWith('<div') || trimmed.startsWith('</div>')) {
-          processedLines.push(line);
+          finalProcessedLines.push(line);
           continue;
         }
         
         // Skip if it's dialogue, sound effect, or panel marker
         if (trimmed.includes('speech-bubble') || trimmed.includes('sound-effect') || trimmed.match(/^PANEL/i)) {
-          processedLines.push(line);
+          finalProcessedLines.push(line);
           continue;
         }
         
@@ -1286,7 +1286,7 @@ async function generateComicHTML(
           if (!trimmed.match(/^[A-Z][A-Z\s!]+$/) && 
               !trimmed.match(/^[A-Z][a-z]+\s+(is|stands|looks|sees|does|goes)/i) &&
               (trimmed.match(/[.!?]$/) || trimmed.length > 60)) {
-            processedLines.push(`<div class="comic-narration">${trimmed}</div>`);
+            finalProcessedLines.push(`<div class="comic-narration">${trimmed}</div>`);
             continue;
           }
         }
@@ -1296,7 +1296,7 @@ async function generateComicHTML(
           if (!trimmed.match(/^[A-Z][a-z]+\s*\(/) && 
               !trimmed.match(/^[A-Z]{2,}[A-Z\s!]+$/) &&
               !trimmed.match(/^(PANEL|SCENE)/i)) {
-            processedLines.push(`<div class="comic-caption">${trimmed}</div>`);
+            finalProcessedLines.push(`<div class="comic-caption">${trimmed}</div>`);
             continue;
           }
         }
@@ -1311,11 +1311,11 @@ async function generateComicHTML(
           .replace(/">/g, '');
         
         if (cleanedLine.trim()) {
-          processedLines.push(cleanedLine);
+          finalProcessedLines.push(cleanedLine);
         }
       }
       
-      panelContent = processedLines.join('\n');
+      panelContent = finalProcessedLines.join('\n');
       
       // Final cleanup pass
       panelContent = panelContent.replace(/"comic-panel-number"/gi, '');
