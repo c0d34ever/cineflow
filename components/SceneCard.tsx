@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Scene } from '../types';
 import { mediaService } from '../apiServices';
 import MediaLibrary from './MediaLibrary';
+import SceneGallery from './SceneGallery';
 import CopyButton from './CopyButton';
 
 interface SceneCardProps {
@@ -26,6 +27,7 @@ interface MediaItem {
 const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, onDelete, batchMode = false, isSelected = false, onToggleSelection }) => {
   const [sceneImages, setSceneImages] = useState<MediaItem[]>([]);
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
   const [loadingImages, setLoadingImages] = useState(false);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -139,18 +141,47 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
         )}
 
         {/* Scene Image - Comic Book Style */}
-        {primaryImage && (
-          <div className="w-full mb-4 rounded-lg overflow-hidden border-2 border-zinc-700 bg-zinc-950">
+        {primaryImage ? (
+          <div 
+            className="w-full mb-4 rounded-lg overflow-hidden border-2 border-zinc-700 bg-zinc-950 cursor-pointer group relative"
+            onClick={(e) => {
+              if (!batchMode && projectId) {
+                e.stopPropagation();
+                setShowGallery(true);
+              }
+            }}
+          >
             <img
-              src={`${API_BASE_URL.replace('/api', '')}${primaryImage.file_path}`}
+              src={`${API_BASE_URL.replace('/api', '')}${primaryImage.thumbnail_path || primaryImage.file_path}`}
               alt={primaryImage.alt_text || `Scene ${scene.sequenceNumber}`}
-              className="w-full h-auto object-cover"
+              className="w-full h-auto object-cover transition-transform group-hover:scale-105"
+              loading="lazy"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = `${API_BASE_URL.replace('/api', '')}${primaryImage.file_path}`;
+              }}
             />
             {sceneImages.length > 1 && (
               <div className="text-xs text-zinc-500 text-center py-1 bg-zinc-900">
-                {sceneImages.length} image{sceneImages.length > 1 ? 's' : ''} • Click image icon to manage
+                {sceneImages.length} image{sceneImages.length > 1 ? 's' : ''}
               </div>
             )}
+            {!batchMode && projectId && (
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-sm font-semibold">
+                  Click to view gallery
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="w-full mb-4 rounded-lg overflow-hidden border-2 border-zinc-700 bg-zinc-950 aspect-video flex items-center justify-center">
+            <div className="text-center text-zinc-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-xs">No image</p>
+            </div>
           </div>
         )}
 
@@ -250,7 +281,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
         </div>
       </div>
 
-      {/* Media Library Modal */}
+      {/* Media Library Modal - for uploads */}
       {showMediaLibrary && projectId && (
         <MediaLibrary
           projectId={projectId}
@@ -260,6 +291,21 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
             loadSceneImages();
           }}
           allowUpload={true}
+        />
+      )}
+
+      {/* Scene Gallery - for viewing, editing, and deleting */}
+      {showGallery && projectId && (
+        <SceneGallery
+          sceneId={scene.id}
+          projectId={projectId}
+          onClose={() => {
+            setShowGallery(false);
+            loadSceneImages();
+          }}
+          onUpdate={() => {
+            loadSceneImages();
+          }}
         />
       )}
     </div>
