@@ -476,6 +476,143 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// POST /api/projects/:id/duplicate - Duplicate project
+router.post('/:id/duplicate', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const { includeScenes = true, includeMedia = false, newTitle } = req.body;
+    const pool = getPool();
+
+    // Get original project
+    const [projectsResult] = await pool.query(
+      'SELECT * FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      [projectId, userId]
+    ) as [any[], any];
+
+    const projects = Array.isArray(projectsResult) ? projectsResult : [];
+    if (projects.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const originalProject = projects[0];
+    const newProjectId = `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Create new project
+      await connection.query(
+        `INSERT INTO projects (id, user_id, title, genre, plot_summary, characters, initial_context, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newProjectId,
+          userId,
+          newTitle || `${originalProject.title} (Copy)`,
+          originalProject.genre || '',
+          originalProject.plot_summary || '',
+          originalProject.characters || '',
+          originalProject.initial_context || '',
+          Date.now()
+        ]
+      );
+
+      // Copy director settings
+      const [settings] = await connection.query(
+        'SELECT * FROM director_settings WHERE project_id = ?',
+        [projectId]
+      ) as [any[], any];
+      
+      if (settings.length > 0) {
+        const setting = settings[0];
+        await connection.query(
+          `INSERT INTO director_settings (project_id, lens, angle, lighting, movement, zoom, sound, style, transition)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newProjectId,
+            setting.lens,
+            setting.angle,
+            setting.lighting,
+            setting.movement,
+            setting.zoom,
+            setting.sound,
+            setting.style,
+            setting.transition
+          ]
+        );
+      }
+
+      // Copy scenes if requested
+      if (includeScenes) {
+        const [scenes] = await connection.query(
+          'SELECT * FROM scenes WHERE project_id = ? ORDER BY sequence_number ASC',
+          [projectId]
+        ) as [any[], any];
+
+        for (const scene of scenes) {
+          const newSceneId = `scene-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await connection.query(
+            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              newSceneId,
+              newProjectId,
+              scene.sequence_number,
+              scene.raw_idea,
+              scene.enhanced_prompt,
+              scene.context_summary,
+              scene.status || 'completed'
+            ]
+          );
+
+          // Copy scene director settings
+          const [sceneSettings] = await connection.query(
+            'SELECT * FROM scene_director_settings WHERE scene_id = ?',
+            [scene.id]
+          ) as [any[], any];
+
+          if (sceneSettings.length > 0) {
+            const ss = sceneSettings[0];
+            await connection.query(
+              `INSERT INTO scene_director_settings 
+               (scene_id, custom_scene_id, lens, angle, lighting, movement, zoom, sound, dialogue, 
+                stunt_instructions, physics_focus, style, transition)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                newSceneId,
+                ss.custom_scene_id,
+                ss.lens,
+                ss.angle,
+                ss.lighting,
+                ss.movement,
+                ss.zoom,
+                ss.sound,
+                ss.dialogue,
+                ss.stunt_instructions,
+                ss.physics_focus,
+                ss.style,
+                ss.transition
+              ]
+            );
+          }
+        }
+      }
+
+      await connection.commit();
+      res.json({ id: newProjectId, message: 'Project duplicated successfully' });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error: any) {
+    console.error('Error duplicating project:', error);
+    res.status(500).json({ error: error.message || 'Failed to duplicate project' });
+  }
+});
+
 // DELETE /api/projects/:id - Delete project
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

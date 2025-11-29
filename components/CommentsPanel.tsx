@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { commentsService } from '../apiServices';
+import CopyButton from './CopyButton';
 
 interface Comment {
   id: number;
@@ -113,7 +114,8 @@ const CommentsPanel: React.FC<CommentsPanelProps> = ({ projectId, onClose }) => 
                       {new Date(comment.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    <CopyButton text={comment.content} size="sm" />
                     <button
                       onClick={() => handleTogglePin(comment.id, comment.is_pinned)}
                       className="text-xs text-zinc-400 hover:text-amber-500"

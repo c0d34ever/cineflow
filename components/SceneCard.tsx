@@ -3,12 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { Scene } from '../types';
 import { mediaService } from '../apiServices';
 import MediaLibrary from './MediaLibrary';
+import CopyButton from './CopyButton';
 
 interface SceneCardProps {
   scene: Scene;
   projectId?: string;
   onNotesClick?: (sceneId: string) => void;
   onDelete?: (sceneId: string) => void;
+  batchMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelection?: () => void;
 }
 
 interface MediaItem {
@@ -19,7 +23,7 @@ interface MediaItem {
   is_primary: boolean;
 }
 
-const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, onDelete }) => {
+const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, onDelete, batchMode = false, isSelected = false, onToggleSelection }) => {
   const [sceneImages, setSceneImages] = useState<MediaItem[]>([]);
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [loadingImages, setLoadingImages] = useState(false);
@@ -47,19 +51,39 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
   const primaryImage = sceneImages.find(img => img.is_primary) || sceneImages[0];
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col h-full shadow-lg transition-transform hover:scale-[1.01]">
+    <div 
+      className={`bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col h-full shadow-lg transition-all ${
+        batchMode ? 'hover:border-amber-500' : 'hover:scale-[1.01]'
+      } ${isSelected ? 'border-amber-500 bg-amber-900/10' : ''}`}
+      onClick={batchMode && onToggleSelection ? onToggleSelection : undefined}
+    >
       {/* Header / Meta */}
       <div className="bg-black/50 p-3 border-b border-zinc-800 flex justify-between items-center">
         <div className="flex items-center gap-2">
+          {batchMode && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => {
+                e.stopPropagation();
+                onToggleSelection?.();
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-zinc-900 cursor-pointer"
+            />
+          )}
            <div className="bg-amber-900/30 text-amber-500 px-2 py-1 rounded text-xs font-mono border border-amber-900/50 font-bold">
              {scene.directorSettings.customSceneId || `SEQ #${scene.sequenceNumber.toString().padStart(2, '0')}`}
            </div>
            <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">8 Second Clip</div>
         </div>
         <div className="flex items-center gap-2">
-          {projectId && (
+          {projectId && !batchMode && (
             <button
-              onClick={() => setShowMediaLibrary(true)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMediaLibrary(true);
+              }}
               className="text-zinc-400 hover:text-blue-500 transition-colors"
               title="Manage Images"
             >
@@ -68,9 +92,12 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
               </svg>
             </button>
           )}
-          {onNotesClick && (
+          {onNotesClick && !batchMode && (
             <button
-              onClick={() => onNotesClick(scene.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNotesClick(scene.id);
+              }}
               className="text-zinc-400 hover:text-amber-500 transition-colors"
               title="Scene Notes"
             >
@@ -79,9 +106,10 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
               </svg>
             </button>
           )}
-          {onDelete && (
+          {onDelete && !batchMode && (
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (window.confirm('Delete this scene?')) {
                   onDelete(scene.id);
                 }
@@ -131,6 +159,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
           <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2 flex items-center gap-2">
             <span>Visual Direction</span>
             <div className="h-px bg-zinc-800 flex-1"></div>
+            <CopyButton text={scene.enhancedPrompt} size="sm" />
           </h4>
           <div className="text-sm text-zinc-300 font-mono leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto pr-2 scrollbar-thin border-l-2 border-zinc-800 pl-3">
             {scene.enhancedPrompt}
@@ -140,13 +169,32 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
         {/* Dialogue Section */}
         {scene.directorSettings.dialogue && (
           <div className="bg-zinc-950 border-l-2 border-zinc-700 p-3 my-2">
-            <span className="block text-[9px] text-zinc-500 uppercase font-bold mb-1">Dialogue</span>
+            <div className="flex items-center justify-between mb-1">
+              <span className="block text-[9px] text-zinc-500 uppercase font-bold">Dialogue</span>
+              <CopyButton text={scene.directorSettings.dialogue} size="sm" />
+            </div>
             <p className="text-sm text-amber-100/90 font-serif italic">"{scene.directorSettings.dialogue}"</p>
           </div>
         )}
 
         {/* Specs Grid */}
-        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-zinc-800/50">
+        <div className="mt-4 pt-4 border-t border-zinc-800/50">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Technical Details</h4>
+            <CopyButton 
+              text={[
+                scene.directorSettings.customSceneId && `Scene ID: ${scene.directorSettings.customSceneId}`,
+                `Lens & Angle: ${scene.directorSettings.lens} / ${scene.directorSettings.angle}`,
+                `Camera Movement: ${scene.directorSettings.movement}`,
+                scene.directorSettings.zoom && `Zoom: ${scene.directorSettings.zoom}`,
+                `Transition: ${scene.directorSettings.transition || "Cut"}`,
+                `Sound Design: ${scene.directorSettings.sound || "Not specified"}`,
+                scene.directorSettings.stuntInstructions && `Stunts: ${scene.directorSettings.stuntInstructions}`
+              ].filter(Boolean).join('\n')}
+              size="sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             {/* Explicit Scene ID if custom */}
             {scene.directorSettings.customSceneId && (
               <div>
@@ -189,11 +237,14 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
 
         {/* Footer: Context */}
         <div className="mt-2 bg-zinc-950/50 p-2 rounded border border-zinc-800/50">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-start">
             <span className="text-[10px] text-zinc-600 uppercase font-bold shrink-0 mt-0.5">Flow Link:</span>
-            <p className="text-[10px] text-zinc-500 italic leading-tight line-clamp-2">
+            <p className="text-[10px] text-zinc-500 italic leading-tight line-clamp-2 flex-1">
               {scene.contextSummary || "Waiting for context..."}
             </p>
+            {scene.contextSummary && (
+              <CopyButton text={scene.contextSummary} size="sm" className="shrink-0 mt-0.5" />
+            )}
           </div>
         </div>
       </div>

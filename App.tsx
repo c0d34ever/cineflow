@@ -17,6 +17,8 @@ import AnalyticsPanel from './components/AnalyticsPanel';
 import SceneTemplatesModal from './components/SceneTemplatesModal';
 import ActivityPanel from './components/ActivityPanel';
 import SettingsPanel from './components/SettingsPanel';
+import CommandPalette from './components/CommandPalette';
+import CopyButton from './components/CopyButton';
 import { ToastContainer } from './components/Toast';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
@@ -83,6 +85,10 @@ const App: React.FC = () => {
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [setupTab, setSetupTab] = useState<'new' | 'resume'>('new');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandPaletteQuery, setCommandPaletteQuery] = useState('');
   
   // Inputs
   const [currentInput, setCurrentInput] = useState('');
@@ -94,6 +100,9 @@ const App: React.FC = () => {
   const [projectTags, setProjectTags] = useState<any[]>([]);
   const [showTagsMenu, setShowTagsMenu] = useState(false);
   const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedSceneIds, setSelectedSceneIds] = useState<Set<string>>(new Set());
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Comments & Notes
   const [showCommentsPanel, setShowCommentsPanel] = useState(false);
@@ -848,6 +857,7 @@ const App: React.FC = () => {
       }
       setStoryContext(updatedContext);
       setSaveStatus('saved');
+      setLastSavedTime(new Date());
       
       // Reset status after 2 seconds
       setTimeout(() => {
@@ -865,6 +875,7 @@ const App: React.FC = () => {
         });
         setStoryContext(updatedContext);
         setSaveStatus('saved');
+        setLastSavedTime(new Date());
         setTimeout(() => {
           setSaveStatus('idle');
         }, 2000);
@@ -877,6 +888,54 @@ const App: React.FC = () => {
       }
     }
   };
+
+  // Auto-save functionality
+  useEffect(() => {
+    if (!autoSaveEnabled || !storyContext.id || view !== 'studio') return;
+
+    const autoSaveInterval = setInterval(async () => {
+      // Only auto-save if there are changes
+      if (scenes.length > 0 || storyContext.title) {
+        try {
+          const updatedContext = { ...storyContext, lastUpdated: Date.now() };
+          const apiAvailable = await checkApiAvailability();
+          if (apiAvailable) {
+            await apiService.saveProject({
+              context: updatedContext,
+              scenes,
+              settings: currentSettings
+            });
+          } else {
+            await saveProjectToDB({
+              context: updatedContext,
+              scenes,
+              settings: currentSettings
+            });
+          }
+          setStoryContext(updatedContext);
+          setLastSavedTime(new Date());
+          // Silent save - don't show status unless there's an error
+        } catch (error) {
+          console.error("Auto-save failed:", error);
+          // Try IndexedDB fallback
+          try {
+            const updatedContext = { ...storyContext, lastUpdated: Date.now() };
+            await saveProjectToDB({
+              context: updatedContext,
+              scenes,
+              settings: currentSettings
+            });
+            setStoryContext(updatedContext);
+            setLastSavedTime(new Date());
+          } catch (fallbackError) {
+            console.error("Auto-save fallback failed:", fallbackError);
+          }
+        }
+      }
+    }, 30000); // Auto-save every 30 seconds
+
+    return () => clearInterval(autoSaveInterval);
+  }, [autoSaveEnabled, storyContext, scenes, currentSettings, view]);
 
   const handleExitToLibrary = () => {
     setView('library');
@@ -1026,16 +1085,26 @@ const App: React.FC = () => {
 
   // Drag and drop handlers
   const handleDragStart = (index: number) => {
-    setDraggedSceneIndex(index);
+    if (!batchMode) {
+      setDraggedSceneIndex(index);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
+    if (!batchMode && draggedSceneIndex !== null) {
+      e.preventDefault();
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
   };
 
   const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
-    if (draggedSceneIndex === null || draggedSceneIndex === dropIndex) {
+    setDragOverIndex(null);
+    if (batchMode || draggedSceneIndex === null || draggedSceneIndex === dropIndex) {
       setDraggedSceneIndex(null);
       return;
     }
@@ -1072,8 +1141,123 @@ const App: React.FC = () => {
         });
       }
       setStoryContext(updatedContext);
+      showToast('Scenes reordered successfully', 'success');
     } catch (error) {
       console.error('Failed to save reordered scenes:', error);
+      showToast('Failed to save reordered scenes', 'error');
+    }
+  };
+
+  // Batch selection handlers
+  const handleToggleSceneSelection = (sceneId: string) => {
+    setSelectedSceneIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sceneId)) {
+        newSet.delete(sceneId);
+      } else {
+        newSet.add(sceneId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedSceneIds.size === scenes.length) {
+      setSelectedSceneIds(new Set());
+    } else {
+      setSelectedSceneIds(new Set(scenes.map(s => s.id)));
+    }
+  };
+
+  // Bulk operations
+  const handleBulkDelete = async () => {
+    if (selectedSceneIds.size === 0) return;
+    const count = selectedSceneIds.size;
+    if (!window.confirm(`Delete ${count} selected scene(s)?`)) return;
+
+    try {
+      const apiAvailable = await checkApiAvailability();
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const token = localStorage.getItem('auth_token');
+      const idsToDelete = Array.from(selectedSceneIds);
+
+      // Delete from backend
+      if (apiAvailable) {
+        await Promise.all(
+          idsToDelete.map(sceneId =>
+            fetch(`${API_BASE_URL}/clips/${sceneId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` },
+            })
+          )
+        );
+      }
+
+      // Update local state
+      setScenes(prev => {
+        const filtered = prev.filter(s => !selectedSceneIds.has(s.id));
+        return filtered.map((s, idx) => ({
+          ...s,
+          sequenceNumber: idx + 1
+        }));
+      });
+
+      setSelectedSceneIds(new Set());
+      showToast(`${count} scene(s) deleted successfully`, 'success');
+    } catch (error: any) {
+      showToast('Failed to delete scenes', 'error');
+    }
+  };
+
+  const handleBulkStatusUpdate = async (status: string) => {
+    if (selectedSceneIds.size === 0) return;
+
+    try {
+      const apiAvailable = await checkApiAvailability();
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const token = localStorage.getItem('auth_token');
+
+      // Update in backend
+      if (apiAvailable) {
+        await Promise.all(
+          Array.from(selectedSceneIds).map(sceneId =>
+            fetch(`${API_BASE_URL}/clips/${sceneId}`, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ status }),
+            })
+          )
+        );
+      }
+
+      // Update local state
+      setScenes(prev =>
+        prev.map(scene =>
+          selectedSceneIds.has(scene.id)
+            ? { ...scene, status: status as any }
+            : scene
+        )
+      );
+
+      showToast(`${selectedSceneIds.size} scene(s) updated to ${status}`, 'success');
+    } catch (error: any) {
+      showToast('Failed to update scenes', 'error');
+    }
+  };
+
+  const handleBulkTagAssignment = async (tagId: number) => {
+    if (selectedSceneIds.size === 0 || !storyContext.id) return;
+
+    try {
+      // For now, we'll add tags to the project
+      // In a full implementation, you might want to add tags to individual scenes
+      await tagsService.addToProject(tagId, storyContext.id);
+      showToast(`Tag assigned to ${selectedSceneIds.size} scene(s)`, 'success');
+    } catch (error: any) {
+      showToast('Failed to assign tag', 'error');
     }
   };
 
@@ -1916,9 +2100,10 @@ const App: React.FC = () => {
           </button>
           <div className="font-serif text-xl font-bold tracking-widest text-amber-500">CINEFLOW</div>
           <div className="h-4 w-px bg-zinc-700 mx-2"></div>
-          <div className="text-sm text-zinc-300 hidden md:block">
+          <div className="text-sm text-zinc-300 hidden md:block flex items-center gap-2">
             <span className="text-zinc-500 mr-2">PROJECT:</span>
-            {storyContext.title}
+            <span>{storyContext.title}</span>
+            {storyContext.title && <CopyButton text={storyContext.title} size="sm" />}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -1933,40 +2118,53 @@ const App: React.FC = () => {
             {currentUser?.username}
           </button>
           {/* Manual Save Button */}
-          <button
-            onClick={handleManualSave}
-            disabled={saveStatus === 'saving'}
-            className={`text-xs px-3 py-1.5 rounded border transition-colors flex items-center gap-2 font-bold uppercase tracking-wider ${
-              saveStatus === 'saved' 
-                ? 'bg-green-900/30 text-green-400 border-green-800' 
-                : saveStatus === 'error'
-                ? 'bg-red-900/30 text-red-400 border-red-800'
-                : 'bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border-zinc-700'
-            }`}
-          >
-             {saveStatus === 'saving' ? (
-               <>
-                 <div className="w-2 h-2 rounded-full bg-zinc-400 animate-pulse"></div>
-                 Saving...
-               </>
-             ) : saveStatus === 'saved' ? (
-               <>
-                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
-                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                 </svg>
-                 Saved
-               </>
-             ) : saveStatus === 'error' ? (
-                <>Error</>
-             ) : (
-               <>
-                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
-                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6A2.25 2.25 0 016 3.75h1.5m9 0h-9" />
-                 </svg>
-                 Save Story
-               </>
-             )}
-          </button>
+          <div className="relative group">
+            <button
+              onClick={handleManualSave}
+              disabled={saveStatus === 'saving'}
+              className={`text-xs px-3 py-1.5 rounded border transition-colors flex items-center gap-2 font-bold uppercase tracking-wider ${
+                saveStatus === 'saved' 
+                  ? 'bg-green-900/30 text-green-400 border-green-800' 
+                  : saveStatus === 'error'
+                  ? 'bg-red-900/30 text-red-400 border-red-800'
+                  : 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'
+              }`}
+              title={lastSavedTime ? `Last saved: ${lastSavedTime.toLocaleTimeString()} (Ctrl+S)` : 'Save project (Ctrl+S)'}
+            >
+               {saveStatus === 'saving' ? (
+                 <>
+                   <div className="w-2 h-2 rounded-full bg-zinc-400 animate-pulse"></div>
+                   Saving...
+                 </>
+               ) : saveStatus === 'saved' ? (
+                 <>
+                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                   </svg>
+                   Saved
+                 </>
+               ) : saveStatus === 'error' ? (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    Error
+                  </>
+               ) : (
+                 <>
+                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6A2.25 2.25 0 016 3.75h1.5m9 0h-9" />
+                   </svg>
+                   Save Story
+                 </>
+               )}
+            </button>
+            {lastSavedTime && saveStatus === 'idle' && (
+              <div className="absolute top-full left-0 mt-1 px-2 py-1 bg-zinc-800 text-xs text-zinc-400 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                Auto-saved {lastSavedTime.toLocaleTimeString()}
+              </div>
+            )}
+          </div>
 
           {/* Export Dropdown */}
           <div className="relative" ref={exportMenuRef}>
@@ -2110,6 +2308,29 @@ const App: React.FC = () => {
             </button>
           )}
 
+          {/* Batch Mode Toggle */}
+          {view === 'studio' && scenes.length > 0 && (
+            <button
+              onClick={() => {
+                setBatchMode(!batchMode);
+                if (batchMode) {
+                  setSelectedSceneIds(new Set());
+                }
+              }}
+              className={`text-xs px-3 py-1.5 rounded border transition-colors flex items-center gap-1 ${
+                batchMode
+                  ? 'bg-amber-600 text-white border-amber-500'
+                  : 'bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border-zinc-700'
+              }`}
+              title="Batch Selection Mode"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M1 1.75C1 1.33579 1.33579 1 1.75 1H4.25C4.66421 1 5 1.33579 5 1.75V4.25C5 4.66421 4.66421 5 4.25 5H1.75C1.33579 5 1 4.66421 1 4.25V1.75ZM6.5 1.75C6.5 1.33579 6.83579 1 7.25 1H9.75C10.1642 1 10.5 1.33579 10.5 1.75V4.25C10.5 4.66421 10.1642 5 9.75 5H7.25C6.83579 5 6.5 4.66421 6.5 4.25V1.75ZM12 1.75C12 1.33579 12.3358 1 12.75 1H15.25C15.6642 1 16 1.33579 16 1.75V4.25C16 4.66421 15.6642 5 15.25 5H12.75C12.3358 5 12 4.66421 12 4.25V1.75ZM1 7.25C1 6.83579 1.33579 6.5 1.75 6.5H4.25C4.66421 6.5 5 6.83579 5 7.25V9.75C5 10.1642 4.66421 10.5 4.25 10.5H1.75C1.33579 10.5 1 10.1642 1 9.75V7.25ZM6.5 7.25C6.5 6.83579 6.83579 6.5 7.25 6.5H9.75C10.1642 6.5 10.5 6.83579 10.5 7.25V9.75C10.5 10.1642 10.1642 10.5 9.75 10.5H7.25C6.83579 10.5 6.5 10.1642 6.5 9.75V7.25ZM12 7.25C12 6.83579 12.3358 6.5 12.75 6.5H15.25C15.6642 6.5 16 6.83579 16 7.25V9.75C16 10.1642 15.6642 10.5 15.25 10.5H12.75C12.3358 10.5 12 10.1642 12 9.75V7.25ZM1 12.75C1 12.3358 1.33579 12 1.75 12H4.25C4.66421 12 5 12.3358 5 12.75V15.25C5 15.6642 4.66421 16 4.25 16H1.75C1.33579 16 1 15.6642 1 15.25V12.75ZM6.5 12.75C6.5 12.3358 6.83579 12 7.25 12H9.75C10.1642 12 10.5 12.3358 10.5 12.75V15.25C10.5 15.6642 10.1642 16 9.75 16H7.25C6.83579 16 6.5 15.6642 6.5 15.25V12.75ZM12 12.75C12 12.3358 12.3358 12 12.75 12H15.25C15.6642 12 16 12.3358 16 12.75V15.25C16 15.6642 15.6642 16 15.25 16H12.75C12.3358 16 12 15.6642 12 15.25V12.75Z" />
+              </svg>
+              Batch
+            </button>
+          )}
+
           {/* Tags Button */}
           {view === 'studio' && storyContext.id && (
             <div className="relative">
@@ -2196,6 +2417,45 @@ const App: React.FC = () => {
           />
         ) : (
           <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
+            {/* Batch Operations Toolbar */}
+            {batchMode && selectedSceneIds.size > 0 && (
+              <div className="sticky top-4 z-20 mb-4 bg-zinc-900 border border-amber-500/50 rounded-lg p-3 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-amber-500">
+                      {selectedSceneIds.size} scene{selectedSceneIds.size > 1 ? 's' : ''} selected
+                    </span>
+                    <button
+                      onClick={handleSelectAll}
+                      className="text-xs px-2 py-1 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700"
+                    >
+                      {selectedSceneIds.size === scenes.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleBulkStatusUpdate('completed')}
+                      className="text-xs px-3 py-1.5 rounded bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-800/50"
+                    >
+                      Mark Complete
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusUpdate('planning')}
+                      className="text-xs px-3 py-1.5 rounded bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/50 border border-yellow-800/50"
+                    >
+                      Mark Planning
+                    </button>
+                    <button
+                      onClick={handleBulkDelete}
+                      className="text-xs px-3 py-1.5 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800/50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="max-w-5xl mx-auto space-y-6 pb-32">
               {scenes.length === 0 ? (
                  <div className="flex flex-col items-center justify-center h-96 text-zinc-600 border-2 border-dashed border-zinc-800 rounded-xl bg-zinc-900/50">
@@ -2212,17 +2472,27 @@ const App: React.FC = () => {
                     <div
                       key={scene.id}
                       data-scene-id={scene.id}
-                      draggable
+                      draggable={!batchMode}
                       onDragStart={() => handleDragStart(index)}
                       onDragOver={(e) => handleDragOver(e, index)}
+                      onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDrop(e, index)}
-                      className={`w-full cursor-move transition-opacity ${
-                        draggedSceneIndex === index ? 'opacity-50' : ''
+                      className={`w-full transition-all ${
+                        batchMode ? 'cursor-pointer' : 'cursor-move'
+                      } ${
+                        draggedSceneIndex === index ? 'opacity-50 scale-95' : ''
+                      } ${
+                        dragOverIndex === index && draggedSceneIndex !== null ? 'translate-y-2 border-t-2 border-amber-500' : ''
+                      } ${
+                        selectedSceneIds.has(scene.id) ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''
                       }`}
                     >
                       <SceneCard 
                         scene={scene}
                         projectId={storyContext.id}
+                        batchMode={batchMode}
+                        isSelected={selectedSceneIds.has(scene.id)}
+                        onToggleSelection={() => handleToggleSceneSelection(scene.id)}
                         onNotesClick={(sceneId) => {
                           setSelectedSceneId(sceneId);
                           setShowSceneNotesPanel(true);
@@ -2363,6 +2633,123 @@ const App: React.FC = () => {
           />
         </div>
       )}
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => {
+          setShowCommandPalette(false);
+          setCommandPaletteQuery('');
+        }}
+        commands={[
+          {
+            id: 'save',
+            label: 'Save Project',
+            description: 'Save current project',
+            icon: '💾',
+            keywords: ['save', 'store'],
+            action: () => {
+              handleManualSave();
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'export',
+            label: 'Export Project',
+            description: 'Export as JSON, PDF, CSV, or Markdown',
+            icon: '📤',
+            keywords: ['export', 'download'],
+            action: () => {
+              setShowExportMenu(true);
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'new-scene',
+            label: 'New Scene',
+            description: 'Create a new scene',
+            icon: '➕',
+            keywords: ['new', 'scene', 'add'],
+            action: () => {
+              if (view === 'studio') {
+                const input = document.querySelector('textarea[placeholder*="idea"]') as HTMLTextAreaElement;
+                if (input) input.focus();
+              }
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'characters',
+            label: 'Characters Panel',
+            description: 'Manage characters',
+            icon: '👥',
+            keywords: ['characters', 'people'],
+            action: () => {
+              setShowCharactersPanel(true);
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'locations',
+            label: 'Locations Panel',
+            description: 'Manage locations',
+            icon: '📍',
+            keywords: ['locations', 'places'],
+            action: () => {
+              setShowLocationsPanel(true);
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'comments',
+            label: 'Comments Panel',
+            description: 'View project comments',
+            icon: '💬',
+            keywords: ['comments', 'notes'],
+            action: () => {
+              setShowCommentsPanel(true);
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'analytics',
+            label: 'Analytics Panel',
+            description: 'View project analytics',
+            icon: '📊',
+            keywords: ['analytics', 'stats', 'statistics'],
+            action: () => {
+              setShowAnalyticsPanel(true);
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'library',
+            label: 'Go to Library',
+            description: 'View all projects',
+            icon: '📚',
+            keywords: ['library', 'projects', 'home'],
+            action: () => {
+              setView('library');
+              setShowCommandPalette(false);
+            }
+          }
+        ]}
+        projects={projects.map(p => ({
+          id: p.context.id,
+          title: p.context.title,
+          genre: p.context.genre
+        }))}
+        onSelectProject={(projectId) => {
+          const project = projects.find(p => p.context.id === projectId);
+          if (project) {
+            handleOpenProject(project);
+          }
+        }}
+        onCreateNew={() => {
+          setView('setup');
+          setShowCommandPalette(false);
+        }}
+      />
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />

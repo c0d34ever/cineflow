@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sceneNotesService } from '../apiServices';
+import CopyButton from './CopyButton';
 
 interface SceneNote {
   id: number;
@@ -120,7 +121,8 @@ const SceneNotesPanel: React.FC<SceneNotesPanelProps> = ({ sceneId, onClose }) =
                       {new Date(note.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    <CopyButton text={note.content} size="sm" />
                     <button
                       onClick={() => handleToggleResolve(note.id, note.is_resolved)}
                       className="text-xs text-zinc-400 hover:text-green-400"

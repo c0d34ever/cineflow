@@ -64,6 +64,36 @@ export const apiService = {
     }
   },
 
+  // Duplicate project
+  async duplicateProject(id: string, options?: {
+    includeScenes?: boolean;
+    includeMedia?: boolean;
+    newTitle?: string;
+  }): Promise<{ id: string; message: string }> {
+    const token = localStorage.getItem('auth_token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(`${API_BASE_URL}/projects/${id}/duplicate`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(options || { includeScenes: true, includeMedia: false }),
+    });
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('auth_token');
+        window.location.reload();
+        throw new Error('Authentication required');
+      }
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to duplicate project');
+    }
+    return response.json();
+  },
+
   // Delete project
   async deleteProject(id: string): Promise<void> {
     const token = localStorage.getItem('auth_token');
