@@ -43,6 +43,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-Sun12day46fun}
       DB_NAME: ${DB_NAME:-youtigyk_cineflow}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-this-in-production-min-32-chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:80,http://209.182.232.185:8081,https://209.182.232.185:8081,http://youtilitybox.com,https://youtilitybox.com,http://www.youtilitybox.com,https://www.youtilitybox.com,https://cineflow.youtilitybox.com,http://cineflow.youtilitybox.com}
     ports:
       - "5000:5000"
