@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createConnection } from './db/index.js';
+import authRouter from './routes/auth.js';
 import projectsRouter from './routes/projects.js';
 import geminiRouter from './routes/gemini.js';
 import apiKeysRouter from './routes/apiKeys.js';
@@ -62,6 +63,9 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+// Authentication (available to all users)
+app.use('/api/auth', authRouter);
+// Regular user operations
 app.use('/api/projects', projectsRouter);
 app.use('/api/gemini', geminiRouter);
 app.use('/api/api-keys', apiKeysRouter);

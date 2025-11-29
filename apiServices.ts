@@ -263,16 +263,16 @@ async function adminApiCall(endpoint: string, options: RequestInit = {}) {
 
 export const authService = {
   login: (username: string, password: string) =>
-    adminApiCall('/auth/login', {
+    apiCall('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
   register: (data: { username: string; email: string; password: string }) =>
-    adminApiCall('/auth/register', {
+    apiCall('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getMe: () => adminApiCall('/auth/me'),
+  getMe: () => apiCall('/auth/me'),
 };
 
 // Episodes Service
