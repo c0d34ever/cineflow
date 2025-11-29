@@ -2186,7 +2186,8 @@ const App: React.FC = () => {
                       }`}
                     >
                       <SceneCard 
-                        scene={scene} 
+                        scene={scene}
+                        projectId={storyContext.id}
                         onNotesClick={(sceneId) => {
                           setSelectedSceneId(sceneId);
                           setShowSceneNotesPanel(true);

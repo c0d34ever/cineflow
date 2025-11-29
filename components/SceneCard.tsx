@@ -1,14 +1,51 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Scene } from '../types';
+import { mediaService } from '../apiServices';
+import MediaLibrary from './MediaLibrary';
 
 interface SceneCardProps {
   scene: Scene;
+  projectId?: string;
   onNotesClick?: (sceneId: string) => void;
   onDelete?: (sceneId: string) => void;
 }
 
-const SceneCard: React.FC<SceneCardProps> = ({ scene, onNotesClick, onDelete }) => {
+interface MediaItem {
+  id: string;
+  file_path: string;
+  thumbnail_path: string;
+  alt_text?: string;
+  is_primary: boolean;
+}
+
+const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, onDelete }) => {
+  const [sceneImages, setSceneImages] = useState<MediaItem[]>([]);
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
+
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+  useEffect(() => {
+    if (projectId && scene.id) {
+      loadSceneImages();
+    }
+  }, [projectId, scene.id]);
+
+  const loadSceneImages = async () => {
+    try {
+      setLoadingImages(true);
+      const media = await mediaService.getSceneMedia(scene.id);
+      setSceneImages(media);
+    } catch (error) {
+      console.error('Failed to load scene images:', error);
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
+  const primaryImage = sceneImages.find(img => img.is_primary) || sceneImages[0];
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col h-full shadow-lg transition-transform hover:scale-[1.01]">
       {/* Header / Meta */}
@@ -20,6 +57,17 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, onNotesClick, onDelete }) 
            <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">8 Second Clip</div>
         </div>
         <div className="flex items-center gap-2">
+          {projectId && (
+            <button
+              onClick={() => setShowMediaLibrary(true)}
+              className="text-zinc-400 hover:text-blue-500 transition-colors"
+              title="Manage Images"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909.47.47a.75.75 0 11-1.06 1.06L6.53 8.091a.75.75 0 00-1.06 0l-2.97 2.97zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
           {onNotesClick && (
             <button
               onClick={() => onNotesClick(scene.id)}
@@ -60,6 +108,22 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, onNotesClick, onDelete }) 
                     <p className="text-amber-500 text-xs font-mono animate-pulse">WRITING DIRECTORIAL SCRIPT...</p>
                 </div>
              </div>
+        )}
+
+        {/* Scene Image - Comic Book Style */}
+        {primaryImage && (
+          <div className="w-full mb-4 rounded-lg overflow-hidden border-2 border-zinc-700 bg-zinc-950">
+            <img
+              src={`${API_BASE_URL.replace('/api', '')}${primaryImage.file_path}`}
+              alt={primaryImage.alt_text || `Scene ${scene.sequenceNumber}`}
+              className="w-full h-auto object-cover"
+            />
+            {sceneImages.length > 1 && (
+              <div className="text-xs text-zinc-500 text-center py-1 bg-zinc-900">
+                {sceneImages.length} image{sceneImages.length > 1 ? 's' : ''} • Click image icon to manage
+              </div>
+            )}
+          </div>
         )}
 
         {/* Enhanced Prompt */}
@@ -133,6 +197,19 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, onNotesClick, onDelete }) 
           </div>
         </div>
       </div>
+
+      {/* Media Library Modal */}
+      {showMediaLibrary && projectId && (
+        <MediaLibrary
+          projectId={projectId}
+          sceneId={scene.id}
+          onClose={() => {
+            setShowMediaLibrary(false);
+            loadSceneImages();
+          }}
+          allowUpload={true}
+        />
+      )}
     </div>
   );
 };

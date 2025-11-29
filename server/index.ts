@@ -24,6 +24,7 @@ import locationsRouter from './routes/locations.js';
 import analyticsRouter from './routes/analytics.js';
 import sceneTemplatesRouter from './routes/sceneTemplates.js';
 import activityRouter from './routes/activity.js';
+import mediaRouter from './routes/media.js';
 import { initDatabase } from './db/schema.js';
 import { authenticateToken } from './middleware/auth.js';
 
@@ -59,6 +60,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -116,6 +120,7 @@ app.use('/api/locations', locationsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/scene-templates', sceneTemplatesRouter);
 app.use('/api/activity', activityRouter);
+app.use('/api/media', mediaRouter);
 
 // 404 handler
 app.use((req, res) => {
