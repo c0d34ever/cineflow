@@ -108,6 +108,26 @@ router.post('/generate', authenticateToken, async (req: AuthRequest, res: Respon
   }
 });
 
+// DELETE /api/comics/:projectId - Delete existing comic (for regeneration)
+router.delete('/:projectId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const { episodeId } = req.query;
+    const pool = getPool();
+
+    await pool.query(
+      `DELETE FROM comic_exports 
+       WHERE project_id = ? AND (episode_id = ? OR (episode_id IS NULL AND ? IS NULL))`,
+      [projectId, episodeId || null, episodeId || null]
+    );
+
+    res.json({ success: true, message: 'Comic deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting comic:', error);
+    res.status(500).json({ error: 'Failed to delete comic' });
+  }
+});
+
 // GET /api/comics/:projectId/download - Download comic HTML
 router.get('/:projectId/download', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

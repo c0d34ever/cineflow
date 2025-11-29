@@ -198,6 +198,9 @@ export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', e
         setTimeout(() => {
           printWindow.print();
         }, 1500);
+        
+        // Trigger custom event to notify App.tsx that comic was generated
+        window.dispatchEvent(new CustomEvent('comicGenerated'));
         return;
       }
     } catch (error) {

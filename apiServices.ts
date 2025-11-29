@@ -450,6 +450,10 @@ export const comicsService = {
     projectContext: any;
     scenes: any[];
   }) => apiCall('/comics/generate', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (projectId: string, episodeId?: string) => {
+    const params = episodeId ? `?episodeId=${episodeId}` : '';
+    return apiCall(`/comics/${projectId}${params}`, { method: 'DELETE' });
+  },
   download: (projectId: string, episodeId?: string) => {
     const params = episodeId ? `?episodeId=${episodeId}` : '';
     return fetch(`${API_BASE_URL}/comics/${projectId}/download${params}`, {

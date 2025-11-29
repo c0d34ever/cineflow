@@ -25,7 +25,7 @@ import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } 
 import { apiService, checkApiAvailability } from './apiService';
 import { authService, tagsService, templatesService, charactersService, sharingService, locationsService, sceneTemplatesService, activityService, archiveProject } from './apiServices';
 import { exportToMarkdown, exportToCSV, exportToPDF, downloadFile, ExportData, exportEpisodeToPDF, EpisodeExportData, PDFStyle } from './utils/exportUtils';
-import { mediaService, episodesService } from './apiServices';
+import { mediaService, episodesService, comicsService } from './apiServices';
 
 const DEFAULT_DIRECTOR_SETTINGS: DirectorSettings = {
   customSceneId: '',
@@ -99,6 +99,8 @@ const App: React.FC = () => {
   const [availableTags, setAvailableTags] = useState<any[]>([]);
   const [projectTags, setProjectTags] = useState<any[]>([]);
   const [showTagsMenu, setShowTagsMenu] = useState(false);
+  const [comicExists, setComicExists] = useState(false);
+  const [isRegeneratingComic, setIsRegeneratingComic] = useState(false);
   const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedSceneIds, setSelectedSceneIds] = useState<Set<string>>(new Set());
@@ -1000,7 +1002,7 @@ const App: React.FC = () => {
             'text/csv'
           );
           break;
-        case 'pdf':
+          case 'pdf':
           // Ask user for PDF style preference with a better dialog
           const styleChoice = window.prompt(
             'Choose PDF Export Style:\n\n' +
@@ -1011,6 +1013,10 @@ const App: React.FC = () => {
           );
           const pdfStyle: PDFStyle = (styleChoice === '2') ? 'raw' : 'comic';
           await exportToPDF(data, pdfStyle);
+          // Refresh comic existence status after export
+          if (pdfStyle === 'comic') {
+            setTimeout(() => checkComicExists(), 1000);
+          }
           break;
       }
       
@@ -1043,12 +1049,91 @@ const App: React.FC = () => {
     }
   };
 
-  // Load tags when project is loaded
+  // Load tags and check comic existence when project is loaded
   useEffect(() => {
     if (view === 'studio' && storyContext.id) {
       loadTags();
+      checkComicExists();
     }
   }, [view, storyContext.id]);
+
+  // Listen for comic generation events
+  useEffect(() => {
+    const handleComicGenerated = () => {
+      checkComicExists();
+    };
+    window.addEventListener('comicGenerated', handleComicGenerated);
+    return () => window.removeEventListener('comicGenerated', handleComicGenerated);
+  }, []);
+
+  const checkComicExists = async () => {
+    if (!storyContext.id) return;
+    try {
+      const apiAvailable = await checkApiAvailability();
+      if (apiAvailable) {
+        const response = await comicsService.get(storyContext.id);
+        setComicExists((response as any)?.exists || false);
+      }
+    } catch (error) {
+      console.error('Failed to check comic existence:', error);
+      setComicExists(false);
+    }
+  };
+
+  const handleRegenerateComic = async () => {
+    if (!storyContext.id) return;
+    
+    if (!window.confirm('Regenerate comic? This will create a new version using the latest scenes.')) {
+      return;
+    }
+
+    setIsRegeneratingComic(true);
+    try {
+      const apiAvailable = await checkApiAvailability();
+      if (!apiAvailable) {
+        alert('API not available. Please check your connection.');
+        return;
+      }
+
+      // Delete existing comic
+      await comicsService.delete(storyContext.id);
+      
+      // Get export data
+      const data = await getExportData();
+      
+      // Generate new comic
+      const response = await comicsService.generate({
+        projectId: storyContext.id,
+        projectContext: data.context,
+        scenes: data.scenes
+      });
+
+      if (response.comic?.htmlContent) {
+        // Display the new comic
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          alert('Please allow popups to export PDF');
+          return;
+        }
+        
+        printWindow.document.write(response.comic.htmlContent);
+        printWindow.document.close();
+        
+        setTimeout(() => {
+          printWindow.print();
+        }, 1500);
+
+        setComicExists(true);
+        showToast('Comic regenerated successfully!', 'success');
+      }
+    } catch (error: any) {
+      console.error('Error regenerating comic:', error);
+      showToast('Failed to regenerate comic: ' + (error.message || 'Unknown error'), 'error');
+    } finally {
+      setIsRegeneratingComic(false);
+      setShowExportMenu(false);
+    }
+  };
 
   const loadTags = async () => {
     try {
@@ -2183,7 +2268,7 @@ const App: React.FC = () => {
             </button>
             
             {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50">
+              <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50">
                 <button
                   onClick={() => handleExport('json')}
                   className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
@@ -2208,6 +2293,27 @@ const App: React.FC = () => {
                 >
                   <span>📄</span> Export as PDF
                 </button>
+                {comicExists && (
+                  <>
+                    <div className="border-t border-zinc-700 my-1"></div>
+                    <button
+                      onClick={handleRegenerateComic}
+                      disabled={isRegeneratingComic}
+                      className="w-full text-left px-4 py-2 text-sm text-amber-400 hover:bg-zinc-800 hover:text-amber-300 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Regenerate comic with latest scenes"
+                    >
+                      {isRegeneratingComic ? (
+                        <>
+                          <span className="animate-spin">⚙️</span> Regenerating...
+                        </>
+                      ) : (
+                        <>
+                          <span>🔄</span> Regenerate Comic
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
