@@ -1,4 +1,4 @@
-import express, { Response } from 'express';
+import express, { Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { getPool } from '../../db/index.js';
 import { AuthRequest, requireAdmin } from '../middleware/auth.js';
@@ -59,9 +59,12 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/users - Get all users (admin only)
-router.get('/', requireAdmin, async (req: AuthRequest, res: Response) => {
+router.get('/', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const pool = getPool();
+    if (!pool) {
+      throw new Error('Database connection not available');
+    }
     const { page = 1, limit = 50, role, search } = req.query;
 
     let query = 'SELECT id, username, email, role, is_active, created_at, last_login FROM users WHERE 1=1';
@@ -79,18 +82,34 @@ router.get('/', requireAdmin, async (req: AuthRequest, res: Response) => {
     }
 
     query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    const limitNum = parseInt(limit as string);
+    const limitNum = parseInt(limit as string) || 50;
     const offset = (parseInt(page as string) - 1) * limitNum;
     params.push(limitNum, offset);
 
-    const [users] = await pool.query(query, params);
+    let usersResult: any[] = [];
+    let total = 0;
+    
+    try {
+      const [result] = await pool.query(query, params) as [any[], any];
+      usersResult = Array.isArray(result) ? result : [];
+    } catch (queryError: any) {
+      console.error('Error executing users query:', queryError);
+      console.error('Query:', query);
+      console.error('Params:', params);
+      throw new Error(`Database query failed: ${queryError.message}`);
+    }
 
     // Get total count
-    const [countResult] = await pool.query('SELECT COUNT(*) as total FROM users');
-    const total = (countResult as any[])[0].total;
+    try {
+      const [countResult] = await pool.query('SELECT COUNT(*) as total FROM users') as [any[], any];
+      total = Array.isArray(countResult) && countResult.length > 0 ? countResult[0].total : 0;
+    } catch (countError: any) {
+      console.error('Error getting users count:', countError);
+      total = 0;
+    }
 
     res.json({
-      users,
+      users: Array.isArray(usersResult) ? usersResult : [],
       pagination: {
         page: parseInt(page as string),
         limit: limitNum,
@@ -98,9 +117,16 @@ router.get('/', requireAdmin, async (req: AuthRequest, res: Response) => {
         pages: Math.ceil(total / limitNum),
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching users:', error);
-    res.status(500).json({ error: 'Failed to fetch users' });
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to fetch users',
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    } else {
+      next(error);
+    }
   }
 });
 

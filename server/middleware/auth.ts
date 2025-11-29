@@ -47,12 +47,13 @@ export async function authenticateToken(
     
     // Verify user still exists and is active
     const pool = getPool();
-    const [users] = await pool.query(
+    const [usersResult] = await pool.query(
       'SELECT id, username, email, role, is_active FROM users WHERE id = ?',
       [decoded.userId]
-    );
+    ) as [any[], any];
 
-    if (!Array.isArray(users) || users.length === 0) {
+    const users = Array.isArray(usersResult) ? usersResult : [];
+    if (users.length === 0) {
       res.status(401).json({ error: 'User not found' });
       return;
     }

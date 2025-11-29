@@ -35,15 +35,31 @@ router.get('/', requireAdmin, async (req: AuthRequest, res: Response, next: Next
     }
 
     query += ' GROUP BY p.id ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-    const limitNum = parseInt(limit as string);
+    const limitNum = parseInt(limit as string) || 50;
     const offset = (parseInt(page as string) - 1) * limitNum;
     params.push(limitNum, offset);
 
-    const [projectsResult] = await pool.query(query, params) as [any[], any];
+    let projectsResult: any[] = [];
+    let total = 0;
+    
+    try {
+      const [result] = await pool.query(query, params) as [any[], any];
+      projectsResult = Array.isArray(result) ? result : [];
+    } catch (queryError: any) {
+      console.error('Error executing projects query:', queryError);
+      console.error('Query:', query);
+      console.error('Params:', params);
+      throw new Error(`Database query failed: ${queryError.message}`);
+    }
 
     // Get total count
-    const [countResult] = await pool.query('SELECT COUNT(*) as total FROM projects') as [any[], any];
-    const total = Array.isArray(countResult) && countResult.length > 0 ? countResult[0].total : 0;
+    try {
+      const [countResult] = await pool.query('SELECT COUNT(*) as total FROM projects') as [any[], any];
+      total = Array.isArray(countResult) && countResult.length > 0 ? countResult[0].total : 0;
+    } catch (countError: any) {
+      console.error('Error getting project count:', countError);
+      total = 0;
+    }
 
     res.json({
       projects: Array.isArray(projectsResult) ? projectsResult : [],

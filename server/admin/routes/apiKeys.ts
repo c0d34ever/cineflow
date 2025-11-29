@@ -16,7 +16,7 @@ router.get('/', requireAdmin, async (req: AuthRequest, res: Response, next: Next
     let query = `
       SELECT ak.*, u.username, u.email
       FROM api_keys ak
-      JOIN users u ON ak.user_id = u.id
+      LEFT JOIN users u ON ak.user_id = u.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -32,15 +32,31 @@ router.get('/', requireAdmin, async (req: AuthRequest, res: Response, next: Next
     }
 
     query += ' ORDER BY ak.created_at DESC LIMIT ? OFFSET ?';
-    const limitNum = parseInt(limit as string);
+    const limitNum = parseInt(limit as string) || 50;
     const offset = (parseInt(page as string) - 1) * limitNum;
     params.push(limitNum, offset);
 
-    const [keysResult] = await pool.query(query, params) as [any[], any];
+    let keysResult: any[] = [];
+    let total = 0;
+    
+    try {
+      const [result] = await pool.query(query, params) as [any[], any];
+      keysResult = Array.isArray(result) ? result : [];
+    } catch (queryError: any) {
+      console.error('Error executing API keys query:', queryError);
+      console.error('Query:', query);
+      console.error('Params:', params);
+      throw new Error(`Database query failed: ${queryError.message}`);
+    }
 
     // Get total count
-    const [countResult] = await pool.query('SELECT COUNT(*) as total FROM api_keys') as [any[], any];
-    const total = Array.isArray(countResult) && countResult.length > 0 ? countResult[0].total : 0;
+    try {
+      const [countResult] = await pool.query('SELECT COUNT(*) as total FROM api_keys') as [any[], any];
+      total = Array.isArray(countResult) && countResult.length > 0 ? countResult[0].total : 0;
+    } catch (countError: any) {
+      console.error('Error getting API keys count:', countError);
+      total = 0;
+    }
 
     res.json({
       apiKeys: Array.isArray(keysResult) ? keysResult : [],
