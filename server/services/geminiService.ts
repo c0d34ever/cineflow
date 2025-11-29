@@ -118,15 +118,51 @@ const safeParseJSON = <T>(text: string | undefined, fallback: T): T => {
   if (!text) return fallback;
   try {
     let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    // Attempt to extract JSON object if surrounded by text
-    const firstBrace = cleanText.indexOf('{');
-    const lastBrace = cleanText.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-       cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+    
+    // For arrays, find first [ and last ]
+    if (cleanText.trim().startsWith('[')) {
+      const firstBracket = cleanText.indexOf('[');
+      let bracketCount = 0;
+      let lastBracket = -1;
+      for (let i = firstBracket; i < cleanText.length; i++) {
+        if (cleanText[i] === '[') bracketCount++;
+        if (cleanText[i] === ']') {
+          bracketCount--;
+          if (bracketCount === 0) {
+            lastBracket = i;
+            break;
+          }
+        }
+      }
+      if (firstBracket !== -1 && lastBracket !== -1) {
+        cleanText = cleanText.substring(firstBracket, lastBracket + 1);
+      }
+    } else {
+      // For objects, find matching braces
+      const firstBrace = cleanText.indexOf('{');
+      if (firstBrace !== -1) {
+        let braceCount = 0;
+        let lastBrace = -1;
+        for (let i = firstBrace; i < cleanText.length; i++) {
+          if (cleanText[i] === '{') braceCount++;
+          if (cleanText[i] === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              lastBrace = i;
+              break;
+            }
+          }
+        }
+        if (lastBrace !== -1) {
+          cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+        }
+      }
     }
+    
     return JSON.parse(cleanText) as T;
   } catch (e) {
     console.warn("JSON Parse Warning: output might be truncated or malformed.", e);
+    console.warn("Text that failed to parse:", text?.substring(0, 500));
     return fallback;
   }
 };
