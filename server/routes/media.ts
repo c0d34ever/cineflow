@@ -37,7 +37,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 50 * 1024 * 1024, // 50MB limit
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -72,6 +72,17 @@ async function getImageDimensions(filePath: string): Promise<{ width: number; he
 // Upload image
 router.post('/upload', authenticateToken, upload.single('image'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    // Handle multer file size errors
+    if (req.file === undefined && req.headers['content-length']) {
+      const fileSize = parseInt(req.headers['content-length']);
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      if (fileSize > maxSize) {
+        return res.status(413).json({ 
+          error: `File too large. Maximum size is ${maxSize / (1024 * 1024)}MB. Your file is ${(fileSize / (1024 * 1024)).toFixed(2)}MB.` 
+        });
+      }
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -154,9 +165,25 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
   } catch (error: any) {
     // Clean up uploaded file on error
     if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkError) {
+        console.error('Error cleaning up file:', unlinkError);
+      }
     }
+    
     console.error('Error uploading media:', error);
+    
+    // Handle multer errors specifically
+    if (error.name === 'MulterError') {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ 
+          error: `File too large. Maximum size is 50MB. Please compress your image or use a smaller file.` 
+        });
+      }
+      return res.status(400).json({ error: `Upload error: ${error.message}` });
+    }
+    
     res.status(500).json({ error: error.message || 'Failed to upload image' });
   }
 });
