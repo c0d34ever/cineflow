@@ -72,11 +72,15 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
 
     try {
       setUploading(true);
-      await mediaService.uploadImage(projectId, file, sceneId);
+      console.log('Uploading image:', { projectId, sceneId, fileName: file.name });
+      const result = await mediaService.uploadImage(projectId, file, sceneId);
+      console.log('Upload successful:', result);
       await loadMedia();
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      // Show success message
+      console.log('Image uploaded successfully and media list refreshed');
     } catch (error: any) {
       console.error('Upload failed:', error);
       alert('Failed to upload image: ' + error.message);

@@ -109,8 +109,15 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { project_id, scene_id, alt_text, description, is_primary } = req.body;
+    // Parse form data - multer puts text fields in req.body
+    const project_id = req.body.project_id;
+    const scene_id = req.body.scene_id;
+    const alt_text = req.body.alt_text;
+    const description = req.body.description;
+    const is_primary = req.body.is_primary;
     const userId = req.user!.id;
+
+    console.log('Upload request:', { project_id, scene_id, file: req.file?.filename });
 
     if (!project_id) {
       // Clean up uploaded file if validation fails
@@ -159,6 +166,8 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
         displayOrder
       ]
     ) as [any, any];
+
+    console.log('Media saved:', { mediaId, project_id, scene_id: scene_id || null, file_path: `/uploads/${req.file.filename}` });
 
     // If this is marked as primary, unset others and update scene thumbnail
     if (is_primary === 'true') {
@@ -252,10 +261,14 @@ router.get('/scene/:sceneId', authenticateToken, async (req: AuthRequest, res: R
     const { sceneId } = req.params;
     const pool = getPool();
 
+    console.log('Fetching media for scene:', sceneId);
+
     const [rows] = await pool.query(
       'SELECT * FROM media WHERE scene_id = ? ORDER BY display_order ASC, created_at ASC',
       [sceneId]
     ) as [any[], any];
+
+    console.log(`Found ${rows.length} media items for scene ${sceneId}`);
 
     res.json({ media: rows });
   } catch (error: any) {

@@ -313,11 +313,15 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
       {/* Scene Gallery Sidebar - for viewing, editing, and deleting */}
       {showGallery && projectId && (
         <SceneGallerySidebar
+          key={`gallery-${scene.id}`}
           sceneId={scene.id}
           projectId={projectId}
           onClose={() => {
             setShowGallery(false);
-            loadSceneImages();
+            // Reload images after closing gallery
+            setTimeout(() => {
+              loadSceneImages();
+            }, 300);
           }}
           onUpdate={() => {
             loadSceneImages();

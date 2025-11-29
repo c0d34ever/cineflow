@@ -34,8 +34,10 @@ const SceneGallerySidebar: React.FC<SceneGallerySidebarProps> = ({ sceneId, proj
   const loadMedia = useCallback(async () => {
     try {
       setLoading(true);
+      console.log('Loading media for scene:', sceneId);
       const items = await mediaService.getSceneMedia(sceneId);
       const validItems = Array.isArray(items) ? items.filter(item => item && item.id) : [];
+      console.log(`SceneGallery: Loaded ${validItems.length} items for scene ${sceneId}`, validItems);
       setMedia(validItems);
     } catch (error: any) {
       console.error('Failed to load scene media:', error);
@@ -46,8 +48,9 @@ const SceneGallerySidebar: React.FC<SceneGallerySidebarProps> = ({ sceneId, proj
   }, [sceneId]);
 
   useEffect(() => {
+    // Load media when component mounts or sceneId changes
     loadMedia();
-  }, [loadMedia]);
+  }, [loadMedia, sceneId]); // Include sceneId to reload when it changes
 
   const handleEdit = (item: MediaItem) => {
     setEditingMedia(item);
