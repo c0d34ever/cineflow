@@ -270,6 +270,7 @@ export const episodesService = {
     air_date?: string;
     status?: string;
     thumbnail_url?: string;
+    project_context?: any; // Optional: if provided, automatically generates hashtags and caption
   }) => apiCall('/episodes', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: {
     title?: string;

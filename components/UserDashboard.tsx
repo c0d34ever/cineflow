@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiKeysService, settingsService, favoritesService, userGeminiKeyService } from '../apiServices';
+import { apiKeysService, settingsService, favoritesService, userGeminiKeyService, tagsService } from '../apiServices';
 
 interface User {
   id: number;
@@ -27,7 +27,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   theme = 'dark',
   unreadNotificationCount = 0
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'api-keys' | 'settings' | 'favorites' | 'gemini-key'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'api-keys' | 'settings' | 'favorites' | 'gemini-key' | 'tags'>('profile');
   const [geminiKey, setGeminiKey] = useState('');
   const [geminiKeyMasked, setGeminiKeyMasked] = useState('');
   const [geminiKeyInput, setGeminiKeyInput] = useState('');
@@ -38,6 +38,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   const [loading, setLoading] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [settingsForm, setSettingsForm] = useState({ theme: 'dark', language: 'en' });
+  const [tags, setTags] = useState<any[]>([]);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#6366f1');
 
   useEffect(() => {
     loadData();
@@ -65,6 +68,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         const data = await userGeminiKeyService.get();
         setGeminiKeyMasked(data.key || '');
         setGeminiKey(data.hasKey ? 'set' : '');
+      } else if (activeTab === 'tags') {
+        const data = await tagsService.getAll();
+        setTags(Array.isArray(data) ? data : (data.tags || []));
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -147,6 +153,33 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     }
   };
 
+  const handleCreateTag = async () => {
+    if (!newTagName.trim()) {
+      alert('Please enter a tag name');
+      return;
+    }
+
+    try {
+      await tagsService.create({ name: newTagName.trim(), color: newTagColor });
+      setNewTagName('');
+      setNewTagColor('#6366f1');
+      loadData();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleDeleteTag = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this tag?')) return;
+
+    try {
+      await tagsService.delete(id);
+      loadData();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-6">
       <div className="max-w-6xl mx-auto">
@@ -219,7 +252,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
 
         {/* Tabs */}
         <div className="flex border-b border-zinc-800 mb-6">
-          {(['profile', 'api-keys', 'gemini-key', 'settings', 'favorites'] as const).map((tab) => (
+          {(['profile', 'api-keys', 'gemini-key', 'tags', 'settings', 'favorites'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -429,6 +462,82 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
                   If you don't set a key, the system default will be used (if configured).
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'tags' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">Tags</h2>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="Tag name"
+                    className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleCreateTag();
+                      }
+                    }}
+                  />
+                  <input
+                    type="color"
+                    value={newTagColor}
+                    onChange={(e) => setNewTagColor(e.target.value)}
+                    className="w-12 h-10 rounded border border-zinc-700 cursor-pointer"
+                    title="Tag color"
+                  />
+                  <button
+                    onClick={handleCreateTag}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                  >
+                    Create Tag
+                  </button>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mb-2"></div>
+                  <div className="text-zinc-500">Loading...</div>
+                </div>
+              ) : tags.length === 0 ? (
+                <div className="text-center py-8 text-zinc-500">
+                  No tags created yet. Create your first tag above!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {tags.map((tag: any) => (
+                    <div
+                      key={tag.id}
+                      className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-4 h-4 rounded-full"
+                          style={{ backgroundColor: tag.color || '#6366f1' }}
+                        ></div>
+                        <div>
+                          <div className="font-bold" style={{ color: tag.color || '#6366f1' }}>
+                            {tag.name}
+                          </div>
+                          <div className="text-xs text-zinc-500 font-mono">
+                            {tag.color || '#6366f1'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteTag(tag.id)}
+                        className="px-3 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded text-xs"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

@@ -72,7 +72,7 @@ router.get('/:id', async (req: express.Request, res: Response) => {
 // POST /api/episodes - Create episode
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { project_id, episode_number, title, description, duration_seconds, air_date, status, thumbnail_url } = req.body;
+    const { project_id, episode_number, title, description, duration_seconds, air_date, status, thumbnail_url, project_context } = req.body;
 
     if (!project_id || !episode_number) {
       return res.status(400).json({ error: 'project_id and episode_number are required' });
@@ -88,6 +88,29 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     );
 
     const insertResult = result as any;
+
+    // Automatically generate hashtags and caption if project_context is provided
+    if (project_context) {
+      try {
+        const { generateEpisodeContent } = require('../services/geminiService');
+        const userId = req.user!.id;
+        const content = await generateEpisodeContent(
+          title || `Episode ${episode_number}`,
+          description || '',
+          project_context,
+          userId
+        );
+
+        // Update episode with generated content
+        await pool.query(
+          'UPDATE episodes SET hashtags = ?, caption = ? WHERE id = ?',
+          [JSON.stringify(content.hashtags), content.caption, episodeId]
+        );
+      } catch (genError: any) {
+        // Log error but don't fail episode creation
+        console.warn('Failed to auto-generate hashtags/caption for episode:', genError.message);
+      }
+    }
 
     res.status(201).json({
       id: episodeId,
