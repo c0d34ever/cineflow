@@ -48,29 +48,64 @@ const getAIClient = async (userId?: number) => {
   const userApiKey = userId ? await getUserGeminiApiKey(userId) : null;
   
   // Fallback to environment variable
-  const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+  const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  const apiKey = userApiKey || envKey;
+  
+  // Debug logging
+  console.log('[Gemini] API Key Debug:', {
+    hasUserId: !!userId,
+    hasUserApiKey: !!userApiKey,
+    hasEnvKey: !!envKey,
+    envKeyLength: envKey ? envKey.length : 0,
+    finalApiKeyLength: apiKey ? apiKey.length : 0,
+    envKeys: Object.keys(process.env).filter(k => k.includes('GEMINI') || k.includes('API_KEY'))
+  });
   
   if (!apiKey) {
-    throw new Error('Gemini API key is not set. Please set your API key in user settings or configure GEMINI_API_KEY in environment variables.');
+    const errorMsg = 'Gemini API key is not set. Please set your API key in user settings or configure GEMINI_API_KEY in environment variables.';
+    console.error('[Gemini]', errorMsg);
+    console.error('[Gemini] Environment check:', {
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY ? `Set (${process.env.GEMINI_API_KEY.length} chars)` : 'NOT SET',
+      API_KEY: process.env.API_KEY ? `Set (${process.env.API_KEY.length} chars)` : 'NOT SET',
+      NODE_ENV: process.env.NODE_ENV,
+    });
+    throw new Error(errorMsg);
+  }
+  
+  // Trim whitespace (common issue with .env files)
+  const trimmedKey = apiKey.trim();
+  if (trimmedKey !== apiKey) {
+    console.warn('[Gemini] API key had leading/trailing whitespace, trimmed it');
   }
   
   // Log which key source is being used (masked for security)
   const keySource = userApiKey ? 'user settings' : 'environment variable';
-  const maskedKey = apiKey.length > 12 
-    ? apiKey.substring(0, 8) + '...' + apiKey.substring(apiKey.length - 4)
+  const maskedKey = trimmedKey.length > 12 
+    ? trimmedKey.substring(0, 8) + '...' + trimmedKey.substring(trimmedKey.length - 4)
     : '****';
   console.log(`[Gemini] Using API key from ${keySource}: ${maskedKey}`);
-  console.log(`[Gemini] API key length: ${apiKey.length} characters`);
+  console.log(`[Gemini] API key length: ${trimmedKey.length} characters`);
   
   // Validate API key format (Google AI Studio keys typically start with "AIza")
-  if (!apiKey.startsWith('AIza') && apiKey.length < 30) {
-    console.warn('[Gemini] API key format may be invalid. Expected format: AIza...');
+  if (!trimmedKey.startsWith('AIza')) {
+    console.warn('[Gemini] API key format warning: Expected to start with "AIza". Key starts with:', trimmedKey.substring(0, 4));
+  }
+  
+  if (trimmedKey.length < 30) {
+    console.warn('[Gemini] API key seems too short. Expected ~39 characters, got:', trimmedKey.length);
   }
   
   try {
-    return new GoogleGenAI({ apiKey });
+    const client = new GoogleGenAI({ apiKey: trimmedKey });
+    console.log('[Gemini] Client initialized successfully');
+    return client;
   } catch (error: any) {
     console.error('[Gemini] Error initializing client:', error);
+    console.error('[Gemini] Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack?.substring(0, 200)
+    });
     throw new Error(`Failed to initialize Gemini client: ${error.message}`);
   }
 };
