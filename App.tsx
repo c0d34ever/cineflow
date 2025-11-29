@@ -251,16 +251,20 @@ const App: React.FC = () => {
 
   // --- Persistence & Lifecycle ---
 
-  // Load projects when entering library view
+  // Load projects when entering library view (only if authenticated)
   useEffect(() => {
-    if (view === 'library') {
+    if (view === 'library' && isAuthenticated) {
       loadLibrary();
       
-      const onFocus = () => loadLibrary();
+      const onFocus = () => {
+        if (isAuthenticated) {
+          loadLibrary();
+        }
+      };
       window.addEventListener('focus', onFocus);
       return () => window.removeEventListener('focus', onFocus);
     }
-  }, [view]);
+  }, [view, isAuthenticated]);
 
   // History management for undo/redo
   const addToHistory = useRef(false); // Flag to prevent adding during undo/redo
@@ -471,6 +475,10 @@ const App: React.FC = () => {
   }, [view, storyContext.id, showExportMenu]);
 
   const loadLibrary = async () => {
+    // Don't load if not authenticated
+    if (!isAuthenticated) {
+      return;
+    }
     try {
       const apiAvailable = await checkApiAvailability();
       if (apiAvailable) {
@@ -502,7 +510,7 @@ const App: React.FC = () => {
     try {
       const token = localStorage.getItem('auth_token');
       if (token) {
-        await fetch(`http://localhost:5000/api/analytics/project/${project.context.id}/view`, {
+        await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/analytics/project/${project.context.id}/view`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -862,7 +870,7 @@ const App: React.FC = () => {
         const apiAvailable = await checkApiAvailability();
         if (apiAvailable && storyContext.id) {
           const token = localStorage.getItem('auth_token');
-          await fetch('http://localhost:5000/api/exports', {
+          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/exports`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,

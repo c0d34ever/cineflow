@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { authService, adminProjectsService, adminApiKeysService } from '../apiServices';
 
+const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL || 'http://localhost:5001/api';
+
 interface AdminDashboardProps {
   user: any;
   onLogout: () => void;
@@ -35,7 +37,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     setLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:5001/api/stats', {
+      const response = await fetch(`${ADMIN_API_URL}/stats`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -53,7 +55,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     setLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:5001/api/users', {
+      const response = await fetch(`${ADMIN_API_URL}/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -126,7 +128,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:5001/api/users', {
+      const response = await fetch(`${ADMIN_API_URL}/users`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

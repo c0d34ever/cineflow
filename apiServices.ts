@@ -20,6 +20,12 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
   });
 
   if (!response.ok) {
+    // Handle 401 Unauthorized - clear token and reload to show login
+    if (response.status === 401) {
+      localStorage.removeItem('auth_token');
+      window.location.reload();
+      throw new Error('Authentication required');
+    }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || 'Request failed');
   }
@@ -254,6 +260,12 @@ async function adminApiCall(endpoint: string, options: RequestInit = {}) {
   });
 
   if (!response.ok) {
+    // Handle 401 Unauthorized - clear token and reload to show login
+    if (response.status === 401) {
+      localStorage.removeItem('auth_token');
+      window.location.reload();
+      throw new Error('Authentication required');
+    }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || 'Request failed');
   }

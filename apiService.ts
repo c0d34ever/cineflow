@@ -5,8 +5,20 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 export const apiService = {
   // Get all projects
   async getProjects(): Promise<ProjectData[]> {
-    const response = await fetch(`${API_BASE_URL}/projects`);
+    const token = localStorage.getItem('auth_token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(`${API_BASE_URL}/projects`, { headers });
     if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('auth_token');
+        window.location.reload();
+        throw new Error('Authentication required');
+      }
       throw new Error('Failed to fetch projects');
     }
     return response.json();
@@ -14,8 +26,20 @@ export const apiService = {
 
   // Get single project
   async getProject(id: string): Promise<ProjectData> {
-    const response = await fetch(`${API_BASE_URL}/projects/${id}`);
+    const token = localStorage.getItem('auth_token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(`${API_BASE_URL}/projects/${id}`, { headers });
     if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('auth_token');
+        window.location.reload();
+        throw new Error('Authentication required');
+      }
       throw new Error('Failed to fetch project');
     }
     return response.json();
@@ -23,11 +47,16 @@ export const apiService = {
 
   // Save project (create or update)
   async saveProject(data: ProjectData): Promise<void> {
+    const token = localStorage.getItem('auth_token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     const response = await fetch(`${API_BASE_URL}/projects`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(data),
     });
     if (!response.ok) {
@@ -37,10 +66,23 @@ export const apiService = {
 
   // Delete project
   async deleteProject(id: string): Promise<void> {
+    const token = localStorage.getItem('auth_token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
       method: 'DELETE',
+      headers,
     });
     if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('auth_token');
+        window.location.reload();
+        throw new Error('Authentication required');
+      }
       throw new Error('Failed to delete project');
     }
   },
