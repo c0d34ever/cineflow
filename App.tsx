@@ -246,10 +246,25 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // Clear auth token and any per-session state
     localStorage.removeItem('auth_token');
+    // Optional: clear admin view preference so next login starts fresh
+    localStorage.removeItem('admin_view_mode');
+
+    // Reset in-memory state
     setCurrentUser(null);
     setIsAuthenticated(false);
     setView('library');
+    setStoryContext(DEFAULT_CONTEXT);
+    setScenes([]);
+    setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
+    setProjects([]);
+    setShowCommentsPanel(false);
+    setShowSceneNotesPanel(false);
+    setSelectedSceneId(null);
+
+    // Hard reload to ensure all components reset and any stale data is cleared
+    window.location.href = '/';
   };
 
   // --- Persistence & Lifecycle ---
