@@ -47,7 +47,7 @@ router.get('/:projectId', authenticateToken, async (req: AuthRequest, res: Respo
 // POST /api/comics/generate - Generate new comic content
 router.post('/generate', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { projectId, episodeId, projectContext, scenes } = req.body;
+    const { projectId, episodeId, projectContext, scenes, coverImageId } = req.body;
     const userId = req.user!.id;
 
     if (!projectId || !projectContext || !scenes || !Array.isArray(scenes)) {
@@ -60,7 +60,8 @@ router.post('/generate', authenticateToken, async (req: AuthRequest, res: Respon
     const { comicContent, htmlContent } = await generateComicContent(
       projectContext as StoryContext,
       scenes as Scene[],
-      userId
+      userId,
+      coverImageId || undefined
     );
 
     // Check if comic exists

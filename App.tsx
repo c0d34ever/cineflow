@@ -22,6 +22,7 @@ import SettingsPanel from './components/SettingsPanel';
 import CommandPalette from './components/CommandPalette';
 import CopyButton from './components/CopyButton';
 import { ToastContainer } from './components/Toast';
+import CoverImageSelector from './components/CoverImageSelector';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -1014,11 +1015,15 @@ const App: React.FC = () => {
             '1'
           );
           const pdfStyle: PDFStyle = (styleChoice === '2') ? 'raw' : 'comic';
-          await exportToPDF(data, pdfStyle);
-          // Refresh comic existence status after export
+          
+          // If comic style, show cover image selector
           if (pdfStyle === 'comic') {
-            setTimeout(() => checkComicExists(), 1000);
+            setShowCoverImageSelector(true);
+            // The actual export will happen after cover image is selected
+            return; // Exit early, export will continue in handleCoverImageSelect
           }
+          
+          await exportToPDF(data, pdfStyle);
           break;
       }
       
@@ -1082,6 +1087,22 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCoverImageSelect = async (imageId: string | null) => {
+    setSelectedCoverImageId(imageId);
+    setShowCoverImageSelector(false);
+    
+    // Now proceed with the export
+    try {
+      const data = await getExportData();
+      await exportToPDF(data, 'comic', undefined, imageId);
+      // Refresh comic existence status after export
+      setTimeout(() => checkComicExists(), 1000);
+    } catch (error: any) {
+      console.error('Export error:', error);
+      showToast('Failed to export comic: ' + (error.message || 'Unknown error'), 'error');
+    }
+  };
+
   const handleRegenerateComic = async () => {
     if (!storyContext.id) return;
     
@@ -1103,11 +1124,12 @@ const App: React.FC = () => {
       // Get export data
       const data = await getExportData();
       
-      // Generate new comic
+      // Generate new comic (use previously selected cover image if available)
       const response = await comicsService.generate({
         projectId: storyContext.id,
         projectContext: data.context,
-        scenes: data.scenes
+        scenes: data.scenes,
+        coverImageId: selectedCoverImageId || undefined
       });
 
       if (response.comic?.htmlContent) {
@@ -3044,6 +3066,16 @@ const App: React.FC = () => {
           
         </div>
       </div>
+      
+      {/* Cover Image Selector Modal */}
+      {showCoverImageSelector && storyContext.id && (
+        <CoverImageSelector
+          projectId={storyContext.id}
+          currentCoverImageId={selectedCoverImageId}
+          onSelect={handleCoverImageSelect}
+          onClose={() => setShowCoverImageSelector(false)}
+        />
+      )}
     </div>
   );
 };

@@ -227,7 +227,7 @@ async function convertImagesToBase64(html: string): Promise<string> {
   return convertedHtml;
 }
 
-export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', episodeId?: string): Promise<void> {
+export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', episodeId?: string, coverImageId?: string | null): Promise<void> {
   // For comic style, check if comic exists in database first
   if (style === 'comic') {
     try {
@@ -259,7 +259,8 @@ export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', e
         projectId: data.context.id,
         episodeId: episodeId,
         projectContext: data.context,
-        scenes: data.scenes
+        scenes: data.scenes,
+        coverImageId: coverImageId || undefined
       });
       
       if (response.comic?.htmlContent) {

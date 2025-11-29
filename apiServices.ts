@@ -495,6 +495,7 @@ export const comicsService = {
     episodeId?: string;
     projectContext: any;
     scenes: any[];
+    coverImageId?: string;
   }) => apiCall('/comics/generate', { method: 'POST', body: JSON.stringify(data) }),
   delete: (projectId: string, episodeId?: string) => {
     const params = episodeId ? `?episodeId=${episodeId}` : '';

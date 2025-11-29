@@ -911,7 +911,8 @@ export const generateEpisodeContent = async (
 export const generateComicContent = async (
   projectContext: StoryContext,
   scenes: Scene[],
-  userId?: number
+  userId?: number,
+  coverImageId?: string
 ): Promise<{ comicContent: string; htmlContent: string }> => {
   const ai = await getAIClient(userId);
 
@@ -1014,7 +1015,7 @@ export const generateComicContent = async (
     const comicContent = response.text;
     
     // Generate HTML version with comic styling
-    const htmlContent = await generateComicHTML(projectContext, comicContent, scenes);
+    const htmlContent = await generateComicHTML(projectContext, comicContent, scenes, coverImageId);
 
     return { comicContent, htmlContent };
   } catch (error: any) {
@@ -1030,7 +1031,8 @@ export const generateComicContent = async (
 async function generateComicHTML(
   projectContext: StoryContext,
   comicContent: string,
-  scenes: Scene[]
+  scenes: Scene[],
+  coverImageId?: string
 ): Promise<string> {
   const { getPool } = await import('../db/index.js');
   const pool = getPool();
@@ -1399,16 +1401,74 @@ async function generateComicHTML(
   html = html.replace(/NARRATION:\s*/gi, '');
   html = html.replace(/\n{3,}/g, '\n\n');
 
-  // Get first scene image for cover page
+  // Get cover image - use selected coverImageId if provided, otherwise use first scene's primary image
   let coverImageUrl = '';
-  if (scenes.length > 0) {
+  if (coverImageId) {
+    // Fetch the specific cover image by ID
+    try {
+      const [coverMedia] = await pool.query(
+        'SELECT * FROM media WHERE id = ? LIMIT 1',
+        [coverImageId]
+      ) as [any[], any];
+      if (Array.isArray(coverMedia) && coverMedia.length > 0) {
+        const coverImage = coverMedia[0];
+        // Prefer ImageKit URL, fallback to local
+        if (coverImage.imagekit_url) {
+          coverImageUrl = coverImage.imagekit_url;
+        } else if (coverImage.imagekit_thumbnail_url) {
+          coverImageUrl = coverImage.imagekit_thumbnail_url;
+        } else {
+          const localPath = coverImage.file_path || coverImage.thumbnail_path;
+          if (localPath) {
+            const filePath = localPath.startsWith('/') ? localPath : `/${localPath}`;
+            coverImageUrl = `${baseUrl}${filePath}`;
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to fetch cover image ${coverImageId}:`, error);
+    }
+  }
+  
+  // Fallback to first scene's primary image if no cover image selected or found
+  if (!coverImageUrl && scenes.length > 0) {
     const firstScene = scenes[0];
     const firstSceneMedia = sceneImagesMap.get(firstScene.id);
     if (firstSceneMedia && firstSceneMedia.length > 0) {
       const coverImage = firstSceneMedia.find(img => img.is_primary) || firstSceneMedia[0];
-      coverImageUrl = coverImage.file_path.startsWith('http') 
-        ? coverImage.file_path 
-        : `${baseUrl}${coverImage.file_path.startsWith('/') ? coverImage.file_path : '/' + coverImage.file_path}`;
+      // Prefer ImageKit URL, fallback to local
+      if (coverImage.imagekit_url) {
+        coverImageUrl = coverImage.imagekit_url;
+      } else if (coverImage.imagekit_thumbnail_url) {
+        coverImageUrl = coverImage.imagekit_thumbnail_url;
+      } else {
+        const localPath = coverImage.file_path || coverImage.thumbnail_path;
+        if (localPath) {
+          const filePath = localPath.startsWith('/') ? localPath : `/${localPath}`;
+          coverImageUrl = `${baseUrl}${filePath}`;
+        }
+      }
+    }
+  }
+  
+  // Old code (removed):
+  /*if (scenes.length > 0) {
+    const firstScene = scenes[0];
+    const firstSceneMedia = sceneImagesMap.get(firstScene.id);
+    if (firstSceneMedia && firstSceneMedia.length > 0) {
+      const coverImage = firstSceneMedia.find(img => img.is_primary) || firstSceneMedia[0];
+      // Prefer ImageKit URL, fallback to local
+      if (coverImage.imagekit_url) {
+        coverImageUrl = coverImage.imagekit_url;
+      } else if (coverImage.imagekit_thumbnail_url) {
+        coverImageUrl = coverImage.imagekit_thumbnail_url;
+      } else {
+        const localPath = coverImage.file_path || coverImage.thumbnail_path;
+        if (localPath) {
+          const filePath = localPath.startsWith('/') ? localPath : `/${localPath}`;
+          coverImageUrl = `${baseUrl}${filePath}`;
+        }
+      }
     }
   }
   
