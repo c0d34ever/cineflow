@@ -611,7 +611,18 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
-    setShowTemplateSelector(true);
+    // Immediately start a blank project without requiring templates to load
+    const newContext: StoryContext = {
+      ...DEFAULT_CONTEXT,
+      id: generateId(),
+      lastUpdated: Date.now()
+    };
+
+    setStoryContext(newContext);
+    setScenes([]);
+    setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
+    setSetupTab('new');
+    setView('setup');
   };
 
   const handleTemplateSelect = (template: any) => {
