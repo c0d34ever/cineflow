@@ -46,10 +46,16 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
       const items = sceneId 
         ? await mediaService.getSceneMedia(sceneId)
         : await mediaService.getProjectMedia(projectId);
-      setMedia(items);
+      // Ensure we have an array and filter out any null/undefined items
+      const validItems = Array.isArray(items) ? items.filter(item => item && item.id) : [];
+      setMedia(validItems);
     } catch (error: any) {
       console.error('Failed to load media:', error);
-      alert('Failed to load media library');
+      setMedia([]);
+      // Don't show alert on every load, just log the error
+      if (error.message && !error.message.includes('401')) {
+        console.warn('Media load warning:', error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -111,19 +117,30 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
     };
   }, []);
 
+  // Prevent re-renders during upload
+  const handleClose = () => {
+    if (!uploading) {
+      onClose();
+    }
+  };
+
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !uploading) {
-          onClose();
+        if (e.target === e.currentTarget) {
+          handleClose();
         }
       }}
+      style={{ pointerEvents: uploading ? 'none' : 'auto' }}
     >
       <div 
         className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
-        style={{ willChange: 'transform' }}
+        style={{ 
+          willChange: 'transform',
+          pointerEvents: 'auto'
+        }}
       >
         {/* Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
@@ -148,8 +165,9 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
               </>
             )}
             <button
-              onClick={onClose}
-              className="text-zinc-400 hover:text-white"
+              onClick={handleClose}
+              disabled={uploading}
+              className="text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />

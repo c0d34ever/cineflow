@@ -38,13 +38,28 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
     }
   }, [projectId, scene.id]);
 
+  // Also reload when media library closes (in case new images were uploaded)
+  useEffect(() => {
+    if (!showMediaLibrary && projectId && scene.id) {
+      // Small delay to ensure backend has processed the upload
+      const timer = setTimeout(() => {
+        loadSceneImages();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [showMediaLibrary, projectId, scene.id]);
+
   const loadSceneImages = async () => {
     try {
       setLoadingImages(true);
       const media = await mediaService.getSceneMedia(scene.id);
-      setSceneImages(media);
+      // Ensure we have an array and filter out any null/undefined items
+      const validMedia = Array.isArray(media) ? media.filter(item => item && item.id) : [];
+      setSceneImages(validMedia);
+      console.log(`Loaded ${validMedia.length} images for scene ${scene.id}`, validMedia);
     } catch (error) {
       console.error('Failed to load scene images:', error);
+      setSceneImages([]);
     } finally {
       setLoadingImages(false);
     }

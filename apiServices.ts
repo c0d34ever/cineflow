@@ -374,7 +374,10 @@ export const mediaService = {
   },
 
   getSceneMedia: (sceneId: string): Promise<any[]> => {
-    return apiCall(`/media/scene/${sceneId}`).then((data: any) => data.media || []);
+    return apiCall(`/media/scene/${sceneId}`).then((data: any) => {
+      // Handle both { media: [...] } and [...] response formats
+      return Array.isArray(data) ? data : (data.media || []);
+    });
   },
 
   updateMedia: (id: string, updates: { alt_text?: string; description?: string; is_primary?: boolean; display_order?: number }): Promise<any> => {
