@@ -117,7 +117,14 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
     const is_primary = req.body.is_primary;
     const userId = req.user!.id;
 
-    console.log('Upload request:', { project_id, scene_id, file: req.file?.filename });
+    console.log('Upload request:', { 
+      project_id, 
+      scene_id, 
+      scene_id_type: typeof scene_id,
+      scene_id_length: scene_id ? scene_id.length : 0,
+      file: req.file?.filename,
+      body_keys: Object.keys(req.body)
+    });
 
     if (!project_id) {
       // Clean up uploaded file if validation fails
@@ -263,12 +270,45 @@ router.get('/scene/:sceneId', authenticateToken, async (req: AuthRequest, res: R
 
     console.log('Fetching media for scene:', sceneId);
 
+    // First, check if scene exists
+    const [sceneCheck] = await pool.query(
+      'SELECT id, project_id FROM scenes WHERE id = ?',
+      [sceneId]
+    ) as [any[], any];
+
+    if (sceneCheck.length === 0) {
+      console.log(`⚠️ Scene ${sceneId} does not exist in database`);
+      return res.json({ media: [] });
+    }
+
+    const sceneProjectId = sceneCheck[0].project_id;
+    console.log(`Scene ${sceneId} exists, belongs to project ${sceneProjectId}`);
+
     const [rows] = await pool.query(
       'SELECT * FROM media WHERE scene_id = ? ORDER BY display_order ASC, created_at ASC',
       [sceneId]
     ) as [any[], any];
 
     console.log(`Found ${rows.length} media items for scene ${sceneId}`);
+
+    // Debug: Check for media in the same project but without scene_id
+    if (rows.length === 0) {
+      const [projectMedia] = await pool.query(
+        'SELECT id, scene_id, file_name, created_at FROM media WHERE project_id = ? ORDER BY created_at DESC LIMIT 5',
+        [sceneProjectId]
+      ) as [any[], any];
+      console.log(`Debug: Found ${projectMedia.length} recent media items in project ${sceneProjectId}:`, 
+        projectMedia.map(m => ({ id: m.id, scene_id: m.scene_id, file: m.file_name, created: m.created_at })));
+    }
+
+    // Also check for any media with this scene_id but different format (debugging)
+    if (rows.length === 0) {
+      const [allMedia] = await pool.query(
+        'SELECT id, scene_id, project_id, file_name FROM media WHERE project_id IN (SELECT project_id FROM scenes WHERE id = ?) LIMIT 10',
+        [sceneId]
+      ) as [any[], any];
+      console.log(`Debug: Found ${allMedia.length} media items in same project (first 10):`, allMedia.map(m => ({ id: m.id, scene_id: m.scene_id, file: m.file_name })));
+    }
 
     res.json({ media: rows });
   } catch (error: any) {
