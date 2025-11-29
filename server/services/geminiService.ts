@@ -928,21 +928,29 @@ export const generateComicContent = async (
      - Action and movement in simple terms
      - Panel-by-panel storytelling
   
-  4. Format each scene as:
-     **PANEL [number]**
-     [Visual description - what we see]
+  4. Format each scene EXACTLY as follows:
+     Scene [number] ([Scene ID]):
+     **PANEL 1**
+     [Visual description - what we see in this panel]
      
      [Character Name] (tone): "[Dialogue]"
      
-     [Narration or thought bubble if needed]
+     SFX: [SOUND EFFECT]
+     NARRATION: [Narration text if needed]
+     
+     **PANEL 2**
+     [Next visual description]
+     ...
   
   5. Use comic book conventions:
-     - Sound effects (BANG!, WHOOSH!, etc.)
-     - Thought bubbles for internal monologue
-     - Captions for narration
-     - Bold for emphasis in dialogue
+     - Sound effects: Format as "SFX: BANG!" or "SFX: WHOOSH!"
+     - Narration: Format as "NARRATION: [text]"
+     - Dialogue: Format as "[Character] (tone): \"[dialogue]\""
+     - Panel markers: Use **PANEL [number]** format
   
-  6. Keep it engaging and visual, like a real comic book page.`;
+  6. Keep it engaging and visual, like a real comic book page.
+  7. Each scene should have 2-5 panels depending on complexity.
+  8. Be descriptive but concise - paint the picture with words.`;
 
   // Prepare scene data (simplified, no technical details)
   const scenesData = scenes.map((scene, index) => ({
@@ -1006,38 +1014,92 @@ async function generateComicHTML(
   // Convert comic content to HTML with comic styling
   let html = comicContent;
   
-  // Convert panel markers to styled divs
-  html = html.replace(/\*\*PANEL (\d+)\*\*/g, '<div class="comic-panel-number">PANEL $1</div>');
+  // Remove "comic-panel-number" text markers
+  html = html.replace(/"comic-panel-number"/g, '');
+  
+  // Convert various panel formats to styled divs
+  html = html.replace(/\*\*PANEL (\d+)\*\*/gi, '<div class="comic-panel-number">PANEL $1</div>');
+  html = html.replace(/>PANEL\s*(\d+)/gi, '<div class="comic-panel-number">PANEL $1</div>');
+  html = html.replace(/PANEL\s*(\d+):/gi, '<div class="comic-panel-number">PANEL $1</div>');
+  
+  // Convert SFX: sound effects
+  html = html.replace(/SFX:\s*([A-Z][A-Z\s!.,]+)/g, '<div class="sound-effect">$1</div>');
+  
+  // Convert NARRATION: captions
+  html = html.replace(/NARRATION:\s*(.+?)(?=\n|$)/g, '<div class="comic-narration">$1</div>');
   
   // Convert dialogue with tone to speech bubbles
   html = html.replace(/([A-Z][a-zA-Z\s]+)\s*\(([^)]+)\):\s*"([^"]+)"/g, 
     '<div class="speech-bubble" data-tone="$2"><strong>$1</strong>: "$3"</div>');
   
-  // Convert simple dialogue
-  html = html.replace(/"([^"]+)"/g, '<div class="speech-bubble">"$1"</div>');
+  // Convert simple dialogue (quoted text that's not already in a bubble)
+  html = html.replace(/"([^"]+)"(?![^<]*<\/div>)/g, '<div class="speech-bubble">"$1"</div>');
   
-  // Convert thought bubbles (internal monologue)
-  html = html.replace(/\*([^*]+)\*/g, '<div class="thought-bubble">$1</div>');
+  // Convert thought bubbles (internal monologue) - text in asterisks
+  html = html.replace(/\*([^*\n]+)\*/g, '<div class="thought-bubble">$1</div>');
   
-  // Convert sound effects
-  html = html.replace(/([A-Z][A-Z\s!]+!?)/g, (match) => {
-    if (match.length > 3 && match.length < 20 && /^[A-Z\s!]+$/.test(match)) {
-      return `<div class="sound-effect">${match}</div>`;
+  // Convert standalone sound effects (all caps, short, with punctuation)
+  html = html.replace(/\b([A-Z]{2,}[A-Z\s!.,]{0,15}[!?.]?)\b/g, (match) => {
+    // Skip if already in a div or if it's part of a word
+    if (match.length >= 3 && match.length <= 20 && /^[A-Z\s!.,?]+$/.test(match.trim())) {
+      // Check if it's not already wrapped
+      if (!match.includes('<div')) {
+        return `<div class="sound-effect">${match.trim()}</div>`;
+      }
     }
     return match;
   });
   
-  // Convert visual descriptions to captions
+  // Process lines to convert visual descriptions to captions
   const lines = html.split('\n');
-  const processedLines = lines.map(line => {
-    if (line.trim() && !line.includes('<div') && !line.includes('PANEL')) {
-      if (line.length > 20 && !line.includes('"')) {
-        return `<div class="comic-caption">${line.trim()}</div>`;
+  const processedLines: string[] = [];
+  let inPanel = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Skip empty lines
+    if (!line) {
+      processedLines.push('');
+      continue;
+    }
+    
+    // Check if this is a panel marker
+    if (line.includes('comic-panel-number')) {
+      inPanel = true;
+      processedLines.push(line);
+      continue;
+    }
+    
+    // Skip if already converted to HTML
+    if (line.startsWith('<div') || line.startsWith('</div>')) {
+      processedLines.push(line);
+      continue;
+    }
+    
+    // Skip scene headers
+    if (line.match(/^Scene \d+/i) || line.match(/^---/)) {
+      processedLines.push(`<div class="comic-scene-header">${line.replace(/^---\s*/, '')}</div>`);
+      continue;
+    }
+    
+    // Convert visual descriptions to captions (long lines without quotes or special markers)
+    if (inPanel && line.length > 20 && !line.includes('"') && !line.match(/^(SFX|NARRATION|PANEL):/i)) {
+      // Check if it's descriptive text (not a character name or dialogue)
+      if (!line.match(/^[A-Z][a-z]+\s*\(/)) {
+        processedLines.push(`<div class="comic-caption">${line}</div>`);
+        continue;
       }
     }
-    return line;
-  });
+    
+    // Keep other lines as-is
+    processedLines.push(line);
+  }
+  
   html = processedLines.join('\n');
+  
+  // Clean up extra blank lines
+  html = html.replace(/\n{3,}/g, '\n\n');
 
   // Wrap in comic book HTML structure
   return `
@@ -1145,6 +1207,30 @@ async function generateComicHTML(
       margin: 10px 0;
       padding-left: 20px;
       border-left: 3px solid #000;
+    }
+    
+    .comic-narration {
+      font-family: 'Comic Neue', cursive;
+      font-size: 1.1em;
+      color: #1a1a1a;
+      font-style: italic;
+      margin: 15px 0;
+      padding: 10px 15px;
+      background: rgba(255, 255, 255, 0.8);
+      border-left: 4px solid #DC143C;
+      box-shadow: 2px 2px 0px rgba(0,0,0,0.2);
+    }
+    
+    .comic-scene-header {
+      font-family: 'Bangers', cursive;
+      font-size: 1.8em;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #1E88E5;
+      text-shadow: 2px 2px 0px #000;
+      margin: 30px 0 20px;
+      padding: 10px 0;
+      border-bottom: 3px solid #000;
     }
   </style>
 </head>
