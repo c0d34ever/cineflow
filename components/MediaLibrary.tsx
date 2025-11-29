@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { mediaService } from '../apiServices';
 
 interface MediaLibraryProps {
@@ -117,29 +117,39 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
     };
   }, []);
 
-  // Prevent re-renders during upload
-  const handleClose = () => {
+  // Memoize close handler to prevent re-renders
+  const handleClose = useCallback(() => {
     if (!uploading) {
       onClose();
     }
-  };
+  }, [uploading, onClose]);
+
+  // Handle overlay click - only close on actual click, not hover
+  const handleOverlayClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only close if clicking directly on the overlay (not a child)
+    if (e.target === e.currentTarget && !uploading) {
+      handleClose();
+    }
+  }, [uploading, handleClose]);
 
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          handleClose();
+      onMouseDown={handleOverlayClick}
+      onMouseUp={(e) => {
+        // Prevent any mouse events from bubbling
+        if (e.target !== e.currentTarget) {
+          e.stopPropagation();
         }
       }}
-      style={{ pointerEvents: uploading ? 'none' : 'auto' }}
     >
       <div 
         className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={{ 
-          willChange: 'transform',
-          pointerEvents: 'auto'
+          willChange: 'transform'
         }}
       >
         {/* Header */}
@@ -165,9 +175,12 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
               </>
             )}
             <button
-              onClick={handleClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClose();
+              }}
               disabled={uploading}
-              className="text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Scene } from '../types';
 import { mediaService } from '../apiServices';
 import MediaLibrary from './MediaLibrary';
@@ -38,15 +38,18 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
     }
   }, [projectId, scene.id]);
 
-  // Also reload when media library closes (in case new images were uploaded)
+  // Reload images when media library closes (but only once, not on every state change)
+  const prevShowMediaLibrary = useRef(false);
   useEffect(() => {
-    if (!showMediaLibrary && projectId && scene.id) {
+    // Only reload when transitioning from open to closed
+    if (prevShowMediaLibrary.current && !showMediaLibrary && projectId && scene.id) {
       // Small delay to ensure backend has processed the upload
       const timer = setTimeout(() => {
         loadSceneImages();
-      }, 500);
+      }, 300);
       return () => clearTimeout(timer);
     }
+    prevShowMediaLibrary.current = showMediaLibrary;
   }, [showMediaLibrary, projectId, scene.id]);
 
   const loadSceneImages = async () => {
