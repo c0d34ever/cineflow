@@ -8,6 +8,7 @@ const router = express.Router();
 // Helper to convert database row to ProjectData
 interface ProjectRow {
   id: string;
+  user_id?: number | null;
   title: string;
   genre: string;
   plot_summary: string;
@@ -46,13 +47,32 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const pool = getPool();
-    const [projects] = await pool.query(
-      'SELECT * FROM projects WHERE user_id = ? ORDER BY last_updated DESC',
+    // Include projects with user_id matching current user OR projects with NULL user_id (legacy projects)
+    // For NULL user_id projects, we'll assign them to the current user on first access
+    const [projectsResult] = await pool.query(
+      `SELECT * FROM projects 
+       WHERE user_id = ? OR user_id IS NULL 
+       ORDER BY last_updated DESC`,
       [userId]
-    ) as [ProjectRow[], any];
+    ) as [any[], any];
+    
+    const projects = Array.isArray(projectsResult) ? projectsResult : [];
+    
+    // Update any NULL user_id projects to belong to current user (one-time migration)
+    const nullUserProjects = projects.filter((p: any) => !p.user_id);
+    if (nullUserProjects.length > 0) {
+      const projectIds = nullUserProjects.map((p: any) => p.id);
+      if (projectIds.length > 0) {
+        const placeholders = projectIds.map(() => '?').join(',');
+        await pool.query(
+          `UPDATE projects SET user_id = ? WHERE id IN (${placeholders})`,
+          [userId, ...projectIds]
+        );
+      }
+    }
 
     const projectsWithData = await Promise.all(
-      projects.map(async (project) => {
+      projects.map(async (project: ProjectRow) => {
         const [scenes] = await pool.query(
           'SELECT * FROM scenes WHERE project_id = ? ORDER BY sequence_number ASC',
           [project.id]
@@ -172,16 +192,27 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   try {
     const userId = req.user!.id;
     const pool = getPool();
-    const [projects] = await pool.query(
-      'SELECT * FROM projects WHERE id = ? AND user_id = ?',
+    // Include projects with user_id matching OR NULL user_id (legacy)
+    const [projectsResult] = await pool.query(
+      'SELECT * FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
       [req.params.id, userId]
-    ) as [ProjectRow[], any];
+    ) as [any[], any];
 
+    const projects = Array.isArray(projectsResult) ? projectsResult : [];
+    
     if (projects.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
-
-    const project = projects[0];
+    
+    // Update NULL user_id project to belong to current user
+    const project = projects[0] as ProjectRow;
+    if (!project.user_id) {
+      await pool.query(
+        'UPDATE projects SET user_id = ? WHERE id = ?',
+        [userId, project.id]
+      );
+      project.user_id = userId;
+    }
     const [scenes] = await pool.query(
       'SELECT * FROM scenes WHERE project_id = ? ORDER BY sequence_number ASC',
       [project.id]
@@ -308,11 +339,21 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
       await connection.beginTransaction();
 
-      // Check if project exists and belongs to user
-      const [existing] = await connection.query(
-        'SELECT id FROM projects WHERE id = ? AND user_id = ?',
+      // Check if project exists (belongs to user OR has NULL user_id)
+      const [existingResult] = await connection.query(
+        'SELECT id, user_id FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
         [context.id, userId]
       ) as [any[], any];
+      
+      const existing = Array.isArray(existingResult) ? existingResult : [];
+      
+      // If project exists but has NULL user_id, update it
+      if (existing.length > 0 && !existing[0].user_id) {
+        await connection.query(
+          'UPDATE projects SET user_id = ? WHERE id = ?',
+          [userId, context.id]
+        );
+      }
 
       // Upsert project
       await connection.query(
