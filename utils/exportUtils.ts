@@ -153,6 +153,80 @@ export function exportToCSV(data: ExportData): string {
  */
 export type PDFStyle = 'comic' | 'raw';
 
+/**
+ * Convert image URL to base64 data URI for PDF embedding
+ */
+async function imageToBase64(url: string): Promise<string> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`Failed to fetch image: ${url}`);
+      return url; // Return original URL if fetch fails
+    }
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error(`Error converting image to base64: ${url}`, error);
+    return url; // Return original URL on error
+  }
+}
+
+/**
+ * Convert all image URLs in HTML to base64 data URIs
+ */
+async function convertImagesToBase64(html: string): Promise<string> {
+  // Find all img src attributes
+  const imgRegex = /<img([^>]*)\ssrc=["']([^"']+)["']([^>]*)>/gi;
+  const matches = Array.from(html.matchAll(imgRegex));
+  
+  if (matches.length === 0) {
+    return html; // No images to convert
+  }
+  
+  // Convert each image URL to base64
+  let convertedHtml = html;
+  for (const match of matches) {
+    const fullMatch = match[0];
+    const beforeSrc = match[1];
+    const imageUrl = match[2];
+    const afterSrc = match[3];
+    
+    // Skip if already base64
+    if (imageUrl.startsWith('data:')) {
+      continue;
+    }
+    
+    // Skip if it's an external URL (http/https) - try to convert it
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      try {
+        const base64 = await imageToBase64(imageUrl);
+        convertedHtml = convertedHtml.replace(fullMatch, `<img${beforeSrc} src="${base64}"${afterSrc}>`);
+      } catch (error) {
+        console.warn(`Failed to convert image ${imageUrl} to base64, keeping original URL`);
+      }
+    } else {
+      // Relative URL - construct full URL
+      const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const fullUrl = imageUrl.startsWith('/') ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`;
+      
+      try {
+        const base64 = await imageToBase64(fullUrl);
+        convertedHtml = convertedHtml.replace(fullMatch, `<img${beforeSrc} src="${base64}"${afterSrc}>`);
+      } catch (error) {
+        console.warn(`Failed to convert image ${fullUrl} to base64, keeping original URL`);
+      }
+    }
+  }
+  
+  return convertedHtml;
+}
+
 export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', episodeId?: string): Promise<void> {
   // For comic style, check if comic exists in database first
   if (style === 'comic') {
@@ -161,19 +235,22 @@ export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', e
       const existing = await comicsService.get(data.context.id, episodeId);
       
       if (existing.exists && existing.comic?.htmlContent) {
-        // Use existing comic
+        // Use existing comic - convert images to base64
+        const htmlWithBase64Images = await convertImagesToBase64(existing.comic.htmlContent);
+        
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
           alert('Please allow popups to export PDF');
           return;
         }
         
-        printWindow.document.write(existing.comic.htmlContent);
+        printWindow.document.write(htmlWithBase64Images);
         printWindow.document.close();
         
+        // Wait for images to load (they're now base64, so should be instant)
         setTimeout(() => {
           printWindow.print();
-        }, 1500);
+        }, 500);
         return;
       }
       
@@ -186,18 +263,22 @@ export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', e
       });
       
       if (response.comic?.htmlContent) {
+        // Convert images to base64
+        const htmlWithBase64Images = await convertImagesToBase64(response.comic.htmlContent);
+        
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
           alert('Please allow popups to export PDF');
           return;
         }
         
-        printWindow.document.write(response.comic.htmlContent);
+        printWindow.document.write(htmlWithBase64Images);
         printWindow.document.close();
         
+        // Wait for images to load (they're now base64, so should be instant)
         setTimeout(() => {
           printWindow.print();
-        }, 1500);
+        }, 500);
         
         // Trigger custom event to notify App.tsx that comic was generated
         window.dispatchEvent(new CustomEvent('comicGenerated'));
@@ -237,7 +318,7 @@ export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic', e
  * Convert markdown to HTML for PDF export with DC/Marvel comic-book style
  */
 async function markdownToHTMLComic(markdown: string, title: string, data: ExportData): Promise<string> {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = API_BASE_URL.replace('/api', '');
   
   let html = markdown
@@ -604,7 +685,7 @@ async function markdownToHTMLComic(markdown: string, title: string, data: Export
  * Convert markdown to HTML for raw/plain PDF export
  */
 async function markdownToHTMLRaw(markdown: string, title: string, data: ExportData): Promise<string> {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = API_BASE_URL.replace('/api', '');
   
   let html = markdown
@@ -755,7 +836,7 @@ export interface EpisodeExportData {
 }
 
 export async function exportEpisodeToPDF(data: EpisodeExportData): Promise<void> {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = API_BASE_URL.replace('/api', '');
   
   const { episode, clips, projectContext, clipMedia } = data;
@@ -1000,13 +1081,16 @@ export async function exportEpisodeToPDF(data: EpisodeExportData): Promise<void>
     return;
   }
   
-  printWindow.document.write(fullHtml);
+  // Convert images to base64 for PDF printing
+  const htmlWithBase64Images = await convertImagesToBase64(fullHtml);
+  
+  printWindow.document.write(htmlWithBase64Images);
   printWindow.document.close();
   
-  // Wait for images to load, then print
+  // Wait for images to load (they're now base64, so should be instant)
   setTimeout(() => {
     printWindow.print();
-  }, 1000);
+  }, 500);
 }
 
 /**
