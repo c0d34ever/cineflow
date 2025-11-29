@@ -51,7 +51,8 @@ services:
     volumes:
       - ./uploads:/app/server/uploads
     # Note: Ensure ./uploads directory exists on host with proper permissions
-    # Run: mkdir -p uploads/thumbnails && chmod -R 755 uploads
+    # Run: mkdir -p uploads/thumbnails && chmod -R 777 uploads
+    # Or: chown -R 1001:1001 uploads && chmod -R 755 uploads
     networks:
       - cineflow-network
 

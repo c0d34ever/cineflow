@@ -17,22 +17,29 @@ const uploadsDir = path.join(__dirname, '../../uploads');
 const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
 
 // Create directories with error handling for permission issues
-// This is non-fatal - directories may be created by volume mount or entrypoint script
-[uploadsDir, thumbnailsDir].forEach(dir => {
-  try {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-      console.log(`Created directory: ${dir}`);
+// This is non-fatal - directories may be created by volume mount
+// If creation fails, we'll try again on first upload
+const ensureDirectories = () => {
+  [uploadsDir, thumbnailsDir].forEach(dir => {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+        console.log(`✓ Created directory: ${dir}`);
+      }
+    } catch (error: any) {
+      // Non-fatal: directory might be created by volume mount
+      // Log warning but don't fail - will try again on first upload
+      if (error.code !== 'EACCES' && error.code !== 'EAGAIN') {
+        console.warn(`⚠ Could not create directory ${dir}:`, error.message);
+      } else {
+        console.warn(`⚠ Permission denied creating ${dir} - ensure host directory has correct permissions`);
+      }
     }
-  } catch (error: any) {
-    // Non-fatal: directory might be created by volume mount or entrypoint
-    // Only log if it's not a permission error (which is expected with volume mounts)
-    if (error.code !== 'EACCES' && error.code !== 'EAGAIN') {
-      console.warn(`Could not create directory ${dir}:`, error.message);
-    }
-    // Continue anyway - directory might already exist or be created externally
-  }
-});
+  });
+};
+
+// Try to create directories on module load (non-fatal)
+ensureDirectories();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -83,6 +90,9 @@ async function getImageDimensions(filePath: string): Promise<{ width: number; he
 
 // Upload image
 router.post('/upload', authenticateToken, upload.single('image'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  // Ensure directories exist before upload (try again in case they weren't created at startup)
+  ensureDirectories();
+  
   try {
     // Handle multer file size errors
     if (req.file === undefined && req.headers['content-length']) {

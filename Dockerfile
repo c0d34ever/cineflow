@@ -134,20 +134,13 @@ RUN echo "=== Starting file copy process ===" && \
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Copy entrypoint script (as root)
-COPY server/entrypoint.sh /app/server/entrypoint.sh
-RUN chmod +x /app/server/entrypoint.sh
-
 # Create uploads directory and set permissions (as root, before switching user)
 RUN mkdir -p /app/server/uploads /app/server/uploads/thumbnails && \
     chown -R nodejs:nodejs /app/server/uploads && \
     chmod -R 755 /app/server/uploads && \
     chown -R nodejs:nodejs /app
 
-# Use entrypoint to fix permissions on startup (must be before USER to run as root)
-ENTRYPOINT ["/app/server/entrypoint.sh"]
-
-# Switch to nodejs user (entrypoint will handle user switching)
+# Switch to nodejs user
 USER nodejs
 
 EXPOSE 5000
