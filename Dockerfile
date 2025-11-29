@@ -66,6 +66,8 @@ COPY --from=frontend-builder /app/dist ./dist
 COPY --from=backend-builder /app/server/dist ./server/dist-temp
 # Copy server package.json and package-lock.json, then install server dependencies (needed for bcryptjs, etc.)
 COPY --from=backend-builder /app/server/package*.json ./server/
+# Copy migration SQL files (needed at runtime) - copy to both source and dist locations
+COPY --from=backend-builder /app/server/db/migrations/*.sql ./server/db/migrations/
 WORKDIR /app/server
 RUN npm ci --omit=dev || npm install --omit=dev
 WORKDIR /app
@@ -110,6 +112,15 @@ RUN echo "=== Starting file copy process ===" && \
         echo "Trying to find types.js in builder output..."; \
         exit 1; \
       fi; \
+    fi && \
+    echo "=== Copying migration SQL files ===" && \
+    mkdir -p /app/server/dist/db/migrations && \
+    if [ -d /app/server/db/migrations ]; then \
+      cp /app/server/db/migrations/*.sql /app/server/dist/db/migrations/ 2>/dev/null && \
+      echo "SUCCESS: Migration SQL files copied" && \
+      ls -la /app/server/dist/db/migrations/*.sql 2>/dev/null | head -5 || echo "No SQL files found"; \
+    else \
+      echo "WARNING: /app/server/db/migrations directory not found"; \
     fi && \
     echo "=== Final verification ===" && \
     test -f /app/server/dist/index.js && echo "SUCCESS: index.js found at /app/server/dist/index.js" && ls -lh /app/server/dist/index.js && head -3 /app/server/dist/index.js || (echo "ERROR: index.js still missing!" && echo "Files in dist:" && find /app/server/dist -type f | head -20 && exit 1) && \

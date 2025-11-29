@@ -22,7 +22,8 @@ import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, sugg
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
 import { authService, tagsService, templatesService, charactersService, sharingService, locationsService, sceneTemplatesService, activityService, archiveProject } from './apiServices';
-import { exportToMarkdown, exportToCSV, exportToPDF, downloadFile, ExportData } from './utils/exportUtils';
+import { exportToMarkdown, exportToCSV, exportToPDF, downloadFile, ExportData, exportEpisodeToPDF, EpisodeExportData } from './utils/exportUtils';
+import { mediaService, episodesService } from './apiServices';
 
 const DEFAULT_DIRECTOR_SETTINGS: DirectorSettings = {
   customSceneId: '',
@@ -881,18 +882,43 @@ const App: React.FC = () => {
     setView('library');
   };
 
-  const getExportData = (): ExportData => ({
-    context: storyContext,
-    scenes: scenes,
-    settings: currentSettings,
-    exportedAt: new Date().toISOString()
-  });
+  const getExportData = async (): Promise<ExportData> => {
+    const sceneMediaMap = new Map<string, any[]>();
+    
+    // Fetch media for all scenes if API is available
+    try {
+      const apiAvailable = await checkApiAvailability();
+      if (apiAvailable && storyContext.id) {
+        for (const scene of scenes) {
+          try {
+            const media = await mediaService.getSceneMedia(scene.id);
+            if (media && media.length > 0) {
+              sceneMediaMap.set(scene.id, media);
+            }
+          } catch (error) {
+            console.warn(`Failed to load media for scene ${scene.id}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load media for export:', error);
+    }
+    
+    return {
+      context: storyContext,
+      scenes: scenes,
+      settings: currentSettings,
+      exportedAt: new Date().toISOString(),
+      sceneMedia: sceneMediaMap
+    };
+  };
 
   const handleExport = async (format: 'json' | 'markdown' | 'csv' | 'pdf') => {
-    const data = getExportData();
     const filename = `${storyContext.title.replace(/\s+/g, '_')}_storyboard`;
     
     try {
+      const data = await getExportData();
+      
       switch (format) {
         case 'json':
           downloadFile(
@@ -916,7 +942,7 @@ const App: React.FC = () => {
           );
           break;
         case 'pdf':
-          exportToPDF(data);
+          await exportToPDF(data);
           break;
       }
       
