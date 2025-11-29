@@ -1034,8 +1034,9 @@ async function generateComicHTML(
 ): Promise<string> {
   const { getPool } = await import('../db/index.js');
   const pool = getPool();
-  const API_BASE_URL = process.env.API_URL || 'http://localhost:5000';
-  const baseUrl = API_BASE_URL.replace('/api', '');
+  // Use CORS_ORIGIN for frontend URL, or construct from API_URL
+  const API_BASE_URL = process.env.CORS_ORIGIN || process.env.API_URL || 'http://localhost:5000';
+  const baseUrl = API_BASE_URL.replace('/api', '').replace(/\/$/, ''); // Remove trailing slash
   
   // Fetch images for all scenes
   const sceneImagesMap = new Map<string, any[]>();
@@ -1104,9 +1105,13 @@ async function generateComicHTML(
       const sceneMedia = sceneImagesMap.get(currentScene.id);
       if (sceneMedia && sceneMedia.length > 0) {
         const primaryImage = sceneMedia.find(img => img.is_primary) || sceneMedia[0];
-        const imageUrl = primaryImage.file_path.startsWith('http') 
-          ? primaryImage.file_path 
-          : `${baseUrl}${primaryImage.file_path}`;
+        // Ensure absolute URL for PDF printing
+        let imageUrl = primaryImage.file_path;
+        if (!imageUrl.startsWith('http')) {
+          // Ensure path starts with / for proper URL construction
+          const filePath = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`;
+          imageUrl = `${baseUrl}${filePath}`;
+        }
         finalHTML += `<figure class="comic-panel comic-image-panel">
           <img src="${imageUrl}" alt="${primaryImage.alt_text || `Scene ${sceneNum} Image`}" class="comic-image" />
           ${primaryImage.description ? `<figcaption class="comic-caption">${primaryImage.description}</figcaption>` : ''}
