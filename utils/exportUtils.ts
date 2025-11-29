@@ -149,13 +149,17 @@ export function exportToCSV(data: ExportData): string {
 
 /**
  * Export to PDF format (using browser print functionality)
- * Now includes images in comic-book style layout
+ * Supports both comic-book style and raw/plain style
  */
-export async function exportToPDF(data: ExportData): Promise<void> {
+export type PDFStyle = 'comic' | 'raw';
+
+export async function exportToPDF(data: ExportData, style: PDFStyle = 'comic'): Promise<void> {
   const markdown = exportToMarkdown(data);
   
-  // Convert markdown to HTML with comic-book style images
-  const html = await markdownToHTML(markdown, data.context.title, data);
+  // Convert markdown to HTML with chosen style
+  const html = style === 'comic' 
+    ? await markdownToHTMLComic(markdown, data.context.title, data)
+    : await markdownToHTMLRaw(markdown, data.context.title, data);
   
   // Create a new window with the HTML
   const printWindow = window.open('', '_blank');
@@ -170,13 +174,13 @@ export async function exportToPDF(data: ExportData): Promise<void> {
   // Wait for images to load, then print
   setTimeout(() => {
     printWindow.print();
-  }, 1000);
+  }, style === 'comic' ? 1500 : 1000);
 }
 
 /**
- * Convert markdown to HTML for PDF export with comic-book style images
+ * Convert markdown to HTML for PDF export with DC/Marvel comic-book style
  */
-async function markdownToHTML(markdown: string, title: string, data: ExportData): Promise<string> {
+async function markdownToHTMLComic(markdown: string, title: string, data: ExportData): Promise<string> {
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = API_BASE_URL.replace('/api', '');
   
@@ -207,6 +211,371 @@ async function markdownToHTML(markdown: string, title: string, data: ExportData)
     `;
   });
   
+  // Process dialogue for speech bubbles
+  html = html.replace(/\*\*Dialogue:\*\* "([^"]+)"/g, (match, dialogue) => {
+    return `<div class="speech-bubble">${dialogue}</div>`;
+  });
+  
+  // Process scene headers for dramatic styling
+  html = html.replace(/<h3>(Scene \d+[^<]+)<\/h3>/g, (match, content) => {
+    return `<div class="comic-scene-header">${content}</div>`;
+  });
+  
+  // Process Visual Direction
+  html = html.replace(/\*\*Visual Direction:\*\*<br>([^<]+(?:<br>[^<]+)*)/g, (match, content) => {
+    return `<div class="visual-direction"><strong>Visual Direction:</strong><br>${content}</div>`;
+  });
+  
+  // Process Flow Link
+  html = html.replace(/\*\*Flow Link:\*\* ([^<]+)/g, (match, content) => {
+    return `<div class="flow-link"><strong>Flow Link:</strong> ${content}</div>`;
+  });
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>${title}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap');
+        
+        @media print {
+          @page {
+            margin: 1cm;
+            size: A4;
+          }
+          body {
+            margin: 0;
+            padding: 0;
+          }
+          .comic-page {
+            page-break-after: always;
+          }
+          .comic-panel {
+            page-break-inside: avoid;
+          }
+        }
+        
+        * {
+          box-sizing: border-box;
+        }
+        
+        body {
+          font-family: 'Comic Neue', 'Comic Sans MS', cursive, sans-serif;
+          line-height: 1.4;
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 15px;
+          color: #1a1a1a;
+          background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F5 50%, #E0E0E0 100%); /* Subtle gradient background */
+        }
+        
+        /* DC/Marvel Style Title - Bold Red/Blue */
+        h1 {
+          font-family: 'Bangers', cursive;
+          font-size: 4em;
+          text-transform: uppercase;
+          letter-spacing: 3px;
+          text-align: center;
+          margin: 20px 0 30px;
+          color: #DC143C; /* Crimson Red - Classic Comic Red */
+          text-shadow: 4px 4px 0px #000, 6px 6px 0px rgba(0,0,0,0.5), 0 0 10px rgba(220,20,60,0.3);
+          border: none;
+          padding: 0;
+          background: linear-gradient(180deg, #FF1744 0%, #C51162 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          filter: drop-shadow(4px 4px 0px #000);
+        }
+        
+        h2 {
+          font-family: 'Bangers', cursive;
+          font-size: 2.5em;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          margin: 25px 0 15px;
+          color: #1E88E5; /* Bright Blue - Classic Comic Blue */
+          text-shadow: 3px 3px 0px #000, 0 0 8px rgba(30,136,229,0.4);
+          border: none;
+          padding: 0;
+        }
+        
+        /* Scene Header - Dramatic Comic Style - DC/Marvel Colors */
+        .comic-scene-header {
+          font-family: 'Bangers', cursive;
+          font-size: 2em;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          background: linear-gradient(135deg, #FF1744 0%, #D50000 50%, #C51162 100%); /* Marvel Red Gradient */
+          color: #FFD700; /* Gold text - Classic Comic Gold */
+          padding: 15px 25px;
+          margin: 30px 0 20px;
+          border: 5px solid #000;
+          border-top: 6px solid #FFD700; /* Gold accent */
+          box-shadow: 8px 8px 0px rgba(0,0,0,0.4), 0 0 15px rgba(255,23,68,0.3);
+          text-align: center;
+          position: relative;
+          text-shadow: 2px 2px 0px #000, 4px 4px 0px rgba(0,0,0,0.5);
+        }
+        
+        .comic-scene-header::before {
+          content: '';
+          position: absolute;
+          top: -4px;
+          left: -4px;
+          right: -4px;
+          bottom: -4px;
+          border: 2px solid #fff;
+          z-index: -1;
+        }
+        
+        /* Comic Panel - DC/Marvel Style */
+        .comic-panel {
+          margin: 25px 0;
+          page-break-inside: avoid;
+          background: #FFFFFF;
+          border: 6px solid #000;
+          border-top: 8px solid #FFD700; /* Gold top border - Classic comic style */
+          border-radius: 4px;
+          box-shadow: 10px 10px 0px rgba(0,0,0,0.5), 
+                      15px 15px 0px rgba(0,0,0,0.2),
+                      0 0 0 2px #FFD700; /* Gold outer glow */
+          overflow: hidden;
+          position: relative;
+          padding: 10px;
+          background: linear-gradient(180deg, #FFFFFF 0%, #FAFAFA 100%);
+        }
+        
+        .comic-panel::before {
+          content: '';
+          position: absolute;
+          top: -2px;
+          left: -2px;
+          right: -2px;
+          bottom: -2px;
+          background: linear-gradient(45deg, #FFD700, #FFA000, #FFD700);
+          z-index: -1;
+          border-radius: 4px;
+        }
+        
+        .comic-panel::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          border: 3px solid #000;
+          pointer-events: none;
+          border-radius: 2px;
+        }
+        
+        .comic-image {
+          width: 100%;
+          height: auto;
+          display: block;
+          max-height: 600px;
+          object-fit: cover;
+          background: #e0e0e0;
+          border: 2px solid #000;
+        }
+        
+        .comic-caption {
+          padding: 12px 20px;
+          background: linear-gradient(180deg, #0D47A1 0%, #1565C0 50%, #1976D2 100%); /* DC Blue Gradient */
+          color: #FFD700; /* Gold text */
+          font-size: 1em;
+          font-weight: bold;
+          text-align: center;
+          margin: 0;
+          border-top: 4px solid #000;
+          border-bottom: 2px solid #FFD700; /* Gold accent */
+          font-style: italic;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          text-shadow: 1px 1px 0px #000, 2px 2px 0px rgba(0,0,0,0.3);
+        }
+        
+        /* Speech Bubbles - Classic Comic Style - DC/Marvel */
+        .speech-bubble {
+          background: #FFFFFF;
+          border: 5px solid #000;
+          border-radius: 30px;
+          padding: 18px 25px;
+          margin: 20px 0;
+          position: relative;
+          font-size: 1.2em;
+          font-weight: 900;
+          color: #000;
+          box-shadow: 6px 6px 0px rgba(0,0,0,0.3), 0 0 0 2px #FFD700; /* Gold outline */
+          max-width: 75%;
+          margin-left: auto;
+          margin-right: auto;
+          background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F5 100%);
+        }
+        
+        .speech-bubble::before {
+          content: '';
+          position: absolute;
+          bottom: -15px;
+          left: 30px;
+          width: 0;
+          height: 0;
+          border-left: 15px solid transparent;
+          border-right: 15px solid transparent;
+          border-top: 15px solid #000;
+        }
+        
+        .speech-bubble::after {
+          content: '';
+          position: absolute;
+          bottom: -11px;
+          left: 32px;
+          width: 0;
+          height: 0;
+          border-left: 13px solid transparent;
+          border-right: 13px solid transparent;
+          border-top: 13px solid #fff;
+        }
+        
+        /* Visual Direction - Narration Box - DC/Marvel Yellow */
+        .visual-direction {
+          background: linear-gradient(135deg, #FFD700 0%, #FFC107 50%, #FFB300 100%); /* Classic Comic Yellow */
+          border: 4px solid #000;
+          border-left: 8px solid #FF6F00; /* Orange accent */
+          padding: 18px 20px;
+          margin: 20px 0;
+          font-weight: 900;
+          color: #000;
+          box-shadow: 6px 6px 0px rgba(0,0,0,0.3), 0 0 0 2px #FF6F00;
+          text-shadow: 1px 1px 0px rgba(255,255,255,0.3);
+        }
+        
+        /* Technical Details - Info Box - DC Blue */
+        ul {
+          background: linear-gradient(135deg, #1E88E5 0%, #1565C0 50%, #0D47A1 100%); /* DC Blue Gradient */
+          border: 4px solid #000;
+          border-left: 10px solid #FFD700; /* Gold accent */
+          padding: 18px 30px;
+          margin: 20px 0;
+          list-style: none;
+          box-shadow: 6px 6px 0px rgba(0,0,0,0.3), 0 0 0 2px #FFD700;
+        }
+        
+        li {
+          margin: 10px 0;
+          padding-left: 30px;
+          position: relative;
+          color: #FFFFFF;
+          font-weight: bold;
+          text-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+        }
+        
+        li::before {
+          content: '⚡';
+          position: absolute;
+          left: 0;
+          font-size: 1.5em;
+          color: #FFD700; /* Gold lightning */
+          text-shadow: 2px 2px 0px #000;
+        }
+        
+        /* Flow Link - Thought Bubble Style - Marvel Purple */
+        .flow-link {
+          background: linear-gradient(135deg, #E91E63 0%, #C2185B 50%, #AD1457 100%); /* Marvel Pink/Purple */
+          border: 4px dashed #000;
+          border-top: 5px solid #FFD700; /* Gold accent */
+          padding: 15px 18px;
+          margin: 20px 0;
+          border-radius: 20px;
+          font-style: italic;
+          color: #FFFFFF;
+          font-weight: bold;
+          text-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+          box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+        }
+        
+        /* Page Gutter */
+        .comic-gutter {
+          height: 30px;
+          background: repeating-linear-gradient(
+            45deg,
+            #f5f5f5,
+            #f5f5f5 10px,
+            #e0e0e0 10px,
+            #e0e0e0 20px
+          );
+          margin: 20px 0;
+        }
+        
+        hr {
+          border: none;
+          height: 4px;
+          background: repeating-linear-gradient(
+            90deg,
+            #000,
+            #000 10px,
+            transparent 10px,
+            transparent 20px
+          );
+          margin: 40px 0;
+        }
+        
+        strong {
+          color: #d32f2f;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        em {
+          font-style: italic;
+          color: #555;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="comic-page">
+        ${html}
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * Convert markdown to HTML for raw/plain PDF export
+ */
+async function markdownToHTMLRaw(markdown: string, title: string, data: ExportData): Promise<string> {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const baseUrl = API_BASE_URL.replace('/api', '');
+  
+  let html = markdown
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^\- (.+)$/gm, '<li>$1</li>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  
+  // Wrap list items
+  html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
+  
+  // Process images - simple inline style
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)(?:\*([^*]+)\*)?/g, (match, alt, path, caption) => {
+    const imageUrl = path.startsWith('http') ? path : `${baseUrl}${path}`;
+    const captionHtml = caption ? `<figcaption style="text-align: center; font-style: italic; color: #666; margin-top: 5px;">${caption}</figcaption>` : '';
+    return `
+      <figure style="margin: 20px 0; text-align: center;">
+        <img src="${imageUrl}" alt="${alt || 'Scene image'}" style="max-width: 100%; height: auto; border: 1px solid #ddd;" />
+        ${captionHtml}
+      </figure>
+    `;
+  });
+  
   return `
     <!DOCTYPE html>
     <html>
@@ -215,110 +584,78 @@ async function markdownToHTML(markdown: string, title: string, data: ExportData)
       <style>
         @media print {
           @page {
-            margin: 1.5cm;
+            margin: 2cm;
             size: A4;
           }
           body {
             margin: 0;
             padding: 0;
           }
-          .comic-panel {
-            page-break-inside: avoid;
-            margin: 20px 0;
-          }
         }
         body {
-          font-family: 'Georgia', serif;
-          line-height: 1.6;
-          max-width: 900px;
+          font-family: 'Times New Roman', serif;
+          line-height: 1.8;
+          max-width: 800px;
           margin: 0 auto;
-          padding: 20px;
+          padding: 40px;
           color: #333;
           background: #fff;
         }
         h1 {
-          border-bottom: 3px solid #333;
-          padding-bottom: 10px;
-          margin-bottom: 20px;
           font-size: 2.5em;
+          margin-bottom: 20px;
+          color: #000;
+          border-bottom: 2px solid #333;
+          padding-bottom: 10px;
         }
         h2 {
-          border-bottom: 2px solid #666;
-          padding-bottom: 5px;
+          font-size: 1.8em;
           margin-top: 30px;
           margin-bottom: 15px;
-          font-size: 1.8em;
+          color: #333;
+          border-bottom: 1px solid #666;
+          padding-bottom: 5px;
         }
         h3 {
-          color: #555;
-          margin-top: 25px;
-          margin-bottom: 15px;
           font-size: 1.3em;
-          background: #f5f5f5;
-          padding: 10px;
-          border-left: 4px solid #333;
+          margin-top: 25px;
+          margin-bottom: 10px;
+          color: #555;
         }
         p {
-          margin: 10px 0;
+          margin: 12px 0;
+          text-align: justify;
         }
         ul {
-          margin: 10px 0;
-          padding-left: 30px;
+          margin: 15px 0;
+          padding-left: 40px;
         }
         li {
-          margin: 5px 0;
+          margin: 8px 0;
         }
         hr {
           border: none;
-          border-top: 2px solid #ddd;
+          border-top: 1px solid #ddd;
           margin: 30px 0;
         }
         strong {
           color: #000;
+          font-weight: bold;
         }
-        /* Comic-book style panel */
-        .comic-panel {
-          margin: 25px 0;
-          page-break-inside: avoid;
-          background: #fff;
-          border: 3px solid #000;
-          box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
-          overflow: hidden;
-        }
-        .comic-image {
-          width: 100%;
-          height: auto;
-          display: block;
-          max-height: 500px;
-          object-fit: contain;
-          background: #f9f9f9;
-        }
-        .comic-caption {
-          padding: 10px 15px;
-          background: #000;
-          color: #fff;
-          font-size: 0.9em;
-          font-style: italic;
-          text-align: center;
-          margin: 0;
-          border-top: 2px solid #333;
-        }
-        /* Scene container styling */
-        .scene-container {
-          margin: 30px 0;
-          padding: 20px;
-          border: 2px dashed #ccc;
-          background: #fafafa;
-        }
-        /* Dialogue styling */
         em {
           font-style: italic;
-          color: #555;
+        }
+        figure {
+          margin: 25px 0;
+        }
+        img {
+          max-width: 100%;
+          height: auto;
         }
       </style>
     </head>
     <body>
-      <div>${html}</div>
+      ${html}
     </body>
     </html>
   `;

@@ -22,7 +22,7 @@ import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, sugg
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
 import { authService, tagsService, templatesService, charactersService, sharingService, locationsService, sceneTemplatesService, activityService, archiveProject } from './apiServices';
-import { exportToMarkdown, exportToCSV, exportToPDF, downloadFile, ExportData, exportEpisodeToPDF, EpisodeExportData } from './utils/exportUtils';
+import { exportToMarkdown, exportToCSV, exportToPDF, downloadFile, ExportData, exportEpisodeToPDF, EpisodeExportData, PDFStyle } from './utils/exportUtils';
 import { mediaService, episodesService } from './apiServices';
 
 const DEFAULT_DIRECTOR_SETTINGS: DirectorSettings = {
@@ -942,7 +942,16 @@ const App: React.FC = () => {
           );
           break;
         case 'pdf':
-          await exportToPDF(data);
+          // Ask user for PDF style preference with a better dialog
+          const styleChoice = window.prompt(
+            'Choose PDF Export Style:\n\n' +
+            'Enter "1" for Comic Book Style (DC/Marvel style with panels, speech bubbles, dramatic design)\n' +
+            'Enter "2" for Raw/Plain Style (Traditional document format)\n\n' +
+            'Your choice (1 or 2):',
+            '1'
+          );
+          const pdfStyle: PDFStyle = (styleChoice === '2') ? 'raw' : 'comic';
+          await exportToPDF(data, pdfStyle);
           break;
       }
       
