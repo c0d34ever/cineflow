@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { mediaService } from '../apiServices';
+import { getThumbnailUrl, getFullImageUrl } from '../utils/imageUtils';
 
 interface MediaLibrarySidebarProps {
   projectId: string;
