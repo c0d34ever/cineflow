@@ -32,21 +32,6 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-  useEffect(() => {
-    if (projectId && scene.id) {
-      loadSceneImages();
-    }
-  }, [projectId, scene.id, loadSceneImages]);
-
-  // Memoize close handler to prevent re-renders
-  const handleMediaLibraryClose = useCallback(() => {
-    setShowMediaLibrary(false);
-    // Reload images after a short delay to ensure backend has processed
-    setTimeout(() => {
-      loadSceneImages();
-    }, 500);
-  }, [loadSceneImages]);
-
   const loadSceneImages = useCallback(async () => {
     try {
       setLoadingImages(true);
@@ -62,6 +47,21 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
       setLoadingImages(false);
     }
   }, [scene.id]);
+
+  useEffect(() => {
+    if (projectId && scene.id) {
+      loadSceneImages();
+    }
+  }, [projectId, scene.id, loadSceneImages]);
+
+  // Memoize close handler to prevent re-renders
+  const handleMediaLibraryClose = useCallback(() => {
+    setShowMediaLibrary(false);
+    // Reload images after a short delay to ensure backend has processed
+    setTimeout(() => {
+      loadSceneImages();
+    }, 500);
+  }, [loadSceneImages]);
 
   const primaryImage = sceneImages.find(img => img.is_primary) || sceneImages[0];
 

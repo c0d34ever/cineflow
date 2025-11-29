@@ -290,6 +290,5 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
   );
 };
 
-// Memoize component to prevent unnecessary re-renders
-export default React.memo(MediaLibrary);
+export default MediaLibrary;
 
