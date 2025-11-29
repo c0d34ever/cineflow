@@ -5,6 +5,7 @@ import { mediaService } from '../apiServices';
 import MediaLibrarySidebar from './MediaLibrarySidebar';
 import SceneGallerySidebar from './SceneGallerySidebar';
 import CopyButton from './CopyButton';
+import { getThumbnailUrl, getFullImageUrl } from '../utils/imageUtils';
 
 interface SceneCardProps {
   scene: Scene;
@@ -20,6 +21,8 @@ interface MediaItem {
   id: string;
   file_path: string;
   thumbnail_path: string;
+  imagekit_url?: string | null;
+  imagekit_thumbnail_url?: string | null;
   alt_text?: string;
   is_primary: boolean;
 }
@@ -30,7 +33,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
   const [showGallery, setShowGallery] = useState(false);
   const [loadingImages, setLoadingImages] = useState(false);
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
 
   const loadSceneImages = useCallback(async () => {
     try {
@@ -168,14 +171,18 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
             }}
           >
             <img
-              src={`${API_BASE_URL.replace('/api', '')}${primaryImage?.thumbnail_path || primaryImage?.file_path || scene.thumbnailUrl || ''}`}
+              src={primaryImage ? getThumbnailUrl(primaryImage) : (scene.thumbnailUrl ? `${API_BASE_URL.replace('/api', '')}${scene.thumbnailUrl}` : '')}
               alt={primaryImage?.alt_text || `Scene ${scene.sequenceNumber}`}
               className="w-full h-auto object-cover transition-transform group-hover:scale-105"
               loading="lazy"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                if (primaryImage?.file_path) {
-                  target.src = `${API_BASE_URL.replace('/api', '')}${primaryImage.file_path}`;
+                if (primaryImage) {
+                  // Try full image as fallback
+                  const fullUrl = getFullImageUrl(primaryImage);
+                  if (fullUrl && target.src !== fullUrl) {
+                    target.src = fullUrl;
+                  }
                 }
               }}
             />

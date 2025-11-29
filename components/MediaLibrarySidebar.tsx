@@ -14,6 +14,8 @@ interface MediaItem {
   file_name: string;
   file_path: string;
   thumbnail_path: string;
+  imagekit_url?: string | null;
+  imagekit_thumbnail_url?: string | null;
   alt_text?: string;
   description?: string;
   is_primary: boolean;
@@ -276,13 +278,16 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
                 >
                   <div className="relative aspect-square bg-zinc-900">
                     <img
-                      src={`${API_BASE_URL.replace('/api', '')}${item.thumbnail_path || item.file_path}`}
+                      src={getThumbnailUrl(item)}
                       alt={item.alt_text || item.file_name}
                       className="w-full h-full object-cover"
                       loading="lazy"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        target.src = `${API_BASE_URL.replace('/api', '')}${item.file_path}`;
+                        const fullUrl = getFullImageUrl(item);
+                        if (fullUrl && target.src !== fullUrl) {
+                          target.src = fullUrl;
+                        }
                       }}
                     />
                     {item.is_primary && (

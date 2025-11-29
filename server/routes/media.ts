@@ -6,6 +6,7 @@ import fs from 'fs';
 import { getPool } from '../db/index.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import sharp from 'sharp';
+import { uploadToImageKit, deleteFromImageKit, isImageKitAvailable } from '../services/imagekitService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -135,10 +136,56 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
     // Get image dimensions
     const dimensions = await getImageDimensions(req.file.path);
 
-    // Generate thumbnail
-    const thumbnailName = `thumb-${path.basename(req.file.filename)}`;
-    const thumbnailPath = path.join(thumbnailsDir, thumbnailName);
-    await generateThumbnail(req.file.path, thumbnailPath);
+    // Try ImageKit upload first, fallback to local storage
+    let imagekitUrl: string | null = null;
+    let imagekitThumbnailUrl: string | null = null;
+    let imagekitFileId: string | null = null;
+    let filePath: string;
+    let thumbnailPath: string;
+
+    if (isImageKitAvailable()) {
+      try {
+        const folder = scene_id ? `/cineflow/projects/${project_id}/scenes/${scene_id}` : `/cineflow/projects/${project_id}`;
+        const imagekitResult = await uploadToImageKit(req.file.path, req.file.originalname, folder);
+        
+        if (imagekitResult) {
+          imagekitUrl = imagekitResult.url;
+          imagekitThumbnailUrl = imagekitResult.thumbnailUrl || null;
+          imagekitFileId = imagekitResult.fileId;
+          console.log('✅ Image uploaded to ImageKit:', imagekitUrl);
+          
+          // Still generate local thumbnail for fallback
+          const thumbnailName = `thumb-${path.basename(req.file.filename)}`;
+          thumbnailPath = path.join(thumbnailsDir, thumbnailName);
+          await generateThumbnail(req.file.path, thumbnailPath);
+          filePath = `/uploads/${req.file.filename}`;
+          thumbnailPath = `/uploads/thumbnails/${thumbnailName}`;
+        } else {
+          console.warn('⚠️ ImageKit upload failed, falling back to local storage');
+          // Fall through to local storage
+          const thumbnailName = `thumb-${path.basename(req.file.filename)}`;
+          thumbnailPath = path.join(thumbnailsDir, thumbnailName);
+          await generateThumbnail(req.file.path, thumbnailPath);
+          filePath = `/uploads/${req.file.filename}`;
+          thumbnailPath = `/uploads/thumbnails/${thumbnailName}`;
+        }
+      } catch (error: any) {
+        console.warn('⚠️ ImageKit upload error, falling back to local storage:', error.message);
+        // Fall through to local storage
+        const thumbnailName = `thumb-${path.basename(req.file.filename)}`;
+        thumbnailPath = path.join(thumbnailsDir, thumbnailName);
+        await generateThumbnail(req.file.path, thumbnailPath);
+        filePath = `/uploads/${req.file.filename}`;
+        thumbnailPath = `/uploads/thumbnails/${thumbnailName}`;
+      }
+    } else {
+      // ImageKit not available, use local storage
+      const thumbnailName = `thumb-${path.basename(req.file.filename)}`;
+      thumbnailPath = path.join(thumbnailsDir, thumbnailName);
+      await generateThumbnail(req.file.path, thumbnailPath);
+      filePath = `/uploads/${req.file.filename}`;
+      thumbnailPath = `/uploads/thumbnails/${thumbnailName}`;
+    }
 
     // Generate unique ID
     const mediaId = `media-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -151,22 +198,25 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
     ) as [any[], any];
     const displayOrder = ((orderResult[0]?.max_order || 0) as number) + 1;
 
-    // Save to database
+    // Save to database (with ImageKit URLs if available)
     const [result] = await pool.query(
-      `INSERT INTO media (id, project_id, scene_id, user_id, file_name, file_path, file_size, mime_type, width, height, thumbnail_path, alt_text, description, is_primary, display_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO media (id, project_id, scene_id, user_id, file_name, file_path, file_size, mime_type, width, height, thumbnail_path, imagekit_url, imagekit_thumbnail_url, imagekit_file_id, alt_text, description, is_primary, display_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         mediaId,
         project_id,
         scene_id || null,
         userId,
         req.file.originalname,
-        `/uploads/${req.file.filename}`,
+        filePath,
         req.file.size,
         req.file.mimetype,
         dimensions.width,
         dimensions.height,
-        `/uploads/thumbnails/${thumbnailName}`,
+        thumbnailPath,
+        imagekitUrl,
+        imagekitThumbnailUrl,
+        imagekitFileId,
         alt_text || null,
         description || null,
         is_primary === 'true' ? 1 : 0,
@@ -174,7 +224,14 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
       ]
     ) as [any, any];
 
-    console.log('Media saved:', { mediaId, project_id, scene_id: scene_id || null, file_path: `/uploads/${req.file.filename}` });
+    console.log('Media saved:', { 
+      mediaId, 
+      project_id, 
+      scene_id: scene_id || null, 
+      file_path: filePath,
+      imagekit_url: imagekitUrl,
+      storage: imagekitUrl ? 'ImageKit' : 'Local'
+    });
 
     // If this is marked as primary, unset others and update scene thumbnail
     if (is_primary === 'true') {
@@ -183,11 +240,12 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
         [project_id, scene_id || null, mediaId]
       );
       
-      // Update scene thumbnail_url if this is for a scene
+      // Update scene thumbnail_url if this is for a scene (prefer ImageKit URL)
       if (scene_id) {
+        const thumbnailUrl = imagekitThumbnailUrl || thumbnailPath;
         await pool.query(
           'UPDATE scenes SET thumbnail_url = ? WHERE id = ?',
-          [`/uploads/thumbnails/${thumbnailName}`, scene_id]
+          [thumbnailUrl, scene_id]
         );
       }
     }
@@ -197,8 +255,10 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
       project_id,
       scene_id: scene_id || null,
       file_name: req.file.originalname,
-      file_path: `/uploads/${req.file.filename}`,
-      thumbnail_path: `/uploads/thumbnails/${thumbnailName}`,
+      file_path: filePath,
+      thumbnail_path: thumbnailPath,
+      imagekit_url: imagekitUrl,
+      imagekit_thumbnail_url: imagekitThumbnailUrl,
       file_size: req.file.size,
       mime_type: req.file.mimetype,
       width: dimensions.width,
@@ -406,9 +466,9 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response,
     const { id } = req.params;
     const pool = getPool();
 
-    // Get file paths before deleting
+    // Get file paths and ImageKit info before deleting
     const [media] = await pool.query(
-      'SELECT file_path, thumbnail_path FROM media WHERE id = ?',
+      'SELECT file_path, thumbnail_path, imagekit_file_id FROM media WHERE id = ?',
       [id]
     ) as [any[], any];
 
@@ -416,18 +476,39 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response,
       return res.status(404).json({ error: 'Media not found' });
     }
 
+    const mediaItem = media[0];
+
+    // Delete from ImageKit if available
+    if (mediaItem.imagekit_file_id) {
+      try {
+        await deleteFromImageKit(mediaItem.imagekit_file_id);
+        console.log('✅ Deleted from ImageKit:', mediaItem.imagekit_file_id);
+      } catch (error: any) {
+        console.warn('⚠️ Failed to delete from ImageKit:', error.message);
+        // Continue with local file deletion
+      }
+    }
+
     // Delete from database
     await pool.query('DELETE FROM media WHERE id = ?', [id]);
 
-    // Delete files
-    const filePath = path.join(__dirname, '../..', media[0].file_path);
-    const thumbPath = path.join(__dirname, '../..', media[0].thumbnail_path);
+    // Delete local files (if they exist)
+    const filePath = path.join(__dirname, '../..', mediaItem.file_path);
+    const thumbPath = path.join(__dirname, '../..', mediaItem.thumbnail_path);
 
     if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error: any) {
+        console.warn('⚠️ Failed to delete local file:', error.message);
+      }
     }
     if (fs.existsSync(thumbPath)) {
-      fs.unlinkSync(thumbPath);
+      try {
+        fs.unlinkSync(thumbPath);
+      } catch (error: any) {
+        console.warn('⚠️ Failed to delete local thumbnail:', error.message);
+      }
     }
 
     res.json({ success: true });

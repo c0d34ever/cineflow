@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { mediaService } from '../apiServices';
+import { getThumbnailUrl, getFullImageUrl } from '../utils/imageUtils';
 
 interface SceneGallerySidebarProps {
   sceneId: string;
@@ -13,6 +14,8 @@ interface MediaItem {
   file_name: string;
   file_path: string;
   thumbnail_path: string;
+  imagekit_url?: string | null;
+  imagekit_thumbnail_url?: string | null;
   alt_text?: string;
   description?: string;
   is_primary: boolean;
@@ -169,13 +172,16 @@ const SceneGallerySidebar: React.FC<SceneGallerySidebarProps> = ({ sceneId, proj
                   {/* Image */}
                   <div className="relative aspect-square bg-zinc-900 group">
                     <img
-                      src={`${API_BASE_URL.replace('/api', '')}${item.thumbnail_path || item.file_path}`}
+                      src={getThumbnailUrl(item)}
                       alt={item.alt_text || item.file_name}
                       className="w-full h-full object-cover"
                       loading="lazy"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        target.src = `${API_BASE_URL.replace('/api', '')}${item.file_path}`;
+                        const fullUrl = getFullImageUrl(item);
+                        if (fullUrl && target.src !== fullUrl) {
+                          target.src = fullUrl;
+                        }
                       }}
                     />
                     
@@ -254,7 +260,7 @@ const SceneGallerySidebar: React.FC<SceneGallerySidebarProps> = ({ sceneId, proj
               {/* Preview */}
               <div className="relative aspect-video bg-zinc-800 rounded overflow-hidden">
                 <img
-                  src={`${API_BASE_URL.replace('/api', '')}${editingMedia.thumbnail_path || editingMedia.file_path}`}
+                  src={getThumbnailUrl(editingMedia)}
                   alt={editingMedia.alt_text || editingMedia.file_name}
                   className="w-full h-full object-contain"
                 />
