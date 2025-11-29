@@ -1451,26 +1451,6 @@ async function generateComicHTML(
     }
   }
   
-  // Old code (removed):
-  /*if (scenes.length > 0) {
-    const firstScene = scenes[0];
-    const firstSceneMedia = sceneImagesMap.get(firstScene.id);
-    if (firstSceneMedia && firstSceneMedia.length > 0) {
-      const coverImage = firstSceneMedia.find(img => img.is_primary) || firstSceneMedia[0];
-      // Prefer ImageKit URL, fallback to local
-      if (coverImage.imagekit_url) {
-        coverImageUrl = coverImage.imagekit_url;
-      } else if (coverImage.imagekit_thumbnail_url) {
-        coverImageUrl = coverImage.imagekit_thumbnail_url;
-      } else {
-        const localPath = coverImage.file_path || coverImage.thumbnail_path;
-        if (localPath) {
-          const filePath = localPath.startsWith('/') ? localPath : `/${localPath}`;
-          coverImageUrl = `${baseUrl}${filePath}`;
-        }
-      }
-    }
-  }
   
   // Generate cover page HTML
   const coverPage = `
@@ -1517,23 +1497,73 @@ async function generateComicHTML(
       box-sizing: border-box;
     }
     
+    /* 90s Comic Book Paper Texture */
+    @keyframes paperGrain {
+      0%, 100% { background-position: 0% 0%; }
+      50% { background-position: 100% 100%; }
+    }
+    
     body {
       font-family: 'Comic Neue', cursive, sans-serif;
       line-height: 1.6;
       margin: 0;
       padding: 0;
-      background: #f0f0f0;
+      background: #e8d5b7; /* Newsprint tan */
+      background-image: 
+        radial-gradient(circle at 1px 1px, rgba(0,0,0,0.15) 1px, transparent 0),
+        radial-gradient(circle at 2px 2px, rgba(0,0,0,0.1) 1px, transparent 0);
+      background-size: 20px 20px, 40px 40px;
+      background-position: 0 0, 10px 10px;
+      animation: paperGrain 20s linear infinite;
+      position: relative;
     }
     
-    /* COVER PAGE STYLING */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        repeating-linear-gradient(
+          0deg,
+          rgba(0,0,0,0.03) 0px,
+          transparent 1px,
+          transparent 2px,
+          rgba(0,0,0,0.03) 3px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          rgba(0,0,0,0.03) 0px,
+          transparent 1px,
+          transparent 2px,
+          rgba(0,0,0,0.03) 3px
+        );
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.4;
+    }
+    
+    /* COVER PAGE STYLING - 90s Style */
     .comic-cover-page {
       width: 100%;
       min-height: 100vh;
       position: relative;
       display: flex;
       flex-direction: column;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      background: linear-gradient(135deg, #8B0000 0%, #DC143C 30%, #FF4500 60%, #FF6347 100%);
       overflow: hidden;
+      border: 8px solid #000;
+      box-shadow: 
+        inset 0 0 100px rgba(0,0,0,0.5),
+        0 0 50px rgba(0,0,0,0.8),
+        0 20px 60px rgba(0,0,0,0.6);
+      /* Halftone dot pattern overlay */
+      background-image: 
+        radial-gradient(circle, rgba(0,0,0,0.2) 1px, transparent 1px),
+        linear-gradient(135deg, #8B0000 0%, #DC143C 30%, #FF4500 60%, #FF6347 100%);
+      background-size: 8px 8px, 100% 100%;
     }
     
     .cover-image-container {
@@ -1547,7 +1577,30 @@ async function generateComicHTML(
       width: 100%;
       height: 100%;
       object-fit: cover;
-      filter: brightness(0.7) contrast(1.2);
+      filter: 
+        brightness(0.85) 
+        contrast(1.4) 
+        saturate(1.3)
+        sepia(0.1);
+      /* Add halftone effect */
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+      position: relative;
+    }
+    
+    .cover-image::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 2px 2px, rgba(0,0,0,0.15) 1px, transparent 0),
+        radial-gradient(circle at 6px 6px, rgba(0,0,0,0.1) 1px, transparent 0);
+      background-size: 4px 4px, 12px 12px;
+      pointer-events: none;
+      mix-blend-mode: multiply;
     }
     
     .cover-overlay {
@@ -1571,13 +1624,22 @@ async function generateComicHTML(
     
     .cover-title {
       font-family: 'Bangers', cursive;
-      font-size: 5em;
+      font-size: 5.5em;
       text-transform: uppercase;
-      letter-spacing: 6px;
+      letter-spacing: 8px;
       color: #FFD700;
-      text-shadow: 4px 4px 0px #000, 8px 8px 0px rgba(0,0,0,0.5), 0 0 20px rgba(255,215,0,0.5);
+      text-shadow: 
+        6px 6px 0px #000, 
+        8px 8px 0px #8B0000,
+        12px 12px 0px rgba(0,0,0,0.8),
+        0 0 30px rgba(255,215,0,0.6),
+        0 0 60px rgba(255,215,0,0.3);
       margin-bottom: 20px;
       line-height: 1.1;
+      transform: rotate(-1deg);
+      filter: drop-shadow(4px 4px 0px #000);
+      -webkit-text-stroke: 2px #000;
+      text-stroke: 2px #000;
     }
     
     .cover-genre {
@@ -1598,12 +1660,40 @@ async function generateComicHTML(
       line-height: 1.4;
     }
     
-    /* MAIN CONTENT */
+    /* MAIN CONTENT - 90s Comic Style */
     .comic-content {
       max-width: 1000px;
       margin: 0 auto;
-      padding: 40px 20px;
-      background: #fff;
+      padding: 30px 20px;
+      background: #f5e6d3; /* Slightly off-white newsprint */
+      background-image: 
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0,0,0,0.02) 2px,
+          rgba(0,0,0,0.02) 4px
+        );
+      border-left: 3px solid #000;
+      border-right: 3px solid #000;
+      box-shadow: 
+        inset 0 0 50px rgba(0,0,0,0.1),
+        0 0 20px rgba(0,0,0,0.3);
+      position: relative;
+    }
+    
+    .comic-content::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 1px 1px, rgba(0,0,0,0.08) 1px, transparent 0);
+      background-size: 3px 3px;
+      pointer-events: none;
+      opacity: 0.6;
     }
     
     .comic-panel-number {
@@ -1618,22 +1708,31 @@ async function generateComicHTML(
       letter-spacing: 2px;
     }
     
-    /* IMPROVED SPEECH BUBBLES - Marvel/DC Style */
+    /* AUTHENTIC 90s SPEECH BUBBLES */
     .speech-bubble {
       background: #FFFFFF;
-      border: 4px solid #000;
-      border-radius: 25px;
-      padding: 15px 20px;
+      border: 5px solid #000;
+      border-radius: 30px;
+      padding: 18px 25px;
       margin: 20px auto;
       position: relative;
       font-family: 'Comic Neue', cursive;
-      font-size: 1.3em;
+      font-size: 1.4em;
       font-weight: bold;
       color: #000;
-      box-shadow: 4px 4px 0px rgba(0,0,0,0.3), inset 0 0 0 2px #fff;
+      box-shadow: 
+        5px 5px 0px rgba(0,0,0,0.4),
+        inset 0 0 0 3px #fff,
+        0 0 10px rgba(0,0,0,0.2);
       max-width: 75%;
-      line-height: 1.4;
+      line-height: 1.5;
       word-wrap: break-word;
+      transform: rotate(-0.5deg);
+      filter: drop-shadow(2px 2px 0px #000);
+      /* Halftone effect */
+      background-image: 
+        radial-gradient(circle at 2px 2px, rgba(0,0,0,0.05) 1px, transparent 0);
+      background-size: 4px 4px;
     }
     
     .speech-bubble::before {
@@ -1685,15 +1784,24 @@ async function generateComicHTML(
     
     .sound-effect {
       font-family: 'Bangers', cursive;
-      font-size: 4em;
-      color: #DC143C;
-      text-shadow: 4px 4px 0px #000, 6px 6px 0px rgba(0,0,0,0.3);
+      font-size: 5em;
+      color: #FF0000;
+      text-shadow: 
+        6px 6px 0px #000,
+        8px 8px 0px #8B0000,
+        10px 10px 0px rgba(0,0,0,0.5),
+        0 0 20px rgba(255,0,0,0.5);
       text-align: center;
-      margin: 25px 0;
-      transform: rotate(-8deg) scale(1.1);
+      margin: 30px 0;
+      transform: rotate(-12deg) scale(1.2) skewX(-5deg);
       display: inline-block;
-      letter-spacing: 3px;
+      letter-spacing: 5px;
       font-weight: normal;
+      -webkit-text-stroke: 3px #000;
+      text-stroke: 3px #000;
+      filter: drop-shadow(4px 4px 0px #000) brightness(1.2);
+      position: relative;
+      z-index: 10;
     }
     
     .comic-caption {
@@ -1729,31 +1837,75 @@ async function generateComicHTML(
     
     .comic-scene-header {
       font-family: 'Bangers', cursive;
-      font-size: 2.5em;
+      font-size: 3em;
       text-transform: uppercase;
-      letter-spacing: 3px;
-      background: linear-gradient(135deg, #FF1744 0%, #D50000 50%, #C51162 100%);
+      letter-spacing: 5px;
+      background: linear-gradient(135deg, #DC143C 0%, #FF4500 50%, #FF6347 100%);
       color: #FFD700;
-      text-shadow: 4px 4px 0px #000, 6px 6px 0px rgba(0,0,0,0.5);
-      margin: 50px 0 30px;
-      padding: 20px 30px;
-      border: 6px solid #000;
-      border-top: 8px solid #FFD700;
-      box-shadow: 10px 10px 0px rgba(0,0,0,0.4), inset 0 0 0 2px rgba(255,215,0,0.3);
+      text-shadow: 
+        5px 5px 0px #000,
+        7px 7px 0px #8B0000,
+        10px 10px 0px rgba(0,0,0,0.8);
+      margin: 50px 0 35px;
+      padding: 25px 35px;
+      border: 8px solid #000;
+      border-top: 10px solid #FFD700;
+      border-bottom: 10px solid #FFD700;
+      box-shadow: 
+        12px 12px 0px rgba(0,0,0,0.6),
+        inset 0 0 0 3px rgba(255,215,0,0.4),
+        0 0 30px rgba(255,69,0,0.4);
       text-align: center;
       position: relative;
+      transform: rotate(-0.5deg);
+      -webkit-text-stroke: 2px #000;
+      text-stroke: 2px #000;
+      /* Halftone overlay */
+      background-image: 
+        radial-gradient(circle, rgba(0,0,0,0.2) 1px, transparent 1px),
+        linear-gradient(135deg, #DC143C 0%, #FF4500 50%, #FF6347 100%);
+      background-size: 6px 6px, 100% 100%;
     }
     
-    /* COMIC BOOK PAGE LAYOUTS - Marvel/DC Style */
+    /* COMIC BOOK PAGE LAYOUTS - 90s Style */
     .comic-page {
       width: 100%;
       min-height: 100vh;
       display: grid;
-      gap: 15px;
-      padding: 20px;
-      background: #fff;
+      gap: 20px;
+      padding: 25px;
+      background: #f5e6d3; /* Newsprint color */
+      background-image: 
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0,0,0,0.03) 2px,
+          rgba(0,0,0,0.03) 4px
+        ),
+        radial-gradient(circle at 1px 1px, rgba(0,0,0,0.1) 1px, transparent 0);
+      background-size: 100% 100%, 4px 4px;
       page-break-after: always;
-      margin-bottom: 20px;
+      margin-bottom: 25px;
+      border: 4px solid #000;
+      box-shadow: 
+        inset 0 0 60px rgba(0,0,0,0.15),
+        0 0 30px rgba(0,0,0,0.4);
+      position: relative;
+    }
+    
+    .comic-page::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 2px 2px, rgba(0,0,0,0.1) 1px, transparent 0);
+      background-size: 5px 5px;
+      pointer-events: none;
+      opacity: 0.5;
     }
     
     .comic-page-grid-1 {
@@ -1794,17 +1946,29 @@ async function generateComicHTML(
       grid-template-rows: 1fr 1fr;
     }
     
-    /* PANEL FRAMES - Authentic Comic Style */
+    /* PANEL FRAMES - 90s Authentic Comic Style */
     .comic-panel-frame {
       position: relative;
       background: #fff;
-      border: 5px solid #000;
-      border-radius: 3px;
-      padding: 10px;
+      border: 6px solid #000;
+      border-radius: 0;
+      padding: 8px;
       overflow: hidden;
-      box-shadow: 3px 3px 0px rgba(0,0,0,0.3);
+      box-shadow: 
+        6px 6px 0px rgba(0,0,0,0.5),
+        inset 0 0 0 2px rgba(255,255,255,0.3),
+        0 0 15px rgba(0,0,0,0.3);
       display: flex;
       flex-direction: column;
+      transform: rotate(0.3deg);
+      /* Halftone texture */
+      background-image: 
+        radial-gradient(circle at 1px 1px, rgba(0,0,0,0.08) 1px, transparent 0);
+      background-size: 3px 3px;
+    }
+    
+    .comic-panel-frame:nth-child(even) {
+      transform: rotate(-0.3deg);
     }
     
     .comic-panel-image {
@@ -1821,19 +1985,48 @@ async function generateComicHTML(
       width: 100%;
       height: 100%;
       object-fit: cover;
-      opacity: 0.9;
+      opacity: 0.95;
+      filter: 
+        contrast(1.3) 
+        saturate(1.2) 
+        brightness(0.95)
+        sepia(0.05);
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+      position: relative;
+    }
+    
+    .comic-panel-img::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 2px 2px, rgba(0,0,0,0.12) 1px, transparent 0);
+      background-size: 4px 4px;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+      opacity: 0.7;
     }
     
     .comic-panel-content {
       position: relative;
       z-index: 1;
-      padding: 10px;
-      background: rgba(255, 255, 255, 0.85);
-      border-radius: 5px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 0;
+      border: 2px solid rgba(0,0,0,0.2);
       min-height: 100px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+      /* Subtle halftone */
+      background-image: 
+        radial-gradient(circle at 1px 1px, rgba(0,0,0,0.03) 1px, transparent 0);
+      background-size: 2px 2px;
     }
     
     .comic-image-panel {
