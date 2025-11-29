@@ -1070,6 +1070,14 @@ async function generateComicHTML(
   html = html.replace(/^SFX:\s*$/gim, '');
   html = html.replace(/^NARRATION:\s*$/gim, '');
   
+  // Fix duplicated scene headers (SSCCEENNEE -> Scene)
+  html = html.replace(/S{2,}C{2,}E{2,}N{2,}E{2,}/gi, 'Scene');
+  html = html.replace(/([SCEN])\1{2,}/gi, '$1'); // Remove duplicate letters in scene headers
+  
+  // Remove scene headers that appear in the middle of content (they should only be at the start)
+  // This handles cases where Gemini outputs scene headers in the wrong places
+  html = html.replace(/\n(Scene\s+\d+\s*\([^)]+\):)\s*\n(?=PANEL)/gi, '\n');
+  
   // Split into scenes
   const sceneSections = html.split(/(?=Scene\s+\d+)/i);
   let finalHTML = '';
@@ -1078,7 +1086,7 @@ async function generateComicHTML(
     const sceneSection = sceneSections[sceneIdx].trim();
     if (!sceneSection) continue;
     
-    // Extract scene number and ID
+    // Extract scene number and ID from the FIRST occurrence only
     const sceneMatch = sceneSection.match(/Scene\s+(\d+)\s*\(([^)]+)\)/i);
     if (!sceneMatch) continue;
     
@@ -1106,8 +1114,11 @@ async function generateComicHTML(
       }
     }
     
+    // Remove the scene header from the content (we already added it above)
+    let cleanedSection = sceneSection.replace(/Scene\s+\d+\s*\([^)]+\):\s*/i, '');
+    
     // Process panels in this scene
-    const panelSections = sceneSection.split(/(?=PANEL\s*\d+)/i);
+    const panelSections = cleanedSection.split(/(?=PANEL\s*\d+)/i);
     
     for (const panelSection of panelSections) {
       const panelMatch = panelSection.match(/PANEL\s*(\d+)/i);
@@ -1118,6 +1129,11 @@ async function generateComicHTML(
       
       // Extract content after panel marker
       let panelContent = panelSection.replace(/PANEL\s*\d+/i, '').trim();
+      
+      // Remove scene headers that appear in panel content (they shouldn't be there)
+      panelContent = panelContent.replace(/Scene\s+\d+\s*\([^)]+\):\s*/gi, '');
+      panelContent = panelContent.replace(/SSCCEENNEE\s+\d+/gi, ''); // Remove duplicated scene headers
+      panelContent = panelContent.replace(/\(\([^)]+\)\)/g, ''); // Remove duplicate scene IDs like ((SCENE_003))
       
       // Remove any remaining unwanted markers (aggressive cleaning)
       panelContent = panelContent.replace(/"comic-panel-number"/gi, '');
@@ -1130,21 +1146,75 @@ async function generateComicHTML(
       panelContent = panelContent.replace(/^NARRATION:\s*$/gim, '');
       panelContent = panelContent.replace(/^SFX:\s*SILENCE$/gim, '');
       panelContent = panelContent.replace(/^SILENCE$/gim, '');
-      panelContent = panelContent.replace(/data-tone="\s*whispering, chilling\s*"/gi, 'data-tone="whispering, chilling"');
+      
+      // Fix broken dialogue patterns like "speech-bubble data-tone="
+      panelContent = panelContent.replace(/"speech-bubble\s+data-tone="\s*"([^"]*)"\s*([^"]*)/gi, '');
+      panelContent = panelContent.replace(/"speech-bubble\s+data-tone="\s*([^"]*)"\s*([^"]*)/gi, '');
+      panelContent = panelContent.replace(/speech-bubble\s+data-tone="\s*([^"]*)"\s*([^"]*)/gi, '');
       
       // Process dialogue with tone (handle multiline and broken formats)
-      panelContent = panelContent.replace(/([A-Z][a-zA-Z\s]+)\s*\(([^)]+)\):\s*"([^"]+)"([^"]*)/g, 
-        (match, char, tone, dialogue, rest) => {
-          // Handle broken dialogue that might be split
-          const fullDialogue = dialogue + (rest.includes('"') ? '' : rest.replace(/"/g, ''));
+      // First, handle the broken format like: "whispering, chilling>Kaalak:" "dialogue"
+      panelContent = panelContent.replace(/"([^"]+)\s*>\s*([A-Z][a-zA-Z\s]+):"\s*"([^"]*)"([^"]*)/g, 
+        (match, tone, char, dialogue, rest) => {
+          const fullDialogue = dialogue + (rest ? rest.replace(/"/g, '').trim() : '');
           return `<div class="speech-bubble" data-tone="${tone.trim()}"><strong>${char.trim()}</strong>: "${fullDialogue.trim()}"</div>`;
         });
       
-      // Process simple dialogue (quoted text) - handle broken quotes
+      // Then handle normal format: Character (tone): "dialogue"
+      panelContent = panelContent.replace(/([A-Z][a-zA-Z\s]+)\s*\(([^)]+)\):\s*"([^"]*)"([^"]*)/g, 
+        (match, char, tone, dialogue, rest) => {
+          // Handle broken dialogue that might be split
+          const fullDialogue = dialogue + (rest && !rest.includes('"') ? rest.replace(/"/g, '').trim() : '');
+          if (fullDialogue.trim()) {
+            return `<div class="speech-bubble" data-tone="${tone.trim()}"><strong>${char.trim()}</strong>: "${fullDialogue.trim()}"</div>`;
+          }
+          return match;
+        });
+      
+      // Handle dialogue that's split across lines like: "whispering, chilling>Kaalak:" on one line, then dialogue on next
+      const lines = panelContent.split('\n');
+      let processedLines: string[] = [];
+      let pendingDialogue: { tone: string; char: string } | null = null;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Check if this line has a dialogue start pattern
+        const dialogueStartMatch = line.match(/"([^"]+)\s*>\s*([A-Z][a-zA-Z\s]+):"\s*$/);
+        if (dialogueStartMatch) {
+          pendingDialogue = { tone: dialogueStartMatch[1], char: dialogueStartMatch[2] };
+          continue; // Skip this line, we'll use the next one
+        }
+        
+        // If we have pending dialogue and this line looks like dialogue content
+        if (pendingDialogue && line.match(/^"[^"]*"/)) {
+          const dialogueMatch = line.match(/"([^"]*)"/);
+          if (dialogueMatch) {
+            processedLines.push(`<div class="speech-bubble" data-tone="${pendingDialogue.tone.trim()}"><strong>${pendingDialogue.char.trim()}</strong>: "${dialogueMatch[1].trim()}"</div>`);
+            pendingDialogue = null;
+            continue;
+          }
+        }
+        
+        // Reset pending dialogue if we hit a new panel or scene marker
+        if (line.match(/^(PANEL|Scene)/i)) {
+          pendingDialogue = null;
+        }
+        
+        processedLines.push(line);
+      }
+      
+      panelContent = processedLines.join('\n');
+      
+      // Process simple dialogue (quoted text) - handle broken quotes, but skip if already processed
       panelContent = panelContent.replace(/"([^"]*)"([^"]*)/g, (match, part1, part2) => {
+        // Skip if it's already in a speech bubble
+        if (match.includes('speech-bubble')) return match;
+        // Skip if it's a sound effect (all caps)
+        if (part1.match(/^[A-Z\s!.,-]+$/)) return match;
         if (part1.length > 5 && !part1.includes('(') && !part1.match(/^[A-Z\s!]+$/)) {
-          const fullDialogue = part1 + (part2 ? part2.replace(/"/g, '') : '');
-          if (!panelContent.includes(`<div class="speech-bubble">"${fullDialogue}"</div>`)) {
+          const fullDialogue = part1 + (part2 ? part2.replace(/"/g, '').trim() : '');
+          if (fullDialogue.length > 5 && !panelContent.includes(`<div class="speech-bubble">"${fullDialogue}"</div>`)) {
             return `<div class="speech-bubble">"${fullDialogue.trim()}"</div>`;
           }
         }
@@ -1190,6 +1260,11 @@ async function generateComicHTML(
           continue;
         }
         
+        // Remove scene headers that appear in panel content
+        if (trimmed.match(/^Scene\s+\d+/i) || trimmed.match(/^SSCCEENNEE/i)) {
+          continue; // Skip scene headers in panel content
+        }
+        
         // Skip if it's just "SILENCE" or similar standalone text
         if (trimmed.match(/^(SILENCE|Silence|silence)$/i)) {
           continue;
@@ -1197,6 +1272,11 @@ async function generateComicHTML(
         
         // Skip if it starts with unwanted patterns
         if (trimmed.match(/^(SFX|NARRATION|comic-panel-number)/i)) {
+          continue;
+        }
+        
+        // Remove broken HTML attributes that appear as text
+        if (trimmed.match(/^(speech-bubble|data-tone=)/i)) {
           continue;
         }
         
@@ -1388,7 +1468,7 @@ async function generateComicHTML(
       font-family: 'Bangers', cursive;
       font-size: 2.2em;
       text-transform: uppercase;
-      letter-spacing: 3px;
+      letter-spacing: 2px;
       background: linear-gradient(135deg, #FF1744 0%, #D50000 50%, #C51162 100%);
       color: #FFD700;
       text-shadow: 3px 3px 0px #000, 5px 5px 0px rgba(0,0,0,0.5);
