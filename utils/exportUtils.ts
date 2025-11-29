@@ -212,7 +212,7 @@ async function convertImagesToBase64(html: string): Promise<string> {
     } else {
       // Relative URL - construct full URL
       const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
-      const baseUrl = API_BASE_URL.replace('/api', '');
+      const baseUrl = API_BASE_URL.replace('/api', '').replace(/\/$/, '');
       const fullUrl = imageUrl.startsWith('/') ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`;
       
       try {

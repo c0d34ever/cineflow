@@ -1035,7 +1035,12 @@ async function generateComicHTML(
   const { getPool } = await import('../db/index.js');
   const pool = getPool();
   // Use CORS_ORIGIN for frontend URL, or construct from API_URL
-  const API_BASE_URL = process.env.CORS_ORIGIN || process.env.API_URL || 'http://localhost:5000';
+  // CORS_ORIGIN can be comma-separated, so take the first one
+  let API_BASE_URL = process.env.CORS_ORIGIN || process.env.API_URL || 'http://localhost:5000';
+  if (API_BASE_URL.includes(',')) {
+    // Take the first origin if multiple are provided
+    API_BASE_URL = API_BASE_URL.split(',')[0].trim();
+  }
   const baseUrl = API_BASE_URL.replace('/api', '').replace(/\/$/, ''); // Remove trailing slash
   
   // Fetch images for all scenes
@@ -1344,6 +1349,34 @@ async function generateComicHTML(
   html = html.replace(/NARRATION:\s*/gi, '');
   html = html.replace(/\n{3,}/g, '\n\n');
 
+  // Get first scene image for cover page
+  let coverImageUrl = '';
+  if (scenes.length > 0) {
+    const firstScene = scenes[0];
+    const firstSceneMedia = sceneImagesMap.get(firstScene.id);
+    if (firstSceneMedia && firstSceneMedia.length > 0) {
+      const coverImage = firstSceneMedia.find(img => img.is_primary) || firstSceneMedia[0];
+      coverImageUrl = coverImage.file_path.startsWith('http') 
+        ? coverImage.file_path 
+        : `${baseUrl}${coverImage.file_path.startsWith('/') ? coverImage.file_path : '/' + coverImage.file_path}`;
+    }
+  }
+  
+  // Generate cover page HTML
+  const coverPage = `
+    <div class="comic-cover-page">
+      <div class="cover-image-container">
+        ${coverImageUrl ? `<img src="${coverImageUrl}" alt="Cover" class="cover-image" />` : ''}
+        <div class="cover-overlay"></div>
+      </div>
+      <div class="cover-content">
+        <div class="cover-title">${projectContext.title || 'Untitled'}</div>
+        ${projectContext.genre ? `<div class="cover-genre">${projectContext.genre}</div>` : ''}
+        ${projectContext.plotSummary ? `<div class="cover-tagline">${projectContext.plotSummary.substring(0, 150)}${projectContext.plotSummary.length > 150 ? '...' : ''}</div>` : ''}
+      </div>
+    </div>
+  `;
+  
   // Wrap in comic book HTML structure
   return `
 <!DOCTYPE html>
@@ -1351,75 +1384,172 @@ async function generateComicHTML(
 <head>
   <title>${projectContext.title} - Comic Book</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&family=Creepster&display=swap');
     
     @media print {
       @page {
-        margin: 1cm;
+        margin: 0;
         size: A4;
+      }
+      .comic-cover-page {
+        page-break-after: always;
+        height: 100vh;
       }
       .comic-page {
         page-break-after: always;
       }
+      .comic-scene-section {
+        page-break-inside: avoid;
+      }
+    }
+    
+    * {
+      box-sizing: border-box;
     }
     
     body {
       font-family: 'Comic Neue', cursive, sans-serif;
       line-height: 1.6;
-      max-width: 1000px;
-      margin: 0 auto;
-      padding: 20px;
-      background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F5 100%);
+      margin: 0;
+      padding: 0;
+      background: #f0f0f0;
     }
     
-    h1 {
+    /* COVER PAGE STYLING */
+    .comic-cover-page {
+      width: 100%;
+      min-height: 100vh;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      overflow: hidden;
+    }
+    
+    .cover-image-container {
+      position: relative;
+      width: 100%;
+      height: 70vh;
+      overflow: hidden;
+    }
+    
+    .cover-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: brightness(0.7) contrast(1.2);
+    }
+    
+    .cover-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%);
+    }
+    
+    .cover-content {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 40px;
+      background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 100%);
+      z-index: 10;
+    }
+    
+    .cover-title {
       font-family: 'Bangers', cursive;
-      font-size: 4em;
+      font-size: 5em;
       text-transform: uppercase;
-      letter-spacing: 4px;
-      text-align: center;
-      margin: 30px 0 40px;
-      color: #DC143C;
-      text-shadow: 4px 4px 0px #000, 8px 8px 0px rgba(0,0,0,0.3);
+      letter-spacing: 6px;
+      color: #FFD700;
+      text-shadow: 4px 4px 0px #000, 8px 8px 0px rgba(0,0,0,0.5), 0 0 20px rgba(255,215,0,0.5);
+      margin-bottom: 20px;
+      line-height: 1.1;
+    }
+    
+    .cover-genre {
+      font-family: 'Bangers', cursive;
+      font-size: 2em;
+      color: #FF6B6B;
+      text-shadow: 2px 2px 0px #000;
+      margin-bottom: 15px;
+      letter-spacing: 3px;
+    }
+    
+    .cover-tagline {
+      font-family: 'Comic Neue', cursive;
+      font-size: 1.3em;
+      color: #fff;
+      text-shadow: 2px 2px 0px #000;
+      font-style: italic;
+      line-height: 1.4;
+    }
+    
+    /* MAIN CONTENT */
+    .comic-content {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #fff;
     }
     
     .comic-panel-number {
       font-family: 'Bangers', cursive;
-      font-size: 1.5em;
+      font-size: 1.8em;
       color: #1E88E5;
       text-shadow: 2px 2px 0px #000;
-      margin: 30px 0 10px;
-      border-bottom: 3px solid #000;
-      padding-bottom: 5px;
+      margin: 30px 0 15px;
+      border-bottom: 4px solid #000;
+      padding-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
     }
     
+    /* IMPROVED SPEECH BUBBLES - Marvel/DC Style */
     .speech-bubble {
-      background: #fff;
-      border: 5px solid #000;
-      border-radius: 30px;
-      padding: 18px 25px;
-      margin: 20px 0;
+      background: #FFFFFF;
+      border: 4px solid #000;
+      border-radius: 25px;
+      padding: 15px 20px;
+      margin: 20px auto;
       position: relative;
       font-family: 'Comic Neue', cursive;
-      font-size: 1.2em;
+      font-size: 1.3em;
       font-weight: bold;
       color: #000;
-      box-shadow: 5px 5px 0px rgba(0,0,0,0.3);
-      max-width: 85%;
-      margin-left: auto;
-      margin-right: auto;
+      box-shadow: 4px 4px 0px rgba(0,0,0,0.3), inset 0 0 0 2px #fff;
+      max-width: 75%;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+    
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      bottom: -20px;
+      left: 25%;
+      width: 0;
+      height: 0;
+      border: 20px solid transparent;
+      border-top-color: #000;
+      border-bottom: none;
+      z-index: 1;
     }
     
     .speech-bubble::after {
       content: '';
       position: absolute;
-      bottom: -15px;
-      left: 20%;
+      bottom: -16px;
+      left: 25%;
       width: 0;
       height: 0;
-      border: 15px solid transparent;
-      border-top-color: #000;
+      border: 18px solid transparent;
+      border-top-color: #FFFFFF;
       border-bottom: none;
+      z-index: 2;
     }
     
     .thought-bubble {
@@ -1427,75 +1557,93 @@ async function generateComicHTML(
       border: 3px dashed #000;
       border-radius: 50px;
       padding: 15px 20px;
-      margin: 15px 0;
+      margin: 15px auto;
       font-style: italic;
       color: #333;
+      position: relative;
+      max-width: 70%;
+    }
+    
+    .thought-bubble::before {
+      content: '○ ○ ○';
+      position: absolute;
+      bottom: -25px;
+      left: 20%;
+      font-size: 0.8em;
+      color: #000;
     }
     
     .sound-effect {
       font-family: 'Bangers', cursive;
-      font-size: 3em;
+      font-size: 4em;
       color: #DC143C;
-      text-shadow: 3px 3px 0px #000;
+      text-shadow: 4px 4px 0px #000, 6px 6px 0px rgba(0,0,0,0.3);
       text-align: center;
-      margin: 20px 0;
-      transform: rotate(-5deg);
+      margin: 25px 0;
+      transform: rotate(-8deg) scale(1.1);
       display: inline-block;
+      letter-spacing: 3px;
+      font-weight: normal;
     }
     
     .comic-caption {
-      font-size: 1em;
+      font-family: 'Comic Neue', cursive;
+      font-size: 1.1em;
       color: #333;
       font-style: italic;
-      margin: 10px 0;
-      padding-left: 20px;
-      border-left: 3px solid #000;
+      margin: 15px 0;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.9);
+      border-left: 5px solid #000;
+      box-shadow: 2px 2px 0px rgba(0,0,0,0.2);
     }
     
     .comic-narration {
       font-family: 'Comic Neue', cursive;
-      font-size: 1.1em;
+      font-size: 1.2em;
       color: #1a1a1a;
       font-style: italic;
-      margin: 15px 0;
-      padding: 10px 15px;
-      background: rgba(255, 255, 255, 0.8);
-      border-left: 4px solid #DC143C;
-      box-shadow: 2px 2px 0px rgba(0,0,0,0.2);
+      margin: 20px 0;
+      padding: 15px 20px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 3px solid #000;
+      border-left: 6px solid #DC143C;
+      box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+      border-radius: 5px;
     }
     
     .comic-scene-section {
-      margin: 40px 0;
+      margin: 50px 0;
       page-break-inside: avoid;
     }
     
     .comic-scene-header {
       font-family: 'Bangers', cursive;
-      font-size: 2.2em;
+      font-size: 2.5em;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: 3px;
       background: linear-gradient(135deg, #FF1744 0%, #D50000 50%, #C51162 100%);
       color: #FFD700;
-      text-shadow: 3px 3px 0px #000, 5px 5px 0px rgba(0,0,0,0.5);
-      margin: 40px 0 25px;
-      padding: 15px 25px;
-      border: 5px solid #000;
-      border-top: 6px solid #FFD700;
-      box-shadow: 8px 8px 0px rgba(0,0,0,0.4);
+      text-shadow: 4px 4px 0px #000, 6px 6px 0px rgba(0,0,0,0.5);
+      margin: 50px 0 30px;
+      padding: 20px 30px;
+      border: 6px solid #000;
+      border-top: 8px solid #FFD700;
+      box-shadow: 10px 10px 0px rgba(0,0,0,0.4), inset 0 0 0 2px rgba(255,215,0,0.3);
       text-align: center;
       position: relative;
     }
     
     .comic-image-panel {
-      margin: 25px 0;
+      margin: 30px 0;
       page-break-inside: avoid;
       background: #FFFFFF;
       border: 6px solid #000;
-      border-top: 8px solid #FFD700;
-      border-radius: 4px;
-      box-shadow: 10px 10px 0px rgba(0,0,0,0.5), 
-                  15px 15px 0px rgba(0,0,0,0.2),
-                  0 0 0 2px #FFD700;
+      border-top: 10px solid #FFD700;
+      border-radius: 5px;
+      box-shadow: 12px 12px 0px rgba(0,0,0,0.5), 
+                  18px 18px 0px rgba(0,0,0,0.2),
+                  0 0 0 3px #FFD700;
       overflow: hidden;
       position: relative;
       padding: 0;
@@ -1509,16 +1657,22 @@ async function generateComicHTML(
     }
     
     .comic-panel-content {
-      margin: 15px 0;
-      padding: 15px;
-      background: rgba(255, 255, 255, 0.95);
-      border: 3px solid #000;
-      border-radius: 8px;
+      margin: 20px 0;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 4px solid #000;
+      border-radius: 10px;
+      box-shadow: 5px 5px 0px rgba(0,0,0,0.2);
+    }
+    
+    .comic-panel-content p {
+      margin: 10px 0;
+      line-height: 1.6;
     }
   </style>
 </head>
 <body>
-  <h1>${projectContext.title}</h1>
+  ${coverPage}
   <div class="comic-content">
     ${html}
   </div>
