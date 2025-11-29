@@ -151,17 +151,21 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     <div className="min-h-screen bg-zinc-950 text-white p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 relative z-10">
           <div>
             <h1 className="text-3xl font-serif text-amber-500 mb-1">User Dashboard</h1>
             <p className="text-zinc-500 text-sm">Welcome, {user.username}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 relative z-20">
             {/* Theme Toggle */}
             {onThemeToggle && (
               <button
-                onClick={onThemeToggle}
-                className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onThemeToggle();
+                }}
+                className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors relative z-30"
                 title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
               >
                 {theme === 'dark' ? '☀️' : '🌙'}
@@ -170,8 +174,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             {/* Notifications Button */}
             {onShowNotifications && (
               <button
-                onClick={onShowNotifications}
-                className="relative text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onShowNotifications();
+                }}
+                className="relative text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors z-30"
                 title="Activity & Notifications"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -187,8 +195,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             {/* Settings Button */}
             {onShowSettings && (
               <button
-                onClick={onShowSettings}
-                className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onShowSettings();
+                }}
+                className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors relative z-30"
                 title="Settings"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -198,7 +210,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             )}
             <button
               onClick={onLogout}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors"
+              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors relative z-30"
             >
               Logout
             </button>

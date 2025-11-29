@@ -2310,18 +2310,22 @@ const App: React.FC = () => {
 
       {/* Activity Panel */}
       {showActivityPanel && (
-        <ActivityPanel
-          onClose={() => setShowActivityPanel(false)}
-        />
+        <div className="fixed inset-0 z-[100]">
+          <ActivityPanel
+            onClose={() => setShowActivityPanel(false)}
+          />
+        </div>
       )}
 
       {/* Settings Panel */}
       {showSettingsPanel && (
-        <SettingsPanel
-          onClose={() => setShowSettingsPanel(false)}
-          theme={theme}
-          onThemeChange={setTheme}
-        />
+        <div className="fixed inset-0 z-[100]">
+          <SettingsPanel
+            onClose={() => setShowSettingsPanel(false)}
+            theme={theme}
+            onThemeChange={setTheme}
+          />
+        </div>
       )}
 
       {/* Toast Container */}
