@@ -233,6 +233,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
                 <span className="text-xs text-zinc-400">{scene.directorSettings.stuntInstructions}</span>
               </div>
             )}
+          </div>
         </div>
 
         {/* Footer: Context */}
