@@ -36,11 +36,8 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-  useEffect(() => {
-    loadMedia();
-  }, [projectId, sceneId]);
-
-  const loadMedia = async () => {
+  // Memoize loadMedia to prevent re-renders
+  const loadMedia = useCallback(async () => {
     try {
       setLoading(true);
       const items = sceneId 
@@ -59,7 +56,11 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, sceneId]);
+
+  useEffect(() => {
+    loadMedia();
+  }, [loadMedia]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,17 +118,22 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
     };
   }, []);
 
-  // Memoize close handler to prevent re-renders
+  // Memoize close handler to prevent re-renders - use ref to avoid dependency on onClose
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   const handleClose = useCallback(() => {
     if (!uploading) {
-      onClose();
+      onCloseRef.current();
     }
-  }, [uploading, onClose]);
+  }, [uploading]);
 
   // Handle overlay click - only close on actual click, not hover
   const handleOverlayClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Only close if clicking directly on the overlay (not a child)
-    if (e.target === e.currentTarget && !uploading) {
+    // Only close if clicking directly on the overlay (not a child) and not uploading
+    if (e.target === e.currentTarget && e.currentTarget === e.target && !uploading) {
       handleClose();
     }
   }, [uploading, handleClose]);
@@ -135,18 +141,10 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-      onMouseDown={handleOverlayClick}
-      onMouseUp={(e) => {
-        // Prevent any mouse events from bubbling
-        if (e.target !== e.currentTarget) {
-          e.stopPropagation();
-        }
-      }}
+      onClick={handleOverlayClick}
     >
       <div 
         className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl"
-        onMouseDown={(e) => e.stopPropagation()}
-        onMouseUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={{ 
           willChange: 'transform'
@@ -292,5 +290,6 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
   );
 };
 
-export default MediaLibrary;
+// Memoize component to prevent unnecessary re-renders
+export default React.memo(MediaLibrary);
 

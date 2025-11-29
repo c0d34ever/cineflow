@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scene } from '../types';
 import { mediaService } from '../apiServices';
 import MediaLibrary from './MediaLibrary';
@@ -36,23 +36,18 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
     if (projectId && scene.id) {
       loadSceneImages();
     }
-  }, [projectId, scene.id]);
+  }, [projectId, scene.id, loadSceneImages]);
 
-  // Reload images when media library closes (but only once, not on every state change)
-  const prevShowMediaLibrary = useRef(false);
-  useEffect(() => {
-    // Only reload when transitioning from open to closed
-    if (prevShowMediaLibrary.current && !showMediaLibrary && projectId && scene.id) {
-      // Small delay to ensure backend has processed the upload
-      const timer = setTimeout(() => {
-        loadSceneImages();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-    prevShowMediaLibrary.current = showMediaLibrary;
-  }, [showMediaLibrary, projectId, scene.id]);
+  // Memoize close handler to prevent re-renders
+  const handleMediaLibraryClose = useCallback(() => {
+    setShowMediaLibrary(false);
+    // Reload images after a short delay to ensure backend has processed
+    setTimeout(() => {
+      loadSceneImages();
+    }, 500);
+  }, [loadSceneImages]);
 
-  const loadSceneImages = async () => {
+  const loadSceneImages = useCallback(async () => {
     try {
       setLoadingImages(true);
       const media = await mediaService.getSceneMedia(scene.id);
@@ -66,7 +61,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
     } finally {
       setLoadingImages(false);
     }
-  };
+  }, [scene.id]);
 
   const primaryImage = sceneImages.find(img => img.is_primary) || sceneImages[0];
 
@@ -302,12 +297,10 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
       {/* Media Library Modal - for uploads */}
       {showMediaLibrary && projectId && (
         <MediaLibrary
+          key={`media-library-${scene.id}`}
           projectId={projectId}
           sceneId={scene.id}
-          onClose={() => {
-            setShowMediaLibrary(false);
-            loadSceneImages();
-          }}
+          onClose={handleMediaLibraryClose}
           allowUpload={true}
         />
       )}
