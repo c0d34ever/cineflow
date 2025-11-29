@@ -16,9 +16,21 @@ const router = express.Router();
 const uploadsDir = path.join(__dirname, '../../uploads');
 const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
 
+// Create directories with error handling for permission issues
+// This is non-fatal - directories may be created by volume mount or entrypoint script
 [uploadsDir, thumbnailsDir].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+      console.log(`Created directory: ${dir}`);
+    }
+  } catch (error: any) {
+    // Non-fatal: directory might be created by volume mount or entrypoint
+    // Only log if it's not a permission error (which is expected with volume mounts)
+    if (error.code !== 'EACCES' && error.code !== 'EAGAIN') {
+      console.warn(`Could not create directory ${dir}:`, error.message);
+    }
+    // Continue anyway - directory might already exist or be created externally
   }
 });
 

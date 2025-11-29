@@ -53,6 +53,9 @@ RUN npm run build:server && \
 # Production image
 FROM node:20-alpine
 
+# Install su-exec for user switching
+RUN apk add --no-cache su-exec
+
 WORKDIR /app
 
 # Install production dependencies only (root package.json for frontend)
@@ -127,16 +130,24 @@ RUN echo "=== Starting file copy process ===" && \
     test -f /app/server/types.js && echo "SUCCESS: types.js found at /app/server/types.js" || (echo "ERROR: types.js not found at /app/server/types.js - checking where it is..." && find /app -name "types.js" -type f 2>&1 && exit 1) && \
     rm -rf /app/server/dist-temp
 
-# Create uploads directory and set permissions
-RUN mkdir -p /app/server/uploads /app/server/uploads/thumbnails && \
-    chmod -R 755 /app/server/uploads
-
-# Create non-root user
+# Create non-root user first
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app && \
-    chown -R nodejs:nodejs /app/server/uploads
+    adduser -S nodejs -u 1001
 
+# Copy entrypoint script (as root)
+COPY server/entrypoint.sh /app/server/entrypoint.sh
+RUN chmod +x /app/server/entrypoint.sh
+
+# Create uploads directory and set permissions (as root, before switching user)
+RUN mkdir -p /app/server/uploads /app/server/uploads/thumbnails && \
+    chown -R nodejs:nodejs /app/server/uploads && \
+    chmod -R 755 /app/server/uploads && \
+    chown -R nodejs:nodejs /app
+
+# Use entrypoint to fix permissions on startup (must be before USER to run as root)
+ENTRYPOINT ["/app/server/entrypoint.sh"]
+
+# Switch to nodejs user (entrypoint will handle user switching)
 USER nodejs
 
 EXPOSE 5000

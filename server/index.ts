@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createConnection } from './db/index.js';
 import authRouter from './routes/auth.js';
@@ -62,8 +63,24 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Ensure uploads directory exists before serving
+const uploadsPath = path.join(__dirname, '../uploads');
+const thumbnailsPath = path.join(uploadsPath, 'thumbnails');
+
+try {
+  if (!fs.existsSync(uploadsPath)) {
+    fs.mkdirSync(uploadsPath, { recursive: true, mode: 0o755 });
+  }
+  if (!fs.existsSync(thumbnailsPath)) {
+    fs.mkdirSync(thumbnailsPath, { recursive: true, mode: 0o755 });
+  }
+} catch (error: any) {
+  console.warn('Warning: Could not create uploads directory:', error.message);
+  console.warn('Directory may be created by volume mount or needs manual creation');
+}
+
 // Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(uploadsPath));
 
 // Request logging middleware
 app.use((req, res, next) => {

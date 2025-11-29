@@ -50,6 +50,8 @@ services:
       - "5000:5000"
     volumes:
       - ./uploads:/app/server/uploads
+    # Note: Ensure ./uploads directory exists on host with proper permissions
+    # Run: mkdir -p uploads/thumbnails && chmod -R 755 uploads
     networks:
       - cineflow-network
 
