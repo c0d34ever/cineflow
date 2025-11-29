@@ -1105,38 +1105,40 @@ async function generateComicHTML(
     finalHTML += `<div class="comic-scene-section">`;
     finalHTML += `<div class="comic-scene-header">Scene ${sceneNum} (${sceneId})</div>`;
     
-    // Add scene image if available
+    // Get scene image for integration into panels (prefer ImageKit)
+    let sceneImageUrl: string | null = null;
     if (currentScene) {
       const sceneMedia = sceneImagesMap.get(currentScene.id);
       if (sceneMedia && sceneMedia.length > 0) {
         const primaryImage = sceneMedia.find(img => img.is_primary) || sceneMedia[0];
-        // Ensure absolute URL for PDF printing
-        let imageUrl = primaryImage.file_path;
-        if (!imageUrl.startsWith('http')) {
-          // Ensure path starts with / for proper URL construction
-          const filePath = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`;
-          imageUrl = `${baseUrl}${filePath}`;
+        // Prefer ImageKit URLs, fallback to local
+        if (primaryImage.imagekit_url) {
+          sceneImageUrl = primaryImage.imagekit_url;
+        } else if (primaryImage.imagekit_thumbnail_url) {
+          sceneImageUrl = primaryImage.imagekit_thumbnail_url;
+        } else {
+          // Fallback to local path
+          let localPath = primaryImage.file_path || primaryImage.thumbnail_path;
+          if (localPath && !localPath.startsWith('http')) {
+            const filePath = localPath.startsWith('/') ? localPath : `/${localPath}`;
+            sceneImageUrl = `${baseUrl}${filePath}`;
+          }
         }
-        finalHTML += `<figure class="comic-panel comic-image-panel">
-          <img src="${imageUrl}" alt="${primaryImage.alt_text || `Scene ${sceneNum} Image`}" class="comic-image" />
-          ${primaryImage.description ? `<figcaption class="comic-caption">${primaryImage.description}</figcaption>` : ''}
-        </figure>`;
       }
     }
     
     // Remove the scene header from the content (we already added it above)
     let cleanedSection = sceneSection.replace(/Scene\s+\d+\s*\([^)]+\):\s*/i, '');
     
-    // Process panels in this scene
+    // Process panels in this scene - organize into comic book pages
     const panelSections = cleanedSection.split(/(?=PANEL\s*\d+)/i);
+    const panels: Array<{ num: number; content: string; hasImage: boolean }> = [];
     
     for (const panelSection of panelSections) {
       const panelMatch = panelSection.match(/PANEL\s*(\d+)/i);
       if (!panelMatch) continue;
       
-      const panelNum = panelMatch[1];
-      finalHTML += `<div class="comic-panel-number">PANEL ${panelNum}</div>`;
-      
+      const panelNum = parseInt(panelMatch[1]);
       // Extract content after panel marker
       let panelContent = panelSection.replace(/PANEL\s*\d+/i, '').trim();
       
@@ -1334,7 +1336,55 @@ async function generateComicHTML(
       panelContent = panelContent.replace(/NARRATION:\s*/gi, '');
       panelContent = panelContent.replace(/\n{3,}/g, '\n\n'); // Remove excessive blank lines
       
-      finalHTML += `<div class="comic-panel-content">${panelContent}</div>`;
+      // Store panel for page layout
+      panels.push({
+        num: panelNum,
+        content: panelContent,
+        hasImage: sceneImageUrl !== null && panelNum === 1 // Use image in first panel
+      });
+    }
+    
+    // Organize panels into comic book pages (Marvel/DC style)
+    // Each page has 2-6 panels in a grid layout
+    const panelsPerPage = 4; // 2x2 grid
+    for (let pageStart = 0; pageStart < panels.length; pageStart += panelsPerPage) {
+      const pagePanels = panels.slice(pageStart, pageStart + panelsPerPage);
+      
+      // Determine grid layout based on number of panels
+      let gridClass = 'comic-page-grid-4'; // Default 2x2
+      if (pagePanels.length === 1) {
+        gridClass = 'comic-page-grid-1'; // Full page splash
+      } else if (pagePanels.length === 2) {
+        gridClass = 'comic-page-grid-2'; // 2 columns
+      } else if (pagePanels.length === 3) {
+        gridClass = 'comic-page-grid-3'; // 2+1 layout
+      } else if (pagePanels.length === 5) {
+        gridClass = 'comic-page-grid-5'; // 3+2 layout
+      } else if (pagePanels.length === 6) {
+        gridClass = 'comic-page-grid-6'; // 3x2 layout
+      }
+      
+      finalHTML += `<div class="comic-page ${gridClass}">`;
+      
+      pagePanels.forEach((panel, idx) => {
+        const isFirstPanelOfScene = pageStart === 0 && idx === 0;
+        const panelImageUrl = (isFirstPanelOfScene && panel.hasImage && sceneImageUrl) ? sceneImageUrl : null;
+        
+        finalHTML += `<div class="comic-panel-frame">`;
+        
+        // Add image if available (integrated into panel, not separate)
+        if (panelImageUrl) {
+          finalHTML += `<div class="comic-panel-image">
+            <img src="${panelImageUrl}" alt="Panel ${panel.num}" class="comic-panel-img" />
+          </div>`;
+        }
+        
+        // Panel content
+        finalHTML += `<div class="comic-panel-content">${panel.content}</div>`;
+        finalHTML += `</div>`; // Close panel-frame
+      });
+      
+      finalHTML += `</div>`; // Close comic-page
     }
     
     finalHTML += `</div>`; // Close scene section
@@ -1634,6 +1684,98 @@ async function generateComicHTML(
       position: relative;
     }
     
+    /* COMIC BOOK PAGE LAYOUTS - Marvel/DC Style */
+    .comic-page {
+      width: 100%;
+      min-height: 100vh;
+      display: grid;
+      gap: 15px;
+      padding: 20px;
+      background: #fff;
+      page-break-after: always;
+      margin-bottom: 20px;
+    }
+    
+    .comic-page-grid-1 {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
+    }
+    
+    .comic-page-grid-2 {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr;
+    }
+    
+    .comic-page-grid-3 {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    
+    .comic-page-grid-3 .comic-panel-frame:first-child {
+      grid-column: 1 / -1;
+    }
+    
+    .comic-page-grid-4 {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    
+    .comic-page-grid-5 {
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    
+    .comic-page-grid-5 .comic-panel-frame:first-child {
+      grid-column: 1 / -1;
+    }
+    
+    .comic-page-grid-6 {
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    
+    /* PANEL FRAMES - Authentic Comic Style */
+    .comic-panel-frame {
+      position: relative;
+      background: #fff;
+      border: 5px solid #000;
+      border-radius: 3px;
+      padding: 10px;
+      overflow: hidden;
+      box-shadow: 3px 3px 0px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .comic-panel-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 0;
+      overflow: hidden;
+    }
+    
+    .comic-panel-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.9;
+    }
+    
+    .comic-panel-content {
+      position: relative;
+      z-index: 1;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: 5px;
+      min-height: 100px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    
     .comic-image-panel {
       margin: 30px 0;
       page-break-inside: avoid;
@@ -1654,15 +1796,6 @@ async function generateComicHTML(
       height: auto;
       display: block;
       object-fit: cover;
-    }
-    
-    .comic-panel-content {
-      margin: 20px 0;
-      padding: 20px;
-      background: rgba(255, 255, 255, 0.98);
-      border: 4px solid #000;
-      border-radius: 10px;
-      box-shadow: 5px 5px 0px rgba(0,0,0,0.2);
     }
     
     .comic-panel-content p {
