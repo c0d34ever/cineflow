@@ -82,20 +82,41 @@ export const suggestDirectorSettings = async (
 
 export const extractCharacters = async (context: StoryContext, scenes: Scene[] = []): Promise<Array<{ name: string; description?: string; role?: string; appearance?: string; personality?: string }>> => {
   const token = getAuthToken();
-  const response = await fetch(`${API_BASE_URL}/gemini/extract-characters`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify({ context, scenes })
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to extract characters');
+  
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/gemini/extract-characters`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ context, scenes }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      // Handle timeout errors specifically
+      if (response.status === 524 || response.status === 504) {
+        throw new Error('Request timed out. The story may be too large. Try with fewer scenes or split the extraction.');
+      }
+      const error = await response.json().catch(() => ({ error: 'Failed to extract characters' }));
+      throw new Error(error.error || 'Failed to extract characters');
+    }
+    const data = await response.json();
+    return data.characters || [];
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out after 2 minutes. The story may be too large. Try with fewer scenes.');
+    }
+    throw error;
   }
-  const data = await response.json();
-  return data.characters || [];
 };
 
 export const extractLocations = async (context: StoryContext, scenes: Scene[]): Promise<Array<{ name: string; description?: string; location_type?: string; address?: string }>> => {

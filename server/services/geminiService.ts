@@ -690,15 +690,29 @@ export const extractCharacters = async (
   
   Extract ALL characters mentioned throughout the entire story, including all scenes. Analyze the complete narrative to identify every character, even minor ones.`;
 
-  // Build scenes content summary
-  const scenesContent = scenes.length > 0 
-    ? scenes.map((scene, idx) => `
+  // Build scenes content summary - limit to prevent timeout
+  // Truncate long content and limit number of scenes if too many
+  const MAX_SCENES = 50; // Limit to first 50 scenes to prevent timeout
+  const MAX_CONTENT_LENGTH = 500; // Limit each field to 500 chars
+  
+  const truncate = (text: string | undefined, maxLength: number): string => {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+  
+  const scenesToProcess = scenes.slice(0, MAX_SCENES);
+  const scenesContent = scenesToProcess.length > 0 
+    ? scenesToProcess.map((scene, idx) => `
       Scene ${scene.sequenceNumber || idx + 1}:
-      - Raw Idea: ${scene.rawIdea || ''}
-      - Enhanced Prompt: ${scene.enhancedPrompt || ''}
-      - Context Summary: ${scene.contextSummary || ''}
+      - Raw Idea: ${truncate(scene.rawIdea, MAX_CONTENT_LENGTH)}
+      - Enhanced Prompt: ${truncate(scene.enhancedPrompt, MAX_CONTENT_LENGTH)}
+      - Context Summary: ${truncate(scene.contextSummary, MAX_CONTENT_LENGTH)}
     `).join('\n')
     : 'No scenes generated yet.';
+  
+  if (scenes.length > MAX_SCENES) {
+    console.warn(`Character extraction: Processing only first ${MAX_SCENES} of ${scenes.length} scenes to prevent timeout`);
+  }
 
   const prompt = `
     COMPLETE STORY ANALYSIS:

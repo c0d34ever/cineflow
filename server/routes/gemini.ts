@@ -141,6 +141,9 @@ router.post('/enhance-scene-prompt', authenticateToken, async (req: AuthRequest,
 
 // POST /api/gemini/extract-characters - Extract characters from story
 router.post('/extract-characters', authenticateToken, async (req: AuthRequest, res: Response) => {
+  // Set a longer timeout for this endpoint (2 minutes)
+  req.setTimeout(120000);
+  
   try {
     const { context, scenes } = req.body;
     if (!context) {
@@ -148,10 +151,25 @@ router.post('/extract-characters', authenticateToken, async (req: AuthRequest, r
     }
 
     const userId = req.user!.id;
-    const characters = await extractCharacters(context as StoryContext, (scenes || []) as Scene[], userId);
+    
+    // Limit scenes to prevent timeout
+    const scenesArray = (scenes || []) as Scene[];
+    if (scenesArray.length > 50) {
+      console.warn(`Character extraction: Limiting to first 50 of ${scenesArray.length} scenes`);
+    }
+    
+    const characters = await extractCharacters(context as StoryContext, scenesArray, userId);
     res.json({ characters });
   } catch (error: any) {
     console.error('Error extracting characters:', error);
+    
+    // Handle timeout errors specifically
+    if (error.message?.includes('timeout') || error.message?.includes('TIMEOUT') || error.code === 'ETIMEDOUT') {
+      return res.status(504).json({ 
+        error: 'Request timed out. The story may be too large. Try with fewer scenes or split the extraction.' 
+      });
+    }
+    
     res.status(500).json({ error: error.message || 'Failed to extract characters' });
   }
 });
