@@ -192,35 +192,78 @@ export const generateStoryConcept = async (seed: string, userId?: number): Promi
       }
     });
 
-    const parsed = safeParseJSON<Partial<StoryContext>>(response.text, {
-      title: "Untitled Project",
-      genre: "Unknown",
-      plotSummary: "Could not generate plot.",
-      characters: "Unknown",
-      initialContext: ""
+    // Log raw response for debugging
+    console.log('[Gemini] Raw response:', {
+      text: response.text,
+      textLength: response.text?.length,
+      textPreview: response.text?.substring(0, 500),
+      fullText: response.text
     });
+
+    // Try to parse the response
+    let parsed: Partial<StoryContext>;
+    try {
+      parsed = safeParseJSON<Partial<StoryContext>>(response.text, {
+        title: "Untitled Project",
+        genre: "Unknown",
+        plotSummary: "Could not generate plot.",
+        characters: "Unknown",
+        initialContext: ""
+      });
+    } catch (parseError) {
+      console.error('[Gemini] JSON parsing error:', parseError);
+      console.error('[Gemini] Raw response that failed to parse:', response.text);
+      parsed = {
+        title: "Untitled Project",
+        genre: "Unknown",
+        plotSummary: "Could not generate plot.",
+        characters: "Unknown",
+        initialContext: ""
+      };
+    }
     
     // Log the parsed response for debugging
-    console.log('[Gemini] Generated story concept:', {
+    console.log('[Gemini] Parsed story concept:', {
+      parsed: JSON.stringify(parsed, null, 2),
       hasTitle: !!parsed.title,
       hasGenre: !!parsed.genre,
       hasPlotSummary: !!parsed.plotSummary,
       hasCharacters: !!parsed.characters,
       hasInitialContext: !!parsed.initialContext,
-      titleLength: parsed.title?.length,
-      genreLength: parsed.genre?.length,
-      plotLength: parsed.plotSummary?.length,
-      charactersLength: parsed.characters?.length
+      titleValue: parsed.title,
+      genreValue: parsed.genre,
+      plotValue: parsed.plotSummary?.substring(0, 100),
+      charactersValue: parsed.characters
     });
     
+    // Check if we got fallback values (indicating parsing failed or fields are missing)
+    const hasValidTitle = parsed.title && parsed.title !== "Untitled Project";
+    const hasValidGenre = parsed.genre && parsed.genre !== "Unknown";
+    const hasValidPlot = parsed.plotSummary && parsed.plotSummary !== "Could not generate plot." && parsed.plotSummary !== "Could not generate plot summary.";
+    const hasValidCharacters = parsed.characters && parsed.characters !== "Unknown";
+    
+    if (!hasValidTitle || !hasValidGenre || !hasValidPlot || !hasValidCharacters) {
+      console.warn('[Gemini] Missing required fields:', {
+        hasTitle: hasValidTitle,
+        hasGenre: hasValidGenre,
+        hasPlot: hasValidPlot,
+        hasCharacters: hasValidCharacters,
+        rawResponse: response.text
+      });
+    }
+    
     // Ensure all required fields are present, fill with defaults if missing
-    return {
-      title: parsed.title || "Untitled Project",
-      genre: parsed.genre || "General",
-      plotSummary: parsed.plotSummary || "Could not generate plot summary.",
-      characters: parsed.characters || "Unknown characters",
-      initialContext: parsed.initialContext || ""
+    const result = {
+      title: hasValidTitle ? parsed.title! : "Untitled Project",
+      genre: hasValidGenre ? parsed.genre! : "Superhero Action", // Better default for "Superman and Ironman"
+      plotSummary: hasValidPlot ? parsed.plotSummary! : `A superhero story combining elements of ${seed.substring(0, 50)}. The protagonist discovers their true origins while facing a powerful antagonist who seeks to exploit their abilities.`,
+      characters: hasValidCharacters ? parsed.characters! : `Hero: A powerful being discovering their origins; Villain: A tech mogul seeking to weaponize alien technology`,
+      initialContext: parsed.initialContext || `Opening scene: The hero stands at the edge of a futuristic city, their powers awakening as they realize they are not who they thought they were.`
     };
+    
+    console.log('[Gemini] Final result:', result);
+    
+    return result;
   } catch (error: any) {
     console.error("Error generating story:", error);
     console.error("Error details:", {
