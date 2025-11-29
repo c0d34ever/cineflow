@@ -476,13 +476,26 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
             ]
           );
 
-          // Insert scene director settings
+          // Insert or update scene director settings
           if (scene.directorSettings) {
             await connection.query(
               `INSERT INTO scene_director_settings (
                 scene_id, custom_scene_id, lens, angle, lighting, movement, zoom,
                 sound, dialogue, stunt_instructions, physics_focus, style, transition
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                custom_scene_id = VALUES(custom_scene_id),
+                lens = VALUES(lens),
+                angle = VALUES(angle),
+                lighting = VALUES(lighting),
+                movement = VALUES(movement),
+                zoom = VALUES(zoom),
+                sound = VALUES(sound),
+                dialogue = VALUES(dialogue),
+                stunt_instructions = VALUES(stunt_instructions),
+                physics_focus = VALUES(physics_focus),
+                style = VALUES(style),
+                transition = VALUES(transition)`,
               [
                 scene.id,
                 scene.directorSettings.customSceneId || '',
