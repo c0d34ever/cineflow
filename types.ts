@@ -29,6 +29,7 @@ export interface Scene {
   status: 'planning' | 'generating' | 'completed' | 'failed';
   directorSettings: DirectorSettings;
   contextSummary: string; // What happened in this scene (for next scene context)
+  thumbnailUrl?: string; // URL to primary image thumbnail for quick access
 }
 
 export interface StoryContext {

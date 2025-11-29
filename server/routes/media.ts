@@ -160,12 +160,20 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
       ]
     ) as [any, any];
 
-    // If this is marked as primary, unset other primary images for this scene/project
+    // If this is marked as primary, unset others and update scene thumbnail
     if (is_primary === 'true') {
       await pool.query(
         'UPDATE media SET is_primary = 0 WHERE project_id = ? AND (scene_id = ? OR scene_id IS NULL) AND id != ?',
         [project_id, scene_id || null, mediaId]
       );
+      
+      // Update scene thumbnail_url if this is for a scene
+      if (scene_id) {
+        await pool.query(
+          'UPDATE scenes SET thumbnail_url = ? WHERE id = ?',
+          [`/uploads/thumbnails/${thumbnailName}`, scene_id]
+        );
+      }
     }
 
     res.json({
@@ -276,12 +284,26 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response, ne
 
     const { project_id, scene_id } = currentMedia[0];
 
-    // If setting as primary, unset others
+    // If setting as primary, unset others and update scene thumbnail
     if (is_primary === true) {
       await pool.query(
         'UPDATE media SET is_primary = 0 WHERE project_id = ? AND (scene_id = ? OR scene_id IS NULL) AND id != ?',
         [project_id, scene_id || null, id]
       );
+      
+      // Get the media item to update scene thumbnail
+      const [mediaItem] = await pool.query(
+        'SELECT thumbnail_path FROM media WHERE id = ?',
+        [id]
+      ) as [any[], any];
+      
+      // Update scene thumbnail_url if this is for a scene
+      if (scene_id && mediaItem && mediaItem.length > 0 && mediaItem[0].thumbnail_path) {
+        await pool.query(
+          'UPDATE scenes SET thumbnail_url = ? WHERE id = ?',
+          [mediaItem[0].thumbnail_path, scene_id]
+        );
+      }
     }
 
     // Update media

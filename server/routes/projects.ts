@@ -25,6 +25,7 @@ interface SceneRow {
   enhanced_prompt: string;
   context_summary: string;
   status: string;
+  thumbnail_url?: string | null;
 }
 
 interface DirectorSettingsRow {
@@ -137,6 +138,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
               enhancedPrompt: scene.enhanced_prompt,
               contextSummary: scene.context_summary || '',
               status: scene.status as any,
+              thumbnailUrl: scene.thumbnail_url || undefined,
               directorSettings,
             };
           })
@@ -277,6 +279,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           enhancedPrompt: scene.enhanced_prompt,
           contextSummary: scene.context_summary || '',
           status: scene.status as any,
+          thumbnailUrl: scene.thumbnail_url || undefined,
           directorSettings,
         };
       })
@@ -421,9 +424,32 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       // Insert new scenes
       if (scenes && Array.isArray(scenes)) {
         for (const scene of scenes) {
+          // Get primary image thumbnail for this scene
+          let thumbnailUrl = scene.thumbnailUrl || null;
+          if (!thumbnailUrl) {
+            try {
+              const [primaryMedia] = await connection.query(
+                'SELECT thumbnail_path FROM media WHERE scene_id = ? AND is_primary = 1 LIMIT 1',
+                [scene.id]
+              ) as [any[], any];
+              if (primaryMedia && primaryMedia.length > 0 && primaryMedia[0].thumbnail_path) {
+                thumbnailUrl = primaryMedia[0].thumbnail_path;
+              }
+            } catch (error) {
+              // Ignore errors - thumbnail is optional
+              console.warn('Could not fetch thumbnail for scene:', scene.id);
+            }
+          }
+
           await connection.query(
-            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               raw_idea = VALUES(raw_idea),
+               enhanced_prompt = VALUES(enhanced_prompt),
+               context_summary = VALUES(context_summary),
+               status = VALUES(status),
+               thumbnail_url = COALESCE(VALUES(thumbnail_url), thumbnail_url)`,
             [
               scene.id,
               context.id,
@@ -432,6 +458,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
               scene.enhancedPrompt || '',
               scene.contextSummary || '',
               scene.status || 'completed',
+              thumbnailUrl,
             ]
           );
 
@@ -558,8 +585,8 @@ router.post('/:id/duplicate', authenticateToken, async (req: AuthRequest, res: R
         for (const scene of scenes) {
           const newSceneId = `scene-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           await connection.query(
-            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               newSceneId,
               newProjectId,
@@ -567,7 +594,8 @@ router.post('/:id/duplicate', authenticateToken, async (req: AuthRequest, res: R
               scene.raw_idea,
               scene.enhanced_prompt,
               scene.context_summary,
-              scene.status || 'completed'
+              scene.status || 'completed',
+              scene.thumbnail_url || null
             ]
           );
 

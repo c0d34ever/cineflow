@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scene } from '../types';
 import { mediaService } from '../apiServices';
-import MediaLibrary from './MediaLibrary';
-import SceneGallery from './SceneGallery';
+import MediaLibrarySidebar from './MediaLibrarySidebar';
+import SceneGallerySidebar from './SceneGallerySidebar';
 import CopyButton from './CopyButton';
 
 interface SceneCardProps {
@@ -154,7 +154,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
         )}
 
         {/* Scene Image - Comic Book Style */}
-        {primaryImage ? (
+        {(primaryImage || scene.thumbnailUrl) ? (
           <div 
             className="w-full mb-4 rounded-lg overflow-hidden border-2 border-zinc-700 bg-zinc-950 cursor-pointer group relative"
             onClick={(e) => {
@@ -165,13 +165,15 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
             }}
           >
             <img
-              src={`${API_BASE_URL.replace('/api', '')}${primaryImage.thumbnail_path || primaryImage.file_path}`}
-              alt={primaryImage.alt_text || `Scene ${scene.sequenceNumber}`}
+              src={`${API_BASE_URL.replace('/api', '')}${primaryImage?.thumbnail_path || primaryImage?.file_path || scene.thumbnailUrl || ''}`}
+              alt={primaryImage?.alt_text || `Scene ${scene.sequenceNumber}`}
               className="w-full h-auto object-cover transition-transform group-hover:scale-105"
               loading="lazy"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                target.src = `${API_BASE_URL.replace('/api', '')}${primaryImage.file_path}`;
+                if (primaryImage?.file_path) {
+                  target.src = `${API_BASE_URL.replace('/api', '')}${primaryImage.file_path}`;
+                }
               }}
             />
             {sceneImages.length > 1 && (
@@ -294,9 +296,9 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
         </div>
       </div>
 
-      {/* Media Library Modal - for uploads */}
+      {/* Media Library Sidebar - for uploads */}
       {showMediaLibrary && projectId && (
-        <MediaLibrary
+        <MediaLibrarySidebar
           key={`media-library-${scene.id}`}
           projectId={projectId}
           sceneId={scene.id}
@@ -305,9 +307,9 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
         />
       )}
 
-      {/* Scene Gallery - for viewing, editing, and deleting */}
+      {/* Scene Gallery Sidebar - for viewing, editing, and deleting */}
       {showGallery && projectId && (
-        <SceneGallery
+        <SceneGallerySidebar
           sceneId={scene.id}
           projectId={projectId}
           onClose={() => {
