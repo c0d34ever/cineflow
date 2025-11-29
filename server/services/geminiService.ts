@@ -145,16 +145,28 @@ export const generateStoryConcept = async (seed: string, userId?: number): Promi
   - If the user's seed is in Hindi or mixed Hindi/English (Hinglish), you should process it but GENERATE the output primarily in English.
   - Use Hindi (Devanagari) ONLY for specific character dialogue snippets or culturally specific terms if absolutely necessary.
   
-  IMPORTANT: 
-  - Keep the plot summary concise (under 150 words).
-  - Keep the initial context vivid but brief (under 100 words).
+  CRITICAL REQUIREMENTS:
+  - You MUST return ALL fields: title, genre, plotSummary, characters, and initialContext.
+  - Do NOT leave any field empty or null.
+  - If the user provides a very long description, extract the key elements:
+    * Title: Extract or create a concise, memorable title (max 100 characters)
+    * Genre: Identify the primary genre (e.g., "Sci-Fi Thriller", "Action Adventure", "Superhero Drama")
+    * Plot Summary: Create a concise summary (100-200 words) of the main story arc
+    * Characters: List the main characters with brief descriptions (e.g., "Protagonist: An alien discovering his origins; Antagonist: Tech billionaire exploiting alien powers")
+    * Initial Context: A vivid visual description of an opening or climactic scene (50-100 words)
   
-  Return a JSON object with:
-  - title
-  - genre
-  - plotSummary
-  - characters
-  - initialContext: A vivid, visual description of a specific climactic scene or cliffhanger from this story. This allows the user to 'resume' production immediately from this point.`;
+  IMPORTANT: 
+  - Keep the plot summary concise (100-200 words).
+  - Keep the initial context vivid but brief (50-100 words).
+  - Extract genre from the seed if mentioned (e.g., "sci-fi", "thriller", "superhero")
+  - Identify main characters from the seed description
+  
+  Return a JSON object with ALL fields populated:
+  - title: A concise, memorable movie title
+  - genre: The primary genre (e.g., "Sci-Fi Thriller", "Superhero Action")
+  - plotSummary: A 100-200 word summary of the story arc
+  - characters: Main characters with brief descriptions
+  - initialContext: A vivid, visual description of an opening or climactic scene (50-100 words)`;
 
   // Truncate seed to avoid context issues
   const safeSeed = (seed || "Surprise me with a unique, cinematic story concept.").substring(0, 500);
@@ -180,13 +192,35 @@ export const generateStoryConcept = async (seed: string, userId?: number): Promi
       }
     });
 
-    return safeParseJSON<Partial<StoryContext>>(response.text, {
+    const parsed = safeParseJSON<Partial<StoryContext>>(response.text, {
       title: "Untitled Project",
       genre: "Unknown",
       plotSummary: "Could not generate plot.",
       characters: "Unknown",
       initialContext: ""
     });
+    
+    // Log the parsed response for debugging
+    console.log('[Gemini] Generated story concept:', {
+      hasTitle: !!parsed.title,
+      hasGenre: !!parsed.genre,
+      hasPlotSummary: !!parsed.plotSummary,
+      hasCharacters: !!parsed.characters,
+      hasInitialContext: !!parsed.initialContext,
+      titleLength: parsed.title?.length,
+      genreLength: parsed.genre?.length,
+      plotLength: parsed.plotSummary?.length,
+      charactersLength: parsed.characters?.length
+    });
+    
+    // Ensure all required fields are present, fill with defaults if missing
+    return {
+      title: parsed.title || "Untitled Project",
+      genre: parsed.genre || "General",
+      plotSummary: parsed.plotSummary || "Could not generate plot summary.",
+      characters: parsed.characters || "Unknown characters",
+      initialContext: parsed.initialContext || ""
+    };
   } catch (error: any) {
     console.error("Error generating story:", error);
     console.error("Error details:", {

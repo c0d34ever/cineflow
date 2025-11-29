@@ -731,19 +731,38 @@ const App: React.FC = () => {
   // --- Setup Actions ---
 
   const handleAutoGenerateStory = async () => {
+    if (!storySeed.trim()) {
+      showToast('Please enter a story idea first', 'error');
+      return;
+    }
+    
     setIsAutoFilling(true);
     try {
       const generated = await generateStoryConcept(storySeed);
+      
+      // Log what we received for debugging
+      console.log('Generated story concept:', {
+        title: generated.title,
+        genre: generated.genre,
+        hasPlotSummary: !!generated.plotSummary,
+        hasCharacters: !!generated.characters,
+        hasInitialContext: !!generated.initialContext
+      });
+      
+      // Update all fields, only use previous values if generated ones are truly empty
       setStoryContext(prev => ({
         ...prev,
-        title: generated.title || prev.title,
-        genre: generated.genre || prev.genre,
-        plotSummary: generated.plotSummary || prev.plotSummary,
-        characters: generated.characters || prev.characters,
-        initialContext: generated.initialContext || prev.initialContext
+        title: generated.title?.trim() || prev.title || '',
+        genre: generated.genre?.trim() || prev.genre || '',
+        plotSummary: generated.plotSummary?.trim() || prev.plotSummary || '',
+        characters: generated.characters?.trim() || prev.characters || '',
+        initialContext: generated.initialContext?.trim() || prev.initialContext || ''
       }));
-    } catch (e) {
-      console.error(e);
+      
+      showToast('Story concept generated successfully!', 'success');
+    } catch (e: any) {
+      console.error('Error generating story:', e);
+      showToast(e.message || 'Failed to generate story concept. Please try again.', 'error');
     } finally {
       setIsAutoFilling(false);
     }
