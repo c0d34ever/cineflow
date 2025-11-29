@@ -1,8 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { StoryContext, DirectorSettings, TechnicalStyle, Scene } from '../../types.js';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getPool } from '../db/index.js';
 
+// Load .env file - try multiple locations
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Try loading from server/.env first, then fallback to root .env
+dotenv.config({ path: path.join(__dirname, '.env') });
+// Also try root .env (for Docker/local development)
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Also load from process.env (Docker passes env vars directly)
 dotenv.config();
 
 /**
@@ -43,7 +54,25 @@ const getAIClient = async (userId?: number) => {
     throw new Error('Gemini API key is not set. Please set your API key in user settings or configure GEMINI_API_KEY in environment variables.');
   }
   
-  return new GoogleGenAI({ apiKey });
+  // Log which key source is being used (masked for security)
+  const keySource = userApiKey ? 'user settings' : 'environment variable';
+  const maskedKey = apiKey.length > 12 
+    ? apiKey.substring(0, 8) + '...' + apiKey.substring(apiKey.length - 4)
+    : '****';
+  console.log(`[Gemini] Using API key from ${keySource}: ${maskedKey}`);
+  console.log(`[Gemini] API key length: ${apiKey.length} characters`);
+  
+  // Validate API key format (Google AI Studio keys typically start with "AIza")
+  if (!apiKey.startsWith('AIza') && apiKey.length < 30) {
+    console.warn('[Gemini] API key format may be invalid. Expected format: AIza...');
+  }
+  
+  try {
+    return new GoogleGenAI({ apiKey });
+  } catch (error: any) {
+    console.error('[Gemini] Error initializing client:', error);
+    throw new Error(`Failed to initialize Gemini client: ${error.message}`);
+  }
 };
 
 /**
@@ -125,6 +154,25 @@ export const generateStoryConcept = async (seed: string, userId?: number): Promi
     });
   } catch (error: any) {
     console.error("Error generating story:", error);
+    console.error("Error details:", {
+      message: error.message,
+      status: error.status,
+      statusCode: error.statusCode,
+      code: error.code,
+      response: error.response?.data || error.response
+    });
+    
+    // Provide more helpful error messages
+    if (error.message?.includes('API key') || error.message?.includes('authentication')) {
+      throw new Error('Invalid Gemini API key. Please check your API key in settings or environment variables.');
+    }
+    if (error.status === 403 || error.statusCode === 403 || error.code === 'PERMISSION_DENIED') {
+      throw new Error('Gemini API is not enabled. Please enable the Generative Language API in Google Cloud Console: https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview');
+    }
+    if (error.message?.includes('SERVICE_DISABLED') || error.message?.includes('not enabled')) {
+      throw new Error('Gemini API is not enabled. Please enable the Generative Language API in Google Cloud Console: https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview');
+    }
+    
     // Re-throw the error so the route handler can return proper error response
     throw error;
   }

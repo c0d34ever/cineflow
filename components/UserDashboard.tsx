@@ -24,6 +24,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout }) => {
   const [favorites, setFavorites] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  const [settingsForm, setSettingsForm] = useState({ theme: 'dark', language: 'en' });
 
   useEffect(() => {
     loadData();
@@ -38,6 +39,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout }) => {
       } else if (activeTab === 'settings') {
         const data = await settingsService.get();
         setSettings(data.settings);
+        if (data.settings) {
+          setSettingsForm({
+            theme: data.settings.theme || 'dark',
+            language: data.settings.language || 'en',
+          });
+        }
       } else if (activeTab === 'favorites') {
         const data = await favoritesService.getAll();
         setFavorites(data.favorites || []);
@@ -242,12 +249,13 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout }) => {
               <h2 className="text-xl font-bold mb-4">Settings</h2>
               {loading ? (
                 <div className="text-center py-8 text-zinc-500">Loading...</div>
-              ) : settings ? (
+              ) : (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs text-zinc-500 uppercase mb-1">Theme</label>
                     <select
-                      defaultValue={settings.theme || 'dark'}
+                      value={settingsForm.theme}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, theme: e.target.value })}
                       className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3"
                     >
                       <option value="dark">Dark</option>
@@ -257,7 +265,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout }) => {
                   <div>
                     <label className="block text-xs text-zinc-500 uppercase mb-1">Language</label>
                     <select
-                      defaultValue={settings.language || 'en'}
+                      value={settingsForm.language}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, language: e.target.value })}
                       className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3"
                     >
                       <option value="en">English</option>
@@ -265,12 +274,21 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout }) => {
                       <option value="fr">French</option>
                     </select>
                   </div>
-                  <button className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await settingsService.update(settingsForm);
+                        alert('Settings saved successfully!');
+                        loadData();
+                      } catch (error: any) {
+                        alert('Error saving settings: ' + error.message);
+                      }
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded"
+                  >
                     Save Settings
                   </button>
                 </div>
-              ) : (
-                <div className="text-center py-8 text-zinc-500">No settings found</div>
               )}
             </div>
           )}

@@ -187,5 +187,64 @@ router.post('/generate-episode-content', authenticateToken, async (req: AuthRequ
   }
 });
 
+// GET /api/gemini/check-api-key - Diagnostic endpoint to check API key status
+router.get('/check-api-key', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const envKey = process.env.GEMINI_API_KEY;
+    const envKeyExists = !!envKey;
+    const envKeyLength = envKey ? envKey.length : 0;
+    const envKeyMasked = envKey ? envKey.substring(0, 8) + '...' + envKey.substring(envKey.length - 4) : null;
+    
+    // Check if user has their own key
+    let userKeyExists = false;
+    let userKeyLength = 0;
+    if (userId) {
+      try {
+        const pool = await import('../db/index.js').then(m => m.getPool());
+        const [settings] = await pool.query(
+          'SELECT user_gemini_api_key FROM user_settings WHERE user_id = ?',
+          [userId]
+        ) as [any[], any];
+        
+        if (Array.isArray(settings) && settings.length > 0) {
+          const userSettings = settings[0] as any;
+          userKeyExists = !!userSettings.user_gemini_api_key;
+          userKeyLength = userKeyExists ? userSettings.user_gemini_api_key.length : 0;
+        }
+      } catch (err) {
+        console.error('Error checking user key:', err);
+      }
+    }
+    
+    const willUseUserKey = userKeyExists;
+    const willUseEnvKey = !userKeyExists && envKeyExists;
+    const noKeyAvailable = !userKeyExists && !envKeyExists;
+    
+    res.json({
+      status: noKeyAvailable ? 'no_key' : 'key_available',
+      userKey: {
+        exists: userKeyExists,
+        length: userKeyLength,
+        willBeUsed: willUseUserKey
+      },
+      environmentKey: {
+        exists: envKeyExists,
+        length: envKeyLength,
+        masked: envKeyMasked,
+        willBeUsed: willUseEnvKey
+      },
+      message: noKeyAvailable 
+        ? 'No API key available. Please set GEMINI_API_KEY in environment or add your key in user settings.'
+        : willUseUserKey 
+        ? 'Will use user-specific API key from settings.'
+        : 'Will use fallback API key from environment variable.'
+    });
+  } catch (error: any) {
+    console.error('Error checking API key:', error);
+    res.status(500).json({ error: 'Failed to check API key status' });
+  }
+});
+
 export default router;
 

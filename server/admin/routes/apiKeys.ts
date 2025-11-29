@@ -1,4 +1,5 @@
 import express, { Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { getPool } from '../../db/index.js';
 import { AuthRequest, requireAdmin } from '../middleware/auth.js';
 
@@ -114,6 +115,100 @@ router.get('/stats', requireAdmin, async (req: AuthRequest, res: Response, next:
         error: 'Failed to fetch statistics',
         message: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
+    } else {
+      next(error);
+    }
+  }
+});
+
+// POST /api/admin/api-keys - Create new API key (admin only)
+router.post('/', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { key_name, user_id } = req.body;
+
+    if (!key_name) {
+      return res.status(400).json({ error: 'Key name is required' });
+    }
+
+    const pool = getPool();
+    const apiKey = `cf_${crypto.randomBytes(32).toString('hex')}`;
+    const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+
+    const [result] = await pool.query(
+      'INSERT INTO api_keys (key_name, api_key_hash, user_id, is_active) VALUES (?, ?, ?, TRUE)',
+      [key_name, keyHash, user_id || null]
+    ) as [any, any];
+
+    res.status(201).json({
+      message: 'API key created successfully',
+      api_key: apiKey,
+      id: result.insertId,
+    });
+  } catch (error: any) {
+    console.error('Error creating API key:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to create API key' });
+    } else {
+      next(error);
+    }
+  }
+});
+
+// PUT /api/admin/api-keys/:id - Update API key (admin only)
+router.put('/:id', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const keyId = parseInt(req.params.id);
+    const { key_name, is_active } = req.body;
+
+    const pool = getPool();
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (key_name) {
+      updates.push('key_name = ?');
+      params.push(key_name);
+    }
+
+    if (typeof is_active === 'boolean') {
+      updates.push('is_active = ?');
+      params.push(is_active);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    params.push(keyId);
+
+    await pool.query(
+      `UPDATE api_keys SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    res.json({ message: 'API key updated successfully' });
+  } catch (error: any) {
+    console.error('Error updating API key:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to update API key' });
+    } else {
+      next(error);
+    }
+  }
+});
+
+// DELETE /api/admin/api-keys/:id - Delete API key (admin only)
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const keyId = parseInt(req.params.id);
+    const pool = getPool();
+
+    await pool.query('DELETE FROM api_keys WHERE id = ?', [keyId]);
+
+    res.json({ message: 'API key deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting API key:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to delete API key' });
     } else {
       next(error);
     }

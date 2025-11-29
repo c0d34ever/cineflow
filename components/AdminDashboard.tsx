@@ -19,6 +19,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'user' });
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingProject, setEditingProject] = useState<any>(null);
+  const [showCreateApiKey, setShowCreateApiKey] = useState(false);
+  const [newApiKey, setNewApiKey] = useState({ key_name: '', user_id: '' });
+  const [editingApiKey, setEditingApiKey] = useState<any>(null);
 
   useEffect(() => {
     if (activeTab === 'stats' || activeTab === 'overview') {
@@ -186,6 +191,150 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       setNewUser({ username: '', email: '', password: '', role: 'user' });
       setShowCreateUser(false);
       loadUsers();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleEditUser = async (userData: any) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const updateData: any = {
+        username: userData.username,
+        email: userData.email,
+        role: userData.role,
+        is_active: userData.is_active,
+      };
+      if (userData.password && userData.password.length >= 6) {
+        updateData.password = userData.password;
+      }
+
+      const response = await fetch(`${ADMIN_API_URL}/users/${userData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update user');
+      }
+
+      alert('User updated successfully!');
+      setEditingUser(null);
+      loadUsers();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleDeleteUser = async (userId: number) => {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${ADMIN_API_URL}/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete user');
+      }
+
+      alert('User deleted successfully!');
+      loadUsers();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleCreateApiKey = async () => {
+    if (!newApiKey.key_name) {
+      alert('Please enter a key name');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${ADMIN_API_URL}/api-keys`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key_name: newApiKey.key_name,
+          user_id: newApiKey.user_id || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create API key');
+      }
+
+      const data = await response.json();
+      alert(`API Key created! Save it now: ${data.api_key}`);
+      setNewApiKey({ key_name: '', user_id: '' });
+      setShowCreateApiKey(false);
+      loadApiKeys();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleUpdateApiKey = async (keyData: any) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${ADMIN_API_URL}/api-keys/${keyData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key_name: keyData.key_name,
+          is_active: keyData.is_active,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update API key');
+      }
+
+      alert('API Key updated successfully!');
+      setEditingApiKey(null);
+      loadApiKeys();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleDeleteApiKey = async (keyId: number) => {
+    if (!confirm('Are you sure you want to delete this API key?')) return;
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${ADMIN_API_URL}/api-keys/${keyId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete API key');
+      }
+
+      alert('API Key deleted successfully!');
+      loadApiKeys();
     } catch (error: any) {
       alert('Error: ' + error.message);
     }
@@ -368,7 +517,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                             </span>
                           </td>
                           <td className="p-3">
-                            <button className="text-xs text-amber-500 hover:text-amber-400">Edit</button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingUser({ ...u, password: '' })}
+                                className="text-xs text-amber-500 hover:text-amber-400"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(u.id)}
+                                className="text-xs text-red-400 hover:text-red-300"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -458,12 +620,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                             {new Date(p.created_at).toLocaleDateString()}
                           </td>
                           <td className="p-3">
-                            <button
-                              onClick={() => handleDeleteProject(p.id)}
-                              className="text-xs text-red-400 hover:text-red-300"
-                            >
-                              Delete
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingProject(p)}
+                                className="text-xs text-amber-500 hover:text-amber-400"
+                              >
+                                View
+                              </button>
+                              <button
+                                onClick={() => handleDeleteProject(p.id)}
+                                className="text-xs text-red-400 hover:text-red-300"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -478,7 +648,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">API Key Management</h2>
+                <button
+                  onClick={() => setShowCreateApiKey(!showCreateApiKey)}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm transition-colors"
+                >
+                  {showCreateApiKey ? 'Cancel' : '+ Create API Key'}
+                </button>
               </div>
+
+              {showCreateApiKey && (
+                <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 mb-4">
+                  <h3 className="font-bold mb-3">Create New API Key</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-zinc-500 uppercase mb-1">Key Name *</label>
+                      <input
+                        type="text"
+                        value={newApiKey.key_name}
+                        onChange={(e) => setNewApiKey({ ...newApiKey, key_name: e.target.value })}
+                        className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                        placeholder="My API Key"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 uppercase mb-1">User ID (optional)</label>
+                      <input
+                        type="number"
+                        value={newApiKey.user_id}
+                        onChange={(e) => setNewApiKey({ ...newApiKey, user_id: e.target.value })}
+                        className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                        placeholder="Leave empty for system key"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCreateApiKey}
+                    className="mt-4 px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                  >
+                    Create API Key
+                  </button>
+                </div>
+              )}
               
               {apiKeyStats && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -516,6 +726,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         <th className="text-left p-3 text-xs uppercase text-zinc-500">Status</th>
                         <th className="text-left p-3 text-xs uppercase text-zinc-500">Created</th>
                         <th className="text-left p-3 text-xs uppercase text-zinc-500">API Key</th>
+                        <th className="text-left p-3 text-xs uppercase text-zinc-500">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -539,6 +750,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                               {key.api_key.substring(0, 20)}...
                             </code>
                           </td>
+                          <td className="p-3">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingApiKey({ ...key })}
+                                className="text-xs text-amber-500 hover:text-amber-400"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteApiKey(key.id)}
+                                className="text-xs text-red-400 hover:text-red-300"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -549,6 +776,204 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           )}
         </div>
       </div>
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Edit User</h2>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Username</label>
+                <input
+                  type="text"
+                  value={editingUser.username}
+                  onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Email</label>
+                <input
+                  type="email"
+                  value={editingUser.email}
+                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Password (leave empty to keep current)</label>
+                <input
+                  type="password"
+                  value={editingUser.password}
+                  onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                  placeholder="New password (min 6 chars)"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Role</label>
+                <select
+                  value={editingUser.role}
+                  onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                  <option value="moderator">Moderator</option>
+                </select>
+              </div>
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={editingUser.is_active}
+                    onChange={(e) => setEditingUser({ ...editingUser, is_active: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-xs text-zinc-500 uppercase">Active</span>
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleEditUser(editingUser)}
+                  className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Project Modal */}
+      {editingProject && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Project Details</h2>
+              <button
+                onClick={() => setEditingProject(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Title</label>
+                <div className="bg-zinc-800 p-3 rounded text-sm">{editingProject.title || 'N/A'}</div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Genre</label>
+                <div className="bg-zinc-800 p-3 rounded text-sm">{editingProject.genre || 'N/A'}</div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Owner</label>
+                <div className="bg-zinc-800 p-3 rounded text-sm">{editingProject.username || editingProject.email || 'N/A'}</div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Scenes</label>
+                <div className="bg-zinc-800 p-3 rounded text-sm">{editingProject.scene_count || 0}</div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Created</label>
+                <div className="bg-zinc-800 p-3 rounded text-sm">
+                  {new Date(editingProject.created_at).toLocaleString()}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Project ID</label>
+                <div className="bg-zinc-800 p-3 rounded text-sm font-mono text-xs">{editingProject.id}</div>
+              </div>
+              <button
+                onClick={() => setEditingProject(null)}
+                className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit API Key Modal */}
+      {editingApiKey && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Edit API Key</h2>
+              <button
+                onClick={() => setEditingApiKey(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Key Name</label>
+                <input
+                  type="text"
+                  value={editingApiKey.key_name}
+                  onChange={(e) => setEditingApiKey({ ...editingApiKey, key_name: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={editingApiKey.is_active}
+                    onChange={(e) => setEditingApiKey({ ...editingApiKey, is_active: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-xs text-zinc-500 uppercase">Active</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">API Key</label>
+                <div className="bg-zinc-800 p-3 rounded text-xs font-mono break-all">{editingApiKey.api_key}</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingApiKey(null)}
+                  className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleUpdateApiKey(editingApiKey)}
+                  className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

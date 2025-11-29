@@ -47,6 +47,13 @@ router.post('/gemini-key', authenticateToken, async (req: AuthRequest, res: Resp
       return res.status(400).json({ error: 'API key is required' });
     }
 
+    const trimmedKey = api_key.trim();
+    
+    // Basic validation: Google AI Studio API keys are typically 39+ characters
+    if (trimmedKey.length < 20) {
+      return res.status(400).json({ error: 'API key appears to be too short. Please check your API key from https://aistudio.google.com/' });
+    }
+
     const pool = getPool();
 
     // Check if settings exist
@@ -130,9 +137,31 @@ router.post('/gemini-key/test', authenticateToken, async (req: AuthRequest, res:
         });
       }
     } catch (testError: any) {
+      console.error('Gemini API test error:', testError);
+      console.error('Error details:', {
+        message: testError.message,
+        status: testError.status,
+        statusCode: testError.statusCode,
+        code: testError.code,
+        response: testError.response?.data || testError.response
+      });
+      
+      let errorMessage = testError.message || 'API key test failed';
+      
+      // Provide specific error messages
+      if (testError.status === 403 || testError.statusCode === 403 || testError.code === 'PERMISSION_DENIED') {
+        errorMessage = 'Gemini API is not enabled. Please enable the Generative Language API in Google Cloud Console: https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview';
+      } else if (testError.message?.includes('SERVICE_DISABLED') || testError.message?.includes('not enabled')) {
+        errorMessage = 'Gemini API is not enabled. Please enable the Generative Language API in Google Cloud Console: https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview';
+      } else if (testError.message?.includes('API key') || testError.message?.includes('authentication') || testError.message?.includes('invalid')) {
+        errorMessage = 'Invalid API key. Please check that your API key is correct and has not been revoked.';
+      } else if (testError.message?.includes('quota') || testError.message?.includes('limit')) {
+        errorMessage = 'API quota exceeded. Please check your Google Cloud Console for quota limits.';
+      }
+      
       res.json({
         valid: false,
-        message: testError.message || 'API key test failed',
+        message: errorMessage,
       });
     }
   } catch (error) {
