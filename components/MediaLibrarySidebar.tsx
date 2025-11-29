@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { mediaService } from '../apiServices';
 
 interface MediaLibrarySidebarProps {
@@ -33,6 +33,15 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
   const [uploading, setUploading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const isInteractingRef = useRef(false);
+
+  // Use ref for onClose to prevent re-renders
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -120,16 +129,61 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
     };
   }, []);
 
+  // Handle backdrop click - only close if not interacting with sidebar
+  const handleBackdropClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only close if clicking directly on backdrop (not a child) and not uploading/interacting
+    if (
+      e.target === backdropRef.current && 
+      !uploading && 
+      !isInteractingRef.current &&
+      !sidebarRef.current?.contains(e.target as Node)
+    ) {
+      onCloseRef.current();
+    }
+  }, [uploading]);
+
+  // Track interaction state
+  const handleMouseDown = useCallback(() => {
+    isInteractingRef.current = true;
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    // Reset after a short delay
+    setTimeout(() => {
+      isInteractingRef.current = false;
+    }, 100);
+  }, []);
+
+  // Memoize close handler
+  const handleClose = useCallback(() => {
+    if (!uploading && !isInteractingRef.current) {
+      onCloseRef.current();
+    }
+  }, [uploading]);
+
   return (
     <>
       {/* Backdrop */}
       <div 
+        ref={backdropRef}
         className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100]"
-        onClick={onClose}
+        onMouseDown={handleBackdropClick}
+        onClick={(e) => {
+          // Prevent click if it was a drag
+          if (e.target === backdropRef.current) {
+            handleBackdropClick(e as any);
+          }
+        }}
       />
       
       {/* Sidebar */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-zinc-900 border-l border-zinc-700 shadow-2xl z-[101] flex flex-col">
+      <div 
+        ref={sidebarRef}
+        className="fixed right-0 top-0 h-full w-full max-w-md bg-zinc-900 border-l border-zinc-700 shadow-2xl z-[101] flex flex-col"
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950">
           <h2 className="text-xl font-bold text-white">Media Library</h2>
@@ -153,8 +207,9 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
               </>
             )}
             <button
-              onClick={onClose}
-              className="text-zinc-400 hover:text-white transition-colors p-1"
+              onClick={handleClose}
+              disabled={uploading}
+              className="text-zinc-400 hover:text-white transition-colors p-1 disabled:opacity-50"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -260,5 +315,5 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
   );
 };
 
-export default MediaLibrarySidebar;
+export default memo(MediaLibrarySidebar);
 

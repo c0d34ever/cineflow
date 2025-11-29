@@ -417,14 +417,26 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         ]
       );
 
-      // Delete existing scenes and their settings
-      await connection.query('DELETE FROM scene_director_settings WHERE scene_id IN (SELECT id FROM scenes WHERE project_id = ?)', [context.id]);
-      await connection.query('DELETE FROM scenes WHERE project_id = ?', [context.id]);
+      // Get existing scene IDs to preserve media associations
+      const [existingScenes] = await connection.query(
+        'SELECT id FROM scenes WHERE project_id = ?',
+        [context.id]
+      ) as [Array<{ id: string }>, any];
+      const existingSceneIds = new Set(existingScenes.map(s => s.id));
+      const incomingSceneIds = new Set((scenes || []).map((s: any) => s.id));
 
-      // Insert new scenes
+      // Delete scenes that are no longer in the incoming list (but preserve their media)
+      const scenesToDelete = Array.from(existingSceneIds).filter(id => !incomingSceneIds.has(id));
+      if (scenesToDelete.length > 0) {
+        await connection.query('DELETE FROM scene_director_settings WHERE scene_id IN (?)', [scenesToDelete]);
+        await connection.query('DELETE FROM scenes WHERE id IN (?)', [scenesToDelete]);
+        console.log(`Deleted ${scenesToDelete.length} scenes that were removed from project`);
+      }
+
+      // Update or insert scenes (preserving existing scenes to keep media associations)
       if (scenes && Array.isArray(scenes)) {
         for (const scene of scenes) {
-          // Get primary image thumbnail for this scene
+          // Get primary image thumbnail for this scene (check existing media first)
           let thumbnailUrl = scene.thumbnailUrl || null;
           if (!thumbnailUrl) {
             try {
@@ -441,10 +453,12 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
             }
           }
 
+          // Use INSERT ... ON DUPLICATE KEY UPDATE to preserve existing scenes
           await connection.query(
             `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
+               sequence_number = VALUES(sequence_number),
                raw_idea = VALUES(raw_idea),
                enhanced_prompt = VALUES(enhanced_prompt),
                context_summary = VALUES(context_summary),
