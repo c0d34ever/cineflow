@@ -55,7 +55,9 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
 
   const loadCharacters = async () => {
     try {
-      const chars = await charactersService.getByProject(projectId);
+      const response = await charactersService.getByProject(projectId);
+      // Handle both response formats: { characters: [...] } or direct array
+      const chars = (response as any)?.characters || (Array.isArray(response) ? response : []);
       setCharacters(Array.isArray(chars) ? chars : []);
     } catch (error) {
       console.error('Failed to load characters:', error);
@@ -66,32 +68,75 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
   };
 
   const analyzeRelationships = () => {
+    // Build character map from database characters
     const charMap = new Map<string, Character>();
     characters.forEach(char => {
       charMap.set(char.name.toLowerCase(), char);
     });
 
+    // Also extract character names from scenes if no characters in database
+    const extractedChars = new Set<string>();
+    const charNamePattern = /(?:^|\s)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?:\s*:|\s+said|\s+says)/g;
+    
+    scenes.forEach(scene => {
+      const text = `${scene.directorSettings?.dialogue || ''} ${scene.enhancedPrompt || ''} ${scene.contextSummary || ''} ${scene.rawIdea || ''}`;
+      
+      // Extract potential character names (capitalized words before colons or dialogue markers)
+      const dialogueMatches = text.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*[:"]/g) || [];
+      dialogueMatches.forEach(match => {
+        const name = match.replace(/[:"]/g, '').trim();
+        if (name.length > 1 && name.length < 30) {
+          extractedChars.add(name);
+        }
+      });
+      
+      // Also check for common character patterns
+      const commonPatterns = [
+        /(?:character|protagonist|antagonist|hero|villain|person|man|woman|boy|girl)\s+([A-Z][a-z]+)/gi,
+        /([A-Z][a-z]+)\s+(?:said|says|replied|answered|whispered|shouted)/gi,
+      ];
+      
+      commonPatterns.forEach(pattern => {
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+          const name = match[1] || match[0];
+          if (name && name.length > 1 && name.length < 30) {
+            extractedChars.add(name);
+          }
+        }
+      });
+    });
+
+    // Combine database characters with extracted ones
+    const allChars = new Set<string>();
+    characters.forEach(char => allChars.add(char.name));
+    extractedChars.forEach(name => {
+      // Only add if it looks like a proper name (not common words)
+      const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+      if (!commonWords.includes(name.toLowerCase()) && name.length > 1) {
+        allChars.add(name);
+      }
+    });
+
+    if (allChars.size === 0) {
+      setRelationships([]);
+      return;
+    }
+
     // Extract character mentions from scenes
-    const interactions = new Map<string, Map<string, { count: number; scenes: number[] }>>();
+    const interactions = new Map<string, { count: number; scenes: number[] }>();
 
     scenes.forEach(scene => {
       const mentionedChars = new Set<string>();
+      const sceneText = `${scene.directorSettings?.dialogue || ''} ${scene.enhancedPrompt || ''} ${scene.contextSummary || ''} ${scene.rawIdea || ''}`.toLowerCase();
       
-      // Check dialogue for character names
-      const dialogue = scene.directorSettings?.dialogue || '';
-      const dialogueMatches = dialogue.match(/(\w+):\s*["']/g) || [];
-      dialogueMatches.forEach(match => {
-        const charName = match.split(':')[0].trim();
-        if (charMap.has(charName.toLowerCase())) {
+      // Check for character mentions
+      allChars.forEach(charName => {
+        const lowerName = charName.toLowerCase();
+        // Check if character name appears in scene (whole word match)
+        const regex = new RegExp(`\\b${lowerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        if (regex.test(sceneText)) {
           mentionedChars.add(charName);
-        }
-      });
-
-      // Check enhanced prompt and context for character mentions
-      const text = `${scene.enhancedPrompt} ${scene.contextSummary} ${scene.rawIdea}`.toLowerCase();
-      characters.forEach(char => {
-        if (text.includes(char.name.toLowerCase())) {
-          mentionedChars.add(char.name);
         }
       });
 
@@ -104,29 +149,26 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
           const key = [char1, char2].sort().join('|');
           
           if (!interactions.has(key)) {
-            interactions.set(key, new Map());
+            interactions.set(key, { count: 0, scenes: [] });
           }
-          const rel = interactions.get(key)!;
-          if (!rel.has('data')) {
-            rel.set('data', { count: 0, scenes: [] });
-          }
-          const data = rel.get('data')!;
+          const data = interactions.get(key)!;
           data.count++;
-          data.scenes.push(scene.sequenceNumber);
+          if (!data.scenes.includes(scene.sequenceNumber)) {
+            data.scenes.push(scene.sequenceNumber);
+          }
         }
       }
     });
 
     // Convert to relationship array
     const rels: Relationship[] = [];
-    const maxInteractions = Math.max(...Array.from(interactions.values()).map(m => m.get('data')?.count || 0), 1);
+    const maxInteractions = Math.max(...Array.from(interactions.values()).map(d => d.count), 1);
 
     interactions.forEach((data, key) => {
       const [char1, char2] = key.split('|');
-      const interactionData = data.get('data')!;
-      const strength = interactionData.count / maxInteractions;
+      const strength = data.count / maxInteractions;
       
-      // Determine relationship type (simplified - could use AI)
+      // Determine relationship type
       let type: Relationship['type'] = 'neutral';
       if (strength > 0.7) type = 'allies';
       else if (strength > 0.4) type = 'neutral';
@@ -135,7 +177,7 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
         character1: char1,
         character2: char2,
         strength,
-        scenes: interactionData.scenes,
+        scenes: data.scenes,
         type
       });
     });
@@ -172,12 +214,19 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
       activeChars.add(rel.character2);
     });
 
+    // Also include characters from database that might not have relationships yet
+    if (activeChars.size === 0 && characters.length > 0) {
+      characters.forEach(char => activeChars.add(char.name));
+    }
+
     const charArray = Array.from(activeChars);
     if (charArray.length === 0) {
       ctx.fillStyle = '#71717a';
       ctx.font = '16px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('No relationships found', canvas.width / 2, canvas.height / 2);
+      ctx.fillText('No characters found', canvas.width / 2, canvas.height / 2 - 20);
+      ctx.font = '12px Arial';
+      ctx.fillText('Add characters or ensure scenes mention character names', canvas.width / 2, canvas.height / 2 + 10);
       return;
     }
 

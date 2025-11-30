@@ -41,6 +41,7 @@ import VersionHistoryPanel from './components/VersionHistoryPanel';
 import ProjectHealthScore from './components/ProjectHealthScore';
 import QuickActionsMenu from './components/QuickActionsMenu';
 import CopySceneSettingsModal from './components/CopySceneSettingsModal';
+import ExportPresetsPanel from './components/ExportPresetsPanel';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -246,6 +247,7 @@ const App: React.FC = () => {
   const [quickActionsMenu, setQuickActionsMenu] = useState<{ scene: Scene; position: { x: number; y: number } } | null>(null);
   const [showCopySettingsModal, setShowCopySettingsModal] = useState(false);
   const [sourceSceneForCopy, setSourceSceneForCopy] = useState<Scene | null>(null);
+  const [showExportPresets, setShowExportPresets] = useState(false);
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
 
   // Undo/Redo
@@ -2611,6 +2613,16 @@ const App: React.FC = () => {
                     </button>
                   </>
                 )}
+                <div className="border-t border-zinc-700 my-1"></div>
+                <button
+                  onClick={() => {
+                    setShowExportMenu(false);
+                    setShowExportPresets(true);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-amber-400 hover:bg-zinc-800 hover:text-amber-300 flex items-center gap-2"
+                >
+                  <span>⚙️</span> Export Presets
+                </button>
               </div>
             )}
           </div>
@@ -3425,6 +3437,61 @@ const App: React.FC = () => {
             setSourceSceneForCopy(null);
           }}
           onCopy={handleApplyCopiedSettings}
+        />
+      )}
+
+      {/* Export Presets Panel */}
+      {showExportPresets && (
+        <ExportPresetsPanel
+          onClose={() => setShowExportPresets(false)}
+          onApply={async (preset) => {
+            try {
+              const exportData: any = {
+                context: storyContext,
+                scenes: scenes,
+                settings: currentSettings,
+              };
+
+              // Apply preset settings
+              if (!preset.includeSettings) {
+                exportData.settings = undefined;
+              }
+
+              switch (preset.format) {
+                case 'pdf':
+                  const { exportToPDF } = await import('./utils/exportUtils');
+                  await exportToPDF(exportData, `${storyContext.title || 'project'}-${preset.name}`);
+                  break;
+                case 'csv':
+                  const { exportToCSV } = await import('./utils/exportUtils');
+                  exportToCSV(exportData, `${storyContext.title || 'project'}-${preset.name}`);
+                  break;
+                case 'markdown':
+                  const { exportToMarkdown } = await import('./utils/exportUtils');
+                  exportToMarkdown(exportData, `${storyContext.title || 'project'}-${preset.name}`);
+                  break;
+                case 'json':
+                  const jsonStr = JSON.stringify(exportData, null, 2);
+                  const jsonBlob = new Blob([jsonStr], { type: 'application/json' });
+                  const jsonUrl = URL.createObjectURL(jsonBlob);
+                  const jsonA = document.createElement('a');
+                  jsonA.href = jsonUrl;
+                  jsonA.download = `${storyContext.title || 'project'}-${preset.name}.json`;
+                  jsonA.click();
+                  URL.revokeObjectURL(jsonUrl);
+                  break;
+                case 'fountain':
+                  const { exportToFountain } = await import('./utils/exportUtils');
+                  exportToFountain(exportData, `${storyContext.title || 'project'}-${preset.name}`);
+                  break;
+              }
+
+              showToast(`Exported using preset: ${preset.name}`, 'success');
+              setShowExportPresets(false);
+            } catch (error: any) {
+              showToast(`Failed to export: ${error.message}`, 'error');
+            }
+          }}
         />
       )}
 
