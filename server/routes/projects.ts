@@ -694,5 +694,139 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
   }
 });
 
+// GET /api/projects/:id/versions - Get all versions for a project
+router.get('/:id/versions', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const pool = getPool();
+
+    // Verify project belongs to user
+    const [projects] = await pool.query(
+      'SELECT id FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      [projectId, userId]
+    ) as [any[], any];
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const [versions] = await pool.query(
+      'SELECT * FROM project_versions WHERE project_id = ? ORDER BY version_number DESC LIMIT 10',
+      [projectId]
+    ) as [any[], any];
+
+    // Parse JSON fields
+    const parsedVersions = (versions || []).map((v: any) => ({
+      id: v.id,
+      project_id: v.project_id,
+      version_number: v.version_number,
+      context: typeof v.context === 'string' ? JSON.parse(v.context) : v.context,
+      scenes: typeof v.scenes === 'string' ? JSON.parse(v.scenes) : v.scenes,
+      settings: typeof v.settings === 'string' ? JSON.parse(v.settings) : v.settings,
+      note: v.note,
+      created_at: v.created_at,
+    }));
+
+    res.json({ versions: parsedVersions });
+  } catch (error: any) {
+    console.error('Error fetching versions:', error);
+    res.status(500).json({ error: 'Failed to fetch versions' });
+  }
+});
+
+// POST /api/projects/:id/versions - Save a new version
+router.post('/:id/versions', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const { context, scenes, settings, note } = req.body;
+    const pool = getPool();
+
+    // Verify project belongs to user
+    const [projects] = await pool.query(
+      'SELECT id FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      [projectId, userId]
+    ) as [any[], any];
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get next version number
+    const [versionCount] = await pool.query(
+      'SELECT COUNT(*) as count FROM project_versions WHERE project_id = ?',
+      [projectId]
+    ) as [Array<{ count: number }>, any];
+
+    const versionNumber = (versionCount[0]?.count || 0) + 1;
+    const versionId = `v_${projectId}_${Date.now()}`;
+
+    // Insert version
+    await pool.query(
+      `INSERT INTO project_versions (id, project_id, version_number, context, scenes, settings, note, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        versionId,
+        projectId,
+        versionNumber,
+        JSON.stringify(context),
+        JSON.stringify(scenes || []),
+        JSON.stringify(settings || {}),
+        note || null,
+        userId,
+      ]
+    );
+
+    // Keep only last 10 versions
+    await pool.query(
+      `DELETE FROM project_versions 
+       WHERE project_id = ? AND version_number NOT IN (
+         SELECT version_number FROM (
+           SELECT version_number FROM project_versions 
+           WHERE project_id = ? 
+           ORDER BY version_number DESC LIMIT 10
+         ) AS keep_versions
+       )`,
+      [projectId, projectId]
+    );
+
+    res.json({ success: true, version_id: versionId, version_number: versionNumber });
+  } catch (error: any) {
+    console.error('Error saving version:', error);
+    res.status(500).json({ error: 'Failed to save version' });
+  }
+});
+
+// DELETE /api/projects/:id/versions/:versionId - Delete a version
+router.delete('/:id/versions/:versionId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const versionId = req.params.versionId;
+    const pool = getPool();
+
+    // Verify project belongs to user
+    const [projects] = await pool.query(
+      'SELECT id FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      [projectId, userId]
+    ) as [any[], any];
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    await pool.query(
+      'DELETE FROM project_versions WHERE id = ? AND project_id = ?',
+      [versionId, projectId]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting version:', error);
+    res.status(500).json({ error: 'Failed to delete version' });
+  }
+});
+
 export default router;
 

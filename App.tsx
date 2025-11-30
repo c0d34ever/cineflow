@@ -35,6 +35,12 @@ import ShootingScheduleGenerator from './components/ShootingScheduleGenerator';
 import CallSheetGenerator from './components/CallSheetGenerator';
 import BudgetEstimator from './components/BudgetEstimator';
 import VideoSlideshowExport from './components/VideoSlideshowExport';
+import SceneComparisonView from './components/SceneComparisonView';
+import CharacterRelationshipGraph from './components/CharacterRelationshipGraph';
+import VersionHistoryPanel from './components/VersionHistoryPanel';
+import ProjectHealthScore from './components/ProjectHealthScore';
+import QuickActionsMenu from './components/QuickActionsMenu';
+import CopySceneSettingsModal from './components/CopySceneSettingsModal';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -233,6 +239,13 @@ const App: React.FC = () => {
   const [callSheetDay, setCallSheetDay] = useState<any>(null);
   const [showBudgetEstimator, setShowBudgetEstimator] = useState(false);
   const [showVideoExport, setShowVideoExport] = useState(false);
+  const [showSceneComparison, setShowSceneComparison] = useState(false);
+  const [showCharacterGraph, setShowCharacterGraph] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showProjectHealth, setShowProjectHealth] = useState(false);
+  const [quickActionsMenu, setQuickActionsMenu] = useState<{ scene: Scene; position: { x: number; y: number } } | null>(null);
+  const [showCopySettingsModal, setShowCopySettingsModal] = useState(false);
+  const [sourceSceneForCopy, setSourceSceneForCopy] = useState<Scene | null>(null);
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
 
   // Undo/Redo
@@ -1458,6 +1471,96 @@ const App: React.FC = () => {
   };
 
   const handleBulkTagAssignment = async (tagId: number) => {
+    if (selectedSceneIds.size === 0) return;
+
+    try {
+      const apiAvailable = await checkApiAvailability();
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const token = localStorage.getItem('auth_token');
+
+      // Assign tag to all selected scenes
+      if (apiAvailable) {
+        await Promise.all(
+          Array.from(selectedSceneIds).map(async (sceneId) => {
+            try {
+              await fetch(`${API_BASE_URL}/clips/${sceneId}/tags`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ tag_id: tagId }),
+              });
+            } catch (error) {
+              console.warn(`Failed to assign tag to scene ${sceneId}:`, error);
+            }
+          })
+        );
+      }
+
+      showToast(`Tag assigned to ${selectedSceneIds.size} scene(s)`, 'success');
+    } catch (error: any) {
+      showToast('Failed to assign tags', 'error');
+    }
+  };
+
+  const handleExportSelectedScenes = async (format: 'json' | 'markdown' | 'csv' | 'pdf' | 'fountain') => {
+    if (selectedSceneIds.size === 0) {
+      showToast('Please select scenes to export', 'error');
+      return;
+    }
+
+    const selectedScenes = scenes.filter(s => selectedSceneIds.has(s.id));
+    if (selectedScenes.length === 0) return;
+
+    try {
+      // Use existing export functions but with selected scenes only
+      const exportData: any = {
+        context: storyContext,
+        scenes: selectedScenes,
+        settings: currentSettings,
+      };
+
+      switch (format) {
+        case 'json':
+          const jsonStr = JSON.stringify(exportData, null, 2);
+          const jsonBlob = new Blob([jsonStr], { type: 'application/json' });
+          const jsonUrl = URL.createObjectURL(jsonBlob);
+          const jsonA = document.createElement('a');
+          jsonA.href = jsonUrl;
+          jsonA.download = `${storyContext.title || 'project'}-selected-scenes.json`;
+          jsonA.click();
+          URL.revokeObjectURL(jsonUrl);
+          break;
+
+        case 'markdown':
+          const { exportToMarkdown } = await import('./utils/exportUtils');
+          exportToMarkdown(exportData, `${storyContext.title || 'project'}-selected-scenes`);
+          break;
+
+        case 'csv':
+          const { exportToCSV } = await import('./utils/exportUtils');
+          exportToCSV(exportData, `${storyContext.title || 'project'}-selected-scenes`);
+          break;
+
+        case 'pdf':
+          const { exportToPDF } = await import('./utils/exportUtils');
+          await exportToPDF(exportData, `${storyContext.title || 'project'}-selected-scenes`);
+          break;
+
+        case 'fountain':
+          const { exportToFountain } = await import('./utils/exportUtils');
+          exportToFountain(exportData, `${storyContext.title || 'project'}-selected-scenes`);
+          break;
+      }
+
+      showToast(`Exported ${selectedScenes.length} selected scene(s) as ${format.toUpperCase()}`, 'success');
+    } catch (error: any) {
+      showToast(`Failed to export scenes: ${error.message}`, 'error');
+    }
+  };
+
+  const handleBulkTagAssignment = async (tagId: number) => {
     if (selectedSceneIds.size === 0 || !storyContext.id) return;
 
     try {
@@ -2651,6 +2754,62 @@ const App: React.FC = () => {
             </button>
           )}
 
+          {/* Scene Comparison Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 1 && (
+            <button
+              onClick={() => setShowSceneComparison(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
+              title="Compare Scenes Side-by-Side"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+              </svg>
+              <span className="hidden sm:inline">Compare</span>
+            </button>
+          )}
+
+          {/* Character Relationship Graph Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowCharacterGraph(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-700 text-white border border-purple-500 transition-colors flex items-center gap-1"
+              title="Character Relationship Graph"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM3 18a6 6 0 1112 0v1H3v-1zM15 9a2 2 0 100-4 2 2 0 000 4zM17 18v-1a2 2 0 00-2-2H5a2 2 0 00-2 2v1h14z" />
+              </svg>
+              <span className="hidden sm:inline">Relations</span>
+            </button>
+          )}
+
+          {/* Version History Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => setShowVersionHistory(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-teal-600 hover:bg-teal-700 text-white border border-teal-500 transition-colors flex items-center gap-1"
+              title="Version History & Rollback"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline">History</span>
+            </button>
+          )}
+
+          {/* Project Health Score Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => setShowProjectHealth(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 transition-colors flex items-center gap-1"
+              title="Project Health Score"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline">Health</span>
+            </button>
+          )}
+
           {/* Export History Button */}
           {view === 'studio' && (
             <button
@@ -2884,6 +3043,63 @@ const App: React.FC = () => {
                     >
                       Planning
                     </button>
+                    {/* Bulk Tag Assignment */}
+                    {availableTags.length > 0 && (
+                      <div className="relative group">
+                        <button
+                          className="text-xs px-2 sm:px-3 py-1.5 rounded bg-purple-900/30 text-purple-400 hover:bg-purple-900/50 border border-purple-800/50"
+                        >
+                          Add Tag
+                        </button>
+                        <div className="absolute right-0 mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity max-h-60 overflow-y-auto">
+                          {availableTags.slice(0, 10).map((tag: any) => (
+                            <button
+                              key={tag.id}
+                              onClick={() => handleBulkTagAssignment(tag.id)}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-800 flex items-center gap-2"
+                              style={{ color: tag.color || '#6366f1' }}
+                            >
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: tag.color || '#6366f1' }}></span>
+                              {tag.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Export Selected */}
+                    <div className="relative group">
+                      <button
+                        className="text-xs px-2 sm:px-3 py-1.5 rounded bg-blue-900/30 text-blue-400 hover:bg-blue-900/50 border border-blue-800/50"
+                      >
+                        Export
+                      </button>
+                      <div className="absolute right-0 mt-1 w-40 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity">
+                        <button
+                          onClick={() => handleExportSelectedScenes('pdf')}
+                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                        >
+                          PDF
+                        </button>
+                        <button
+                          onClick={() => handleExportSelectedScenes('csv')}
+                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                        >
+                          CSV
+                        </button>
+                        <button
+                          onClick={() => handleExportSelectedScenes('markdown')}
+                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                        >
+                          Markdown
+                        </button>
+                        <button
+                          onClick={() => handleExportSelectedScenes('json')}
+                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                        >
+                          JSON
+                        </button>
+                      </div>
+                    </div>
                     <button
                       onClick={handleBulkDelete}
                       className="text-xs px-2 sm:px-3 py-1.5 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800/50"
@@ -2916,6 +3132,7 @@ const App: React.FC = () => {
                       onDragOver={(e) => handleDragOver(e, index)}
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDrop(e, index)}
+                      onContextMenu={(e) => !batchMode && handleSceneContextMenu(e, scene)}
                       className={`w-full transition-all ${
                         batchMode ? 'cursor-pointer' : 'cursor-move'
                       } ${
@@ -3117,6 +3334,110 @@ const App: React.FC = () => {
           scenes={scenes}
           projectId={storyContext.id}
           onClose={() => setShowVideoExport(false)}
+        />
+      )}
+
+      {/* Scene Comparison View */}
+      {showSceneComparison && storyContext.id && scenes.length > 0 && (
+        <SceneComparisonView
+          scenes={scenes}
+          projectId={storyContext.id}
+          onClose={() => setShowSceneComparison(false)}
+        />
+      )}
+
+      {/* Character Relationship Graph */}
+      {showCharacterGraph && storyContext.id && scenes.length > 0 && (
+        <CharacterRelationshipGraph
+          scenes={scenes}
+          projectId={storyContext.id}
+          storyContext={storyContext}
+          onClose={() => setShowCharacterGraph(false)}
+        />
+      )}
+
+      {/* Version History Panel */}
+      {showVersionHistory && storyContext.id && (
+        <VersionHistoryPanel
+          projectId={storyContext.id}
+          currentContext={storyContext}
+          currentScenes={scenes}
+          currentSettings={currentSettings}
+          onClose={() => setShowVersionHistory(false)}
+          onRestore={async (version) => {
+            setStoryContext(version.context);
+            setScenes(version.scenes || []);
+            setCurrentSettings(version.settings);
+            showToast('Version restored successfully', 'success');
+          }}
+        />
+      )}
+
+      {/* Project Health Score */}
+      {showProjectHealth && storyContext.id && (
+        <ProjectHealthScore
+          scenes={scenes}
+          storyContext={storyContext}
+          settings={currentSettings}
+          onClose={() => setShowProjectHealth(false)}
+        />
+      )}
+
+      {/* Quick Actions Menu */}
+      {quickActionsMenu && (
+        <QuickActionsMenu
+          scene={quickActionsMenu.scene}
+          position={quickActionsMenu.position}
+          onClose={() => setQuickActionsMenu(null)}
+          onDuplicate={handleDuplicateScene}
+          onCopySettings={handleCopySceneSettings}
+          onDelete={async (sceneId) => {
+            const scene = scenes.find(s => s.id === sceneId);
+            if (!scene) return;
+            
+            try {
+              const apiAvailable = await checkApiAvailability();
+              const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+              const token = localStorage.getItem('auth_token');
+
+              if (apiAvailable) {
+                const response = await fetch(`${API_BASE_URL}/clips/${sceneId}`, {
+                  method: 'DELETE',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                  },
+                });
+                if (!response.ok) throw new Error('Failed to delete scene');
+              }
+
+              setScenes(prev => {
+                const filtered = prev.filter(s => s.id !== sceneId);
+                return filtered.map((s, idx) => ({
+                  ...s,
+                  sequenceNumber: idx + 1
+                }));
+              });
+
+              showToast('Scene deleted successfully', 'success');
+            } catch (error: any) {
+              showToast('Failed to delete scene', 'error');
+            }
+          }}
+          onEdit={handleEditScene}
+          onExport={handleExportScene}
+        />
+      )}
+
+      {/* Copy Scene Settings Modal */}
+      {showCopySettingsModal && sourceSceneForCopy && (
+        <CopySceneSettingsModal
+          sourceScene={sourceSceneForCopy}
+          targetScenes={scenes.filter(s => s.id !== sourceSceneForCopy.id)}
+          onClose={() => {
+            setShowCopySettingsModal(false);
+            setSourceSceneForCopy(null);
+          }}
+          onCopy={handleApplyCopiedSettings}
         />
       )}
 

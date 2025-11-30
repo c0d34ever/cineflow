@@ -241,49 +241,91 @@ const VideoSlideshowExport: React.FC<VideoSlideshowExportProps> = ({ scenes, pro
     height: number, 
     delay: number
   ): Promise<Blob> => {
+    // Use a more reliable CDN and loading approach
+    const GIF_LIB_URL = 'https://unpkg.com/gif.js@0.2.0/dist/gif.js';
+    const GIF_WORKER_URL = 'https://unpkg.com/gif.js@0.2.0/dist/gif.worker.js';
+
     // Load gif.js from CDN if not already loaded
     if (!(window as any).GIF) {
-      await loadScript('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
-      await loadScript('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js');
+      setStatus('Loading GIF library...');
+      try {
+        // Load main library first
+        await loadScript(GIF_LIB_URL);
+        // Wait a bit for library to initialize
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        console.error('Failed to load GIF library:', error);
+        throw new Error('Failed to load GIF library. Please check your internet connection.');
+      }
     }
 
     const GIF = (window as any).GIF;
-    if (!GIF) {
-      throw new Error('GIF library failed to load');
+    if (!GIF || typeof GIF !== 'function') {
+      throw new Error('GIF library failed to load or is not available');
     }
 
-    // Create GIF instance
+    // Create GIF instance with proper configuration
     const gif = new GIF({
       workers: 2,
       quality: 10,
-      width: width,
-      height: height,
-      workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+      width: Math.min(width, 800), // Limit width for performance
+      height: Math.min(height, 600), // Limit height for performance
+      workerScript: GIF_WORKER_URL,
+      repeat: 0, // Loop forever
+      background: '#000000',
+      transparent: null
     });
 
     // Convert frames to ImageData and add to GIF
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
+    tempCanvas.width = Math.min(width, 800);
+    tempCanvas.height = Math.min(height, 600);
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) throw new Error('Could not get canvas context');
 
+    setStatus('Adding frames to GIF...');
+    let frameCount = 0;
     for (const frameDataUrl of frames) {
-      const img = await loadImage(frameDataUrl);
-      tempCtx.clearRect(0, 0, width, height);
-      drawImageOnCanvas(tempCtx, img, width, height);
-      const imageData = tempCtx.getImageData(0, 0, width, height);
-      gif.addFrame(imageData, { delay: delay });
+      try {
+        const img = await loadImage(frameDataUrl);
+        tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+        drawImageOnCanvas(tempCtx, img, tempCanvas.width, tempCanvas.height);
+        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        gif.addFrame(imageData, { delay: Math.max(delay, 100) }); // Minimum 100ms delay
+        frameCount++;
+        setProgress(80 + (frameCount / frames.length) * 15);
+      } catch (error) {
+        console.warn('Failed to add frame to GIF:', error);
+        // Continue with other frames
+      }
+    }
+
+    if (frameCount === 0) {
+      throw new Error('No frames were added to GIF');
     }
 
     // Render GIF
+    setStatus('Rendering GIF...');
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('GIF rendering timed out'));
+      }, 60000); // 60 second timeout
+
       gif.on('finished', (blob: Blob) => {
+        clearTimeout(timeout);
         resolve(blob);
       });
+      
+      gif.on('progress', (p: number) => {
+        setProgress(95 + p * 0.05);
+      });
+      
       gif.on('error', (error: Error) => {
+        clearTimeout(timeout);
+        console.error('GIF encoding error:', error);
         reject(error);
       });
+      
       gif.render();
     });
   };
