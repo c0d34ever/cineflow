@@ -4,6 +4,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import { getPool } from '../db/index.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
+import { emailService } from '../services/emailService.js';
 
 const router = express.Router();
 const JWT_SECRET: string = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
