@@ -176,10 +176,17 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     }
 
     const pool = getPool();
+    console.log(`🔍 Looking up user with email: ${email}`);
     const [users] = await pool.query(
       'SELECT id, email, username FROM users WHERE email = ? AND is_active = TRUE',
       [email]
     ) as [any[], any];
+    
+    if (Array.isArray(users) && users.length > 0) {
+      console.log(`✅ Found user: ${users[0].email} (${users[0].username})`);
+    } else {
+      console.log(`⚠️  No active user found with email: ${email}`);
+    }
 
     // Always return success to prevent email enumeration
     // In production, you would send an email here
@@ -201,10 +208,17 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       // Frontend URL will be added automatically by emailService
       const resetUrl = `/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
       
-      await emailService.sendTemplateEmail('password_reset', user.email, {
+      console.log(`📧 Sending password reset email to: ${user.email}`);
+      const emailSent = await emailService.sendTemplateEmail('password_reset', user.email, {
         username: user.username || user.email,
         resetLink: resetUrl,
       });
+      
+      if (emailSent) {
+        console.log(`✅ Password reset email sent successfully to: ${user.email}`);
+      } else {
+        console.error(`❌ Failed to send password reset email to: ${user.email}`);
+      }
       
       if (process.env.NODE_ENV !== 'production') {
         console.log(`[DEV] Password reset link for ${email}: ${resetUrl}`);

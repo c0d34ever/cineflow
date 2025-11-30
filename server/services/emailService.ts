@@ -309,6 +309,10 @@ class EmailService {
     try {
       const from = this.getSetting('smtp_from') || this.getSetting('smtp_user') || 'noreply@cineflow.com';
 
+      console.log(`📧 Attempting to send email to: ${options.to}`);
+      console.log(`📧 From: ${from}`);
+      console.log(`📧 Subject: ${options.subject}`);
+
       const info = await this.transporter.sendMail({
         from: `"CineFlow" <${from}>`,
         to: options.to,
@@ -317,7 +321,9 @@ class EmailService {
         text: options.text || options.html.replace(/<[^>]*>/g, ''), // Strip HTML for text version
       });
 
-      console.log('✅ Email sent:', info.messageId);
+      console.log(`✅ Email sent successfully to: ${options.to}`);
+      console.log(`   Message ID: ${info.messageId}`);
+      console.log(`   Response: ${info.response}`);
       return true;
     } catch (error) {
       console.error('❌ Error sending email:', error);
