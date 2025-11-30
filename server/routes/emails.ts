@@ -109,16 +109,20 @@ router.post('/test', authenticateToken, async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: 'to and template_key are required' });
     }
 
+    // Reload settings before sending
+    await emailService.reloadSettings();
+    await emailService.initializeTransporter();
+
     const success = await emailService.sendTemplateEmail(template_key, to, variables || {});
 
     if (success) {
       res.json({ message: 'Test email sent successfully' });
     } else {
-      res.status(500).json({ error: 'Failed to send test email' });
+      res.status(500).json({ error: 'Failed to send test email. Please check your SMTP settings and ensure email is enabled.' });
     }
   } catch (error: any) {
     console.error('Error sending test email:', error);
-    res.status(500).json({ error: 'Failed to send test email' });
+    res.status(500).json({ error: 'Failed to send test email: ' + (error.message || 'Unknown error') });
   }
 });
 
@@ -131,16 +135,20 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res: Response
       return res.status(403).json({ error: 'Admin access required' });
     }
 
+    // Reload settings before verifying
+    await emailService.reloadSettings();
+    await emailService.initializeTransporter();
+
     const verified = await emailService.verifyConnection();
 
     if (verified) {
       res.json({ message: 'SMTP connection verified successfully' });
     } else {
-      res.status(500).json({ error: 'SMTP connection failed' });
+      res.status(500).json({ error: 'SMTP connection failed. Please check your SMTP settings.' });
     }
   } catch (error: any) {
     console.error('Error verifying SMTP:', error);
-    res.status(500).json({ error: 'Failed to verify SMTP connection' });
+    res.status(500).json({ error: 'Failed to verify SMTP connection: ' + (error.message || 'Unknown error') });
   }
 });
 

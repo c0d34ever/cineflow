@@ -127,6 +127,14 @@ router.put('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       );
     }
 
+    // Reload email service settings after update
+    try {
+      const { emailService } = await import('../services/emailService.js');
+      await emailService.reloadSettings();
+    } catch (reloadError) {
+      console.warn('Failed to reload email service after settings update:', reloadError);
+    }
+
     res.json({ message: 'Email settings updated successfully' });
   } catch (error: any) {
     console.error('Error updating email settings:', error);

@@ -33,15 +33,16 @@ class EmailService {
   constructor() {
     // Delay loading settings until database is ready
     // This will be called after database initialization
-    setTimeout(() => {
-      this.loadSettings().then(() => {
-        this.initializeTransporter();
-      }).catch((error) => {
+    setTimeout(async () => {
+      try {
+        await this.loadSettings();
+        await this.initializeTransporter();
+      } catch (error: any) {
         console.warn('Failed to load email settings on startup, will retry:', error.message);
         // Fallback to env
         this.loadSettingsFromEnv();
-        this.initializeTransporter();
-      });
+        await this.initializeTransporter();
+      }
     }, 1000);
   }
 
@@ -91,7 +92,7 @@ class EmailService {
 
   async reloadSettings(): Promise<void> {
     await this.loadSettings();
-    this.initializeTransporter();
+    await this.initializeTransporter();
   }
 
   private loadSettingsFromEnv(): void {
@@ -112,11 +113,12 @@ class EmailService {
     return this.settings.get(key) || defaultValue;
   }
 
-  private initializeTransporter() {
+  private async initializeTransporter() {
     // Check if email is enabled
     const emailEnabled = this.getSetting('email_enabled', 'false').toLowerCase() === 'true';
     if (!emailEnabled) {
       console.warn('⚠️  Email functionality is disabled in settings.');
+      this.transporter = null;
       return;
     }
 
@@ -129,6 +131,7 @@ class EmailService {
     if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
       console.warn('⚠️  SMTP not configured. Email functionality will be disabled.');
       console.warn('   Configure SMTP settings in the admin dashboard.');
+      this.transporter = null;
       return;
     }
 
