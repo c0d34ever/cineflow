@@ -1556,19 +1556,7 @@ const App: React.FC = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Show loading state
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
-          <p className="text-zinc-500">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Handle password reset routing (before auth check)
+  // Handle password reset routing - must be before any early returns
   useEffect(() => {
     const handleHashChange = () => {
       setCurrentHash(window.location.hash);
@@ -1582,12 +1570,36 @@ const App: React.FC = () => {
       window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
-  
-  if (currentHash === '#forgot-password') {
-    return <ForgotPassword onBack={() => { window.location.hash = ''; setCurrentHash(''); }} />;
+
+  // Show loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
+          <p className="text-zinc-500">Loading...</p>
+        </div>
+      </div>
+    );
   }
   
-  if (currentHash.startsWith('#reset-password') || currentHash.includes('token=') || window.location.search.includes('token=')) {
+  // Handle password reset routing (before auth check)
+  // Check both hash and pathname for routing
+  const isForgotPassword = currentHash === '#forgot-password' || window.location.pathname === '/forgot-password';
+  const isResetPassword = currentHash.startsWith('#reset-password') || 
+                          currentHash.includes('token=') || 
+                          window.location.search.includes('token=') ||
+                          window.location.pathname === '/reset-password';
+  
+  if (isForgotPassword) {
+    return <ForgotPassword onBack={() => { 
+      window.location.hash = ''; 
+      window.history.pushState('', '', '/');
+      setCurrentHash(''); 
+    }} />;
+  }
+  
+  if (isResetPassword) {
     const urlParams = new URLSearchParams(currentHash.substring(1));
     const searchParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token') || searchParams.get('token');
@@ -1596,7 +1608,12 @@ const App: React.FC = () => {
       <ResetPassword 
         token={token || undefined} 
         email={email ? decodeURIComponent(email) : undefined}
-        onSuccess={() => { window.location.hash = ''; window.location.search = ''; setCurrentHash(''); }}
+        onSuccess={() => { 
+          window.location.hash = ''; 
+          window.location.search = '';
+          window.history.pushState('', '', '/');
+          setCurrentHash(''); 
+        }}
       />
     );
   }
