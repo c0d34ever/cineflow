@@ -1537,12 +1537,24 @@ const App: React.FC = () => {
         ? currentScenesSnapshot[currentScenesSnapshot.length - 1].contextSummary 
         : (storyContext.initialContext || null);
 
-      const optimizedSettings = await suggestDirectorSettings(
-        currentInput,
-        storyContext,
-        prevContext,
-        currentSettings
-      );
+      let optimizedSettings: DirectorSettings;
+      try {
+        optimizedSettings = await suggestDirectorSettings(
+          currentInput,
+          storyContext,
+          prevContext,
+          currentSettings
+        );
+        
+        // Validate that we got valid settings
+        if (!optimizedSettings || typeof optimizedSettings !== 'object' || Object.keys(optimizedSettings).length === 0) {
+          console.warn('suggestDirectorSettings returned invalid result, using currentSettings');
+          optimizedSettings = currentSettings;
+        }
+      } catch (error: any) {
+        console.warn('Failed to get optimized settings, using current settings:', error);
+        optimizedSettings = currentSettings;
+      }
       
       // Update UI to reflect the choices made by AI
       setCurrentSettings(optimizedSettings);
@@ -1563,6 +1575,15 @@ const App: React.FC = () => {
       // Optimistic UI update to show card
       setScenes(prev => [...prev, newScene]);
       setCurrentInput('');
+
+      // Validate inputs before calling enhanceScenePrompt
+      if (!storyContext || typeof storyContext !== 'object' || !storyContext.id) {
+        throw new Error('Invalid story context. Please ensure your project is properly initialized.');
+      }
+
+      if (!optimizedSettings || typeof optimizedSettings !== 'object') {
+        throw new Error('Invalid director settings. Please try again.');
+      }
 
       const { enhancedPrompt, contextSummary } = await enhanceScenePrompt(
         newScene.rawIdea,
@@ -1730,12 +1751,12 @@ const App: React.FC = () => {
 
   if (view === 'library') {
     return (
-      <div className="min-h-screen bg-zinc-950 text-white p-6 font-sans flex flex-col items-center">
+      <div className="min-h-screen bg-zinc-950 text-white p-3 sm:p-6 font-sans flex flex-col items-center">
         <main className="max-w-4xl w-full">
-          <div className="text-center mb-10 pt-10">
-            <h1 className="text-5xl font-serif text-amber-500 mb-2 tracking-tight">CINEFLOW AI</h1>
+          <div className="text-center mb-6 sm:mb-10 pt-6 sm:pt-10">
+            <h1 className="text-3xl sm:text-5xl font-serif text-amber-500 mb-2 tracking-tight">CINEFLOW AI</h1>
             <p className="text-zinc-500 uppercase tracking-widest text-xs">Production Library & Director Suite</p>
-            <div className="mt-4 flex items-center justify-center gap-4">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 sm:gap-4">
               <span className="text-xs text-zinc-600">Logged in as: {currentUser?.username}</span>
               {currentUser?.role === 'admin' && (
                 <button
@@ -1807,7 +1828,7 @@ const App: React.FC = () => {
 
           {/* Library Controls */}
           {projects.length > 0 && (
-            <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
+            <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
               {/* Search */}
               <div className="flex-1 w-full sm:max-w-md">
                 <input
@@ -1815,12 +1836,12 @@ const App: React.FC = () => {
                   value={librarySearchTerm}
                   onChange={(e) => setLibrarySearchTerm(e.target.value)}
                   placeholder="Search projects..."
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2 text-sm focus:border-amber-500 outline-none"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 sm:px-4 py-2 text-sm focus:border-amber-500 outline-none"
                 />
               </div>
 
               {/* Sort & View Toggle */}
-              <div className="flex gap-2 items-center">
+              <div className="flex gap-2 items-center flex-wrap">
                 <button
                   onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
                   className={`px-3 py-1.5 rounded text-xs border transition-colors ${
@@ -1837,7 +1858,7 @@ const App: React.FC = () => {
                 <select
                   value={librarySortBy}
                   onChange={(e) => setLibrarySortBy(e.target.value as any)}
-                  className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-amber-500 outline-none"
+                  className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:border-amber-500 outline-none"
                 >
                   <option value="date">Sort by Date</option>
                   <option value="title">Sort by Title</option>
@@ -2214,7 +2235,7 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-8 space-y-6">
+            <div className="p-4 sm:p-8 space-y-4 sm:space-y-6">
               {/* Scene Templates Button */}
               {view === 'studio' && storyContext.id && (
                 <div className="flex justify-end">
@@ -2228,23 +2249,24 @@ const App: React.FC = () => {
                         showToast('Failed to load scene templates', 'error');
                       }
                     }}
-                    className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+                    className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
                     title="Use Scene Template"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                       <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
                     </svg>
-                    Scene Templates
+                    <span className="hidden sm:inline">Scene Templates</span>
+                    <span className="sm:hidden">Templates</span>
                   </button>
                 </div>
               )}
               
               {/* Magic Generate Section (Now Available for Both) */}
-              <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-800/50 flex flex-col gap-2">
+              <div className="bg-zinc-950 p-3 sm:p-4 rounded-lg border border-zinc-800/50 flex flex-col gap-2">
                  <label className="text-xs font-bold text-amber-500 uppercase flex items-center gap-2">
                    ✨ Magic Auto-Creator
                  </label>
-                 <div className="flex gap-2">
+                 <div className="flex flex-col sm:flex-row gap-2">
                    <input 
                      value={storySeed}
                      onChange={(e) => setStorySeed(e.target.value)}
@@ -2253,7 +2275,7 @@ const App: React.FC = () => {
                    />
                    <button 
                      onClick={handleAutoGenerateStory}
-                     className="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-4 py-2 rounded border border-zinc-600 transition-colors"
+                     className="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-4 py-2 rounded border border-zinc-600 transition-colors whitespace-nowrap"
                    >
                      Generate
                    </button>
@@ -2264,7 +2286,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Common Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                  <div className="md:col-span-2">
                     <label className="block text-xs font-medium text-zinc-500 uppercase mb-1">Project Title</label>
                     <input 
@@ -2333,7 +2355,7 @@ const App: React.FC = () => {
               <div className="flex gap-4 mt-4">
                  <button 
                   onClick={finalizeSetup}
-                  className="flex-1 py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-lg rounded-lg transition-colors uppercase tracking-wide shadow-lg shadow-amber-900/20"
+                  className="flex-1 py-3 sm:py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-base sm:text-lg rounded-lg transition-colors uppercase tracking-wide shadow-lg shadow-amber-900/20"
                 >
                   {setupTab === 'new' ? 'Initialize Storyboard' : 'Resume Production'}
                 </button>
@@ -2350,38 +2372,41 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden">
       {/* Header */}
-      <header className="h-16 border-b border-zinc-800 bg-zinc-900/50 flex items-center px-6 justify-between flex-shrink-0 backdrop-blur-md z-20">
-        <div className="flex items-center gap-4">
-          <button onClick={handleExitToLibrary} className="p-2 text-zinc-400 hover:text-white" title="Back to Library">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-            </svg>
-          </button>
-          <div className="font-serif text-xl font-bold tracking-widest text-amber-500">CINEFLOW</div>
-          <div className="h-4 w-px bg-zinc-700 mx-2"></div>
-          <div className="text-sm text-zinc-300 hidden md:block flex items-center gap-2">
-            <span className="text-zinc-500 mr-2">PROJECT:</span>
-            <span>{storyContext.title}</span>
-            {storyContext.title && <CopyButton text={storyContext.title} size="sm" />}
+      <header className="h-auto min-h-16 border-b border-zinc-800 bg-zinc-900/50 flex flex-col sm:flex-row items-start sm:items-center px-3 sm:px-6 py-2 sm:py-0 justify-between flex-shrink-0 backdrop-blur-md z-20">
+        <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto justify-between sm:justify-start mb-2 sm:mb-0">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <button onClick={handleExitToLibrary} className="p-2 text-zinc-400 hover:text-white" title="Back to Library">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              </svg>
+            </button>
+            <div className="font-serif text-lg sm:text-xl font-bold tracking-widest text-amber-500">CINEFLOW</div>
+            <div className="h-4 w-px bg-zinc-700 mx-1 sm:mx-2 hidden sm:block"></div>
+            <div className="text-xs sm:text-sm text-zinc-300 hidden lg:flex items-center gap-2">
+              <span className="text-zinc-500 mr-2">PROJECT:</span>
+              <span className="truncate max-w-[200px]">{storyContext.title}</span>
+              {storyContext.title && <CopyButton text={storyContext.title} size="sm" />}
+            </div>
           </div>
+          <div className="text-xs text-zinc-400 sm:hidden truncate max-w-[150px]">{storyContext.title}</div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap w-full sm:w-auto justify-end">
           <button
             onClick={() => setView('dashboard')}
-            className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+            className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
             title="User Dashboard"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
             </svg>
-            {currentUser?.username}
+            <span className="hidden sm:inline">{currentUser?.username}</span>
           </button>
           {/* Manual Save Button */}
           <div className="relative group">
             <button
               onClick={handleManualSave}
               disabled={saveStatus === 'saving'}
-              className={`text-xs px-3 py-1.5 rounded border transition-colors flex items-center gap-2 font-bold uppercase tracking-wider ${
+              className={`text-xs px-2 sm:px-3 py-1.5 rounded border transition-colors flex items-center gap-1 sm:gap-2 font-bold uppercase tracking-wider ${
                 saveStatus === 'saved' 
                   ? 'bg-green-900/30 text-green-400 border-green-800' 
                   : saveStatus === 'error'
@@ -2411,10 +2436,11 @@ const App: React.FC = () => {
                   </>
                ) : (
                  <>
-                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6A2.25 2.25 0 016 3.75h1.5m9 0h-9" />
                    </svg>
-                   Save Story
+                   <span className="hidden sm:inline">Save Story</span>
+                   <span className="sm:hidden">Save</span>
                  </>
                )}
             </button>
@@ -2429,20 +2455,21 @@ const App: React.FC = () => {
           <div className="relative" ref={exportMenuRef}>
             <button 
               onClick={() => setShowExportMenu(!showExportMenu)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Export"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
                 <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
               </svg>
-              Export
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <span className="hidden sm:inline">Export</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
               </svg>
             </button>
             
             {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50">
+              <div className="absolute right-0 mt-2 w-56 sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-[80vh] overflow-y-auto">
                 <button
                   onClick={() => handleExport('json')}
                   className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
@@ -2502,13 +2529,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={() => setShowCharactersPanel(true)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Character Management"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM3 18a6 6 0 1112 0v1H3v-1z" />
               </svg>
-              Characters
+              <span className="hidden sm:inline">Characters</span>
             </button>
           )}
 
@@ -2516,13 +2543,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={() => setShowLocationsPanel(true)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Location Management"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
               </svg>
-              Locations
+              <span className="hidden sm:inline">Locations</span>
             </button>
           )}
 
@@ -2530,13 +2557,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={() => setShowAnalyticsPanel(true)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Project Analytics"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M10 2a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V2.75A.75.75 0 0110 2zM5.404 4.343a.75.75 0 010 1.06 6.5 6.5 0 109.192 0 .75.75 0 111.06-1.06 8 8 0 11-11.313 0 .75.75 0 011.06 0zM8 8a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 8zm3.25.75a.75.75 0 00-1.5 0v5.5a.75.75 0 001.5 0v-5.5z" />
               </svg>
-              Analytics
+              <span className="hidden sm:inline">Analytics</span>
             </button>
           )}
 
@@ -2544,13 +2571,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={() => setShowProjectStatisticsPanel(true)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Project Statistics"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
-              Stats
+              <span className="hidden sm:inline">Stats</span>
             </button>
           )}
 
@@ -2558,13 +2585,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={() => setShowAIStoryAnalysis(true)}
-              className="text-xs px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-700 text-white border border-purple-500 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-700 text-white border border-purple-500 transition-colors flex items-center gap-1"
               title="AI Story Analysis"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
-              AI Analysis
+              <span className="hidden sm:inline">AI Analysis</span>
             </button>
           )}
 
@@ -2572,13 +2599,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={() => setShowShotListGenerator(true)}
-              className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 transition-colors flex items-center gap-1"
               title="Generate Shot List"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              Shot List
+              <span className="hidden sm:inline">Shot List</span>
             </button>
           )}
 
@@ -2586,13 +2613,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={() => setShowShootingSchedule(true)}
-              className="text-xs px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white border border-green-500 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white border border-green-500 transition-colors flex items-center gap-1"
               title="Generate Shooting Schedule"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              Schedule
+              <span className="hidden sm:inline">Schedule</span>
             </button>
           )}
 
@@ -2600,13 +2627,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={() => setShowBudgetEstimator(true)}
-              className="text-xs px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
               title="Budget Estimator"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Budget
+              <span className="hidden sm:inline">Budget</span>
             </button>
           )}
 
@@ -2614,13 +2641,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={() => setShowVideoExport(true)}
-              className="text-xs px-3 py-1.5 rounded bg-pink-600 hover:bg-pink-700 text-white border border-pink-500 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-pink-600 hover:bg-pink-700 text-white border border-pink-500 transition-colors flex items-center gap-1"
               title="Export Video Slideshow"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
               </svg>
-              Video Export
+              <span className="hidden sm:inline">Video</span>
             </button>
           )}
 
@@ -2628,13 +2655,13 @@ const App: React.FC = () => {
           {view === 'studio' && (
             <button
               onClick={() => setShowExportHistoryPanel(true)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Export History"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path fillRule="evenodd" d="M10 2a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5H4.25a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 0110 2z" clipRule="evenodd" />
               </svg>
-              Exports
+              <span className="hidden sm:inline">Exports</span>
             </button>
           )}
 
@@ -2642,39 +2669,39 @@ const App: React.FC = () => {
           {view === 'studio' && scenes.length > 0 && (
             <button
               onClick={() => setShowStoryboardPlayback(true)}
-              className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white border border-amber-500 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white border border-amber-500 transition-colors flex items-center gap-1"
               title="Playback Storyboard"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
               </svg>
-              Playback
+              <span className="hidden sm:inline">Playback</span>
             </button>
           )}
 
           {/* Advanced Search Button */}
           <button
             onClick={() => setShowAdvancedSearchPanel(true)}
-            className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+            className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
             title="Advanced Search (Ctrl+F)"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
               <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
             </svg>
-            Search
+            <span className="hidden sm:inline">Search</span>
           </button>
 
           {/* Comments Button */}
           {view === 'studio' && storyContext.id && (
             <button
               onClick={() => setShowCommentsPanel(true)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Project Comments (Ctrl+C)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path fillRule="evenodd" d="M10 2c-2.236 0-4.43.18-6.57.524C1.993 2.755 1 4.014 1 5.426v5.148c0 1.413.993 2.67 2.43 2.902.848.137 1.705.248 2.57.331v4.091c0 .868.706 1.57 1.576 1.57a1.57 1.57 0 00.428-.06l4.344-1.16c.808-.216 1.632-.392 2.47-.523 1.437-.232 2.43-1.49 2.43-2.902V5.426c0-1.413-.993-2.67-2.43-2.902A41.926 41.926 0 0010 2zm0 1.5c-2.1 0-4.2.16-6.3.48C2.5 4.18 2 4.75 2 5.426v5.148c0 .676.5 1.246 1.7 1.446a40.4 40.4 0 006.3.48c2.1 0 4.2-.16 6.3-.48 1.2-.2 1.7-.77 1.7-1.446V5.426c0-.676-.5-1.246-1.7-1.446a40.4 40.4 0 00-6.3-.48z" clipRule="evenodd" />
               </svg>
-              Comments
+              <span className="hidden sm:inline">Comments</span>
             </button>
           )}
 
@@ -2684,20 +2711,20 @@ const App: React.FC = () => {
               <button
                 onClick={handleUndo}
                 disabled={historyIndex <= 0}
-                className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Undo (Ctrl+Z)"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                   <path fillRule="evenodd" d="M7.793 2.232a.75.75 0 01-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 010 10.75H10.75a.75.75 0 010-1.5h2.875a3.875 3.875 0 000-7.75H3.622l4.146 3.957a.75.75 0 01-1.036 1.086l-5.5-5.25a.75.75 0 010-1.086l5.5-5.25a.75.75 0 011.06.025z" clipRule="evenodd" />
                 </svg>
               </button>
               <button
                 onClick={handleRedo}
                 disabled={historyIndex >= history.length - 1}
-                className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Redo (Ctrl+Shift+Z)"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                   <path fillRule="evenodd" d="M12.207 2.232a.75.75 0 00.025 1.06l4.146 3.958H6.375a5.375 5.375 0 000 10.75H9.25a.75.75 0 000-1.5H6.375a3.875 3.875 0 010-7.75h10.003l-4.146 3.957a.75.75 0 001.036 1.086l5.5-5.25a.75.75 0 000-1.086l-5.5-5.25a.75.75 0 00-1.06.025z" clipRule="evenodd" />
                 </svg>
               </button>
@@ -2708,13 +2735,13 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={() => setShowSaveTemplateModal(true)}
-              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Save as Template"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
               </svg>
-              Save Template
+              <span className="hidden sm:inline">Template</span>
             </button>
           )}
 
@@ -2727,17 +2754,17 @@ const App: React.FC = () => {
                   setSelectedSceneIds(new Set());
                 }
               }}
-              className={`text-xs px-3 py-1.5 rounded border transition-colors flex items-center gap-1 ${
+              className={`text-xs px-2 sm:px-3 py-1.5 rounded border transition-colors flex items-center gap-1 ${
                 batchMode
                   ? 'bg-amber-600 text-white border-amber-500'
                   : 'bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border-zinc-700'
               }`}
               title="Batch Selection Mode"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                 <path d="M1 1.75C1 1.33579 1.33579 1 1.75 1H4.25C4.66421 1 5 1.33579 5 1.75V4.25C5 4.66421 4.66421 5 4.25 5H1.75C1.33579 5 1 4.66421 1 4.25V1.75ZM6.5 1.75C6.5 1.33579 6.83579 1 7.25 1H9.75C10.1642 1 10.5 1.33579 10.5 1.75V4.25C10.5 4.66421 10.1642 5 9.75 5H7.25C6.83579 5 6.5 4.66421 6.5 4.25V1.75ZM12 1.75C12 1.33579 12.3358 1 12.75 1H15.25C15.6642 1 16 1.33579 16 1.75V4.25C16 4.66421 15.6642 5 15.25 5H12.75C12.3358 5 12 4.66421 12 4.25V1.75ZM1 7.25C1 6.83579 1.33579 6.5 1.75 6.5H4.25C4.66421 6.5 5 6.83579 5 7.25V9.75C5 10.1642 4.66421 10.5 4.25 10.5H1.75C1.33579 10.5 1 10.1642 1 9.75V7.25ZM6.5 7.25C6.5 6.83579 6.83579 6.5 7.25 6.5H9.75C10.1642 6.5 10.5 6.83579 10.5 7.25V9.75C10.5 10.1642 10.1642 10.5 9.75 10.5H7.25C6.83579 10.5 6.5 10.1642 6.5 9.75V7.25ZM12 7.25C12 6.83579 12.3358 6.5 12.75 6.5H15.25C15.6642 6.5 16 6.83579 16 7.25V9.75C16 10.1642 15.6642 10.5 15.25 10.5H12.75C12.3358 10.5 12 10.1642 12 9.75V7.25ZM1 12.75C1 12.3358 1.33579 12 1.75 12H4.25C4.66421 12 5 12.3358 5 12.75V15.25C5 15.6642 4.66421 16 4.25 16H1.75C1.33579 16 1 15.6642 1 15.25V12.75ZM6.5 12.75C6.5 12.3358 6.83579 12 7.25 12H9.75C10.1642 12 10.5 12.3358 10.5 12.75V15.25C10.5 15.6642 10.1642 16 9.75 16H7.25C6.83579 16 6.5 15.6642 6.5 15.25V12.75ZM12 12.75C12 12.3358 12.3358 12 12.75 12H15.25C15.6642 12 16 12.3358 16 12.75V15.25C16 15.6642 15.6642 16 15.25 16H12.75C12.3358 16 12 15.6642 12 15.25V12.75Z" />
               </svg>
-              Batch
+              <span className="hidden sm:inline">Batch</span>
             </button>
           )}
 
@@ -2746,16 +2773,17 @@ const App: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setShowTagsMenu(!showTagsMenu)}
-                className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+                className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+                title="Tags"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                   <path fillRule="evenodd" d="M5.5 3A2.5 2.5 0 003 5.5v2.879a2.5 2.5 0 00.732 1.732l4.5 4.5a2.5 2.5 0 003.536 0l2.878-2.878a2.5 2.5 0 001.732-.732V16.5a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 013 16.5V13.621a2.5 2.5 0 00-.732-1.732L.464 9.464A2.5 2.5 0 010 7.879V5.5A2.5 2.5 0 012.5 3h3z" clipRule="evenodd" />
                 </svg>
-                Tags
+                <span className="hidden sm:inline">Tags</span>
               </button>
               
               {showTagsMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 p-3">
+                <div className="absolute right-0 mt-2 w-64 sm:w-72 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 p-3 max-h-[80vh] overflow-y-auto">
                   <div className="text-xs text-zinc-500 uppercase mb-2">Available Tags</div>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {availableTags.length === 0 ? (
@@ -2789,7 +2817,7 @@ const App: React.FC = () => {
           <div className="absolute top-20 right-6 z-10 flex gap-2 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
             <button
               onClick={() => setStudioViewMode('storyboard')}
-              className={`px-3 py-1 text-xs rounded transition-colors ${
+              className={`px-2 sm:px-3 py-1 text-xs rounded transition-colors ${
                 studioViewMode === 'storyboard'
                   ? 'bg-amber-600 text-white'
                   : 'text-zinc-400 hover:text-white'
@@ -2799,7 +2827,7 @@ const App: React.FC = () => {
             </button>
             <button
               onClick={() => setStudioViewMode('timeline')}
-              className={`px-3 py-1 text-xs rounded transition-colors ${
+              className={`px-2 sm:px-3 py-1 text-xs rounded transition-colors ${
                 studioViewMode === 'timeline'
                   ? 'bg-amber-600 text-white'
                   : 'text-zinc-400 hover:text-white'
@@ -2827,13 +2855,13 @@ const App: React.FC = () => {
             }}
           />
         ) : (
-          <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6 scroll-smooth bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
             {/* Batch Operations Toolbar */}
             {batchMode && selectedSceneIds.size > 0 && (
-              <div className="sticky top-4 z-20 mb-4 bg-zinc-900 border border-amber-500/50 rounded-lg p-3 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-amber-500">
+              <div className="sticky top-2 sm:top-4 z-20 mb-4 bg-zinc-900 border border-amber-500/50 rounded-lg p-2 sm:p-3 shadow-xl">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <span className="text-xs sm:text-sm font-bold text-amber-500">
                       {selectedSceneIds.size} scene{selectedSceneIds.size > 1 ? 's' : ''} selected
                     </span>
                     <button
@@ -2843,22 +2871,22 @@ const App: React.FC = () => {
                       {selectedSceneIds.size === scenes.length ? 'Deselect All' : 'Select All'}
                     </button>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <button
                       onClick={() => handleBulkStatusUpdate('completed')}
-                      className="text-xs px-3 py-1.5 rounded bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-800/50"
+                      className="text-xs px-2 sm:px-3 py-1.5 rounded bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-800/50"
                     >
-                      Mark Complete
+                      Complete
                     </button>
                     <button
                       onClick={() => handleBulkStatusUpdate('planning')}
-                      className="text-xs px-3 py-1.5 rounded bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/50 border border-yellow-800/50"
+                      className="text-xs px-2 sm:px-3 py-1.5 rounded bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/50 border border-yellow-800/50"
                     >
-                      Mark Planning
+                      Planning
                     </button>
                     <button
                       onClick={handleBulkDelete}
-                      className="text-xs px-3 py-1.5 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800/50"
+                      className="text-xs px-2 sm:px-3 py-1.5 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800/50"
                     >
                       Delete
                     </button>
@@ -2867,7 +2895,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <div className="max-w-5xl mx-auto space-y-6 pb-32">
+            <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-20 sm:pb-32">
               {scenes.length === 0 ? (
                  <div className="flex flex-col items-center justify-center h-96 text-zinc-600 border-2 border-dashed border-zinc-800 rounded-xl bg-zinc-900/50">
                     <p className="font-serif text-xl mb-2 text-zinc-400">The Storyboard is Empty</p>
@@ -3266,9 +3294,9 @@ const App: React.FC = () => {
 
       {/* Save Scene Template Modal */}
       {showSaveSceneTemplateModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">Save Scene as Template</h2>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg sm:text-xl font-bold mb-4">Save Scene as Template</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-xs text-zinc-400 uppercase mb-1">Template Name</label>
@@ -3501,8 +3529,8 @@ const App: React.FC = () => {
 
       {/* Save Template Modal */}
       {showSaveTemplateModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
               <h2 className="text-xl font-bold">Save as Template</h2>
               <button
@@ -3554,8 +3582,8 @@ const App: React.FC = () => {
       )}
 
       {/* Bottom Control Deck */}
-      <div className="border-t border-zinc-800 bg-black p-4 flex-shrink-0 z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
-        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6">
+      <div className="border-t border-zinc-800 bg-black p-2 sm:p-4 flex-shrink-0 z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-3 sm:gap-6">
           
           {/* Director Settings */}
           <div className="w-full lg:w-1/3 order-2 lg:order-1 relative">
@@ -3575,17 +3603,18 @@ const App: React.FC = () => {
 
           {/* Prompt Input */}
           <div className="w-full lg:w-2/3 flex flex-col justify-between order-1 lg:order-2">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex-1 flex flex-col h-full min-h-[200px] lg:min-h-0 relative group">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex-1 flex flex-col h-full min-h-[150px] sm:min-h-[200px] lg:min-h-0 relative group">
               
               {/* Auto-Draft Button (Top Right) */}
               <button 
                 onClick={handleAutoDraft}
-                className="absolute top-3 right-3 text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-500 border border-amber-500/30 px-3 py-1.5 rounded-full transition-all flex items-center gap-1 z-10 shadow-lg opacity-80 hover:opacity-100"
+                className="absolute top-2 right-2 sm:top-3 sm:right-3 text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-500 border border-amber-500/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full transition-all flex items-center gap-1 z-10 shadow-lg opacity-80 hover:opacity-100"
                 disabled={isProcessing || isAutoFilling}
                 title="Let the AI suggest the next scene idea based on the story"
               >
-                 <span className="text-lg leading-none">✨</span>
-                 <span className="font-bold">Auto-Write Idea</span>
+                 <span className="text-base sm:text-lg leading-none">✨</span>
+                 <span className="font-bold hidden sm:inline">Auto-Write Idea</span>
+                 <span className="font-bold sm:hidden">Auto</span>
               </button>
 
               <textarea
@@ -3593,16 +3622,16 @@ const App: React.FC = () => {
                 onChange={(e) => setCurrentInput(e.target.value)}
                 disabled={isProcessing}
                 placeholder="Describe the next 8 seconds... (e.g., 'Close up on hero's face, sweating, physics of debris floating in zero-g, muffled heartbeat sound')"
-                className="w-full h-full bg-transparent p-4 text-white outline-none resize-none placeholder-zinc-600 font-sans text-lg pr-32"
+                className="w-full h-full bg-transparent p-3 sm:p-4 text-white outline-none resize-none placeholder-zinc-600 font-sans text-base sm:text-lg pr-20 sm:pr-32"
               />
-              <div className="p-2 flex justify-between items-center border-t border-zinc-800/50 bg-zinc-900/50">
+              <div className="p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 border-t border-zinc-800/50 bg-zinc-900/50">
                 <span className="text-xs text-zinc-500 pl-2">
                   {currentInput.length > 0 ? 'Director AI ready to write specs.' : 'Waiting for input...'}
                 </span>
                 <button
                   onClick={handleGenerateScene}
                   disabled={isProcessing || !currentInput.trim()}
-                  className={`px-8 py-3 rounded font-bold text-sm tracking-wide transition-all ${
+                  className={`w-full sm:w-auto px-6 sm:px-8 py-2 sm:py-3 rounded font-bold text-xs sm:text-sm tracking-wide transition-all ${
                     isProcessing || !currentInput.trim()
                       ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                       : 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/20'

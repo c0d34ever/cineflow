@@ -110,9 +110,46 @@ router.post('/suggest-director-settings', authenticateToken, async (req: AuthReq
 router.post('/enhance-scene-prompt', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { rawIdea, context, prevSceneSummary, settings } = req.body;
-    if (!rawIdea || !context || !settings) {
-      return res.status(400).json({ error: 'rawIdea, context, and settings are required' });
+    
+    // Enhanced validation with better error messages
+    if (!rawIdea || typeof rawIdea !== 'string' || rawIdea.trim().length === 0) {
+      console.error('Validation failed: rawIdea is missing or invalid', { 
+        hasRawIdea: !!rawIdea, 
+        type: typeof rawIdea,
+        length: rawIdea?.length 
+      });
+      return res.status(400).json({ error: 'rawIdea is required and must be a non-empty string' });
     }
+    
+    if (!context || typeof context !== 'object' || Array.isArray(context)) {
+      console.error('Validation failed: context is missing or invalid', { 
+        hasContext: !!context, 
+        type: typeof context,
+        isArray: Array.isArray(context),
+        keys: context ? Object.keys(context) : []
+      });
+      return res.status(400).json({ error: 'context is required and must be a valid object' });
+    }
+    
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      console.error('Validation failed: settings is missing or invalid', { 
+        hasSettings: !!settings, 
+        type: typeof settings,
+        isArray: Array.isArray(settings),
+        keys: settings ? Object.keys(settings) : []
+      });
+      return res.status(400).json({ error: 'settings is required and must be a valid object' });
+    }
+    
+    // Log request for debugging (without sensitive data)
+    console.log('Enhancing scene prompt:', {
+      rawIdeaLength: rawIdea?.length || 0,
+      contextKeys: context ? Object.keys(context) : [],
+      settingsKeys: settings ? Object.keys(settings) : [],
+      hasPrevSceneSummary: !!prevSceneSummary,
+      contextId: (context as any)?.id || 'missing'
+    });
+    
     const userId = req.user?.id;
     const result = await enhanceScenePrompt(
       rawIdea,
@@ -124,6 +161,14 @@ router.post('/enhance-scene-prompt', authenticateToken, async (req: AuthRequest,
     res.json(result);
   } catch (error: any) {
     console.error('Error enhancing scene prompt:', error);
+    console.error('Request body:', {
+      hasRawIdea: !!req.body.rawIdea,
+      hasContext: !!req.body.context,
+      hasSettings: !!req.body.settings,
+      rawIdeaType: typeof req.body.rawIdea,
+      contextType: typeof req.body.context,
+      settingsType: typeof req.body.settings
+    });
     
     // Provide user-friendly error messages
     let errorMessage = 'Failed to enhance scene prompt';

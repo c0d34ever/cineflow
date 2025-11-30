@@ -172,14 +172,41 @@ export const enhanceScenePrompt = async (
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Validate inputs before sending
+  if (!rawIdea || typeof rawIdea !== 'string' || rawIdea.trim().length === 0) {
+    throw new Error('rawIdea is required and must be a non-empty string');
+  }
+  
+  if (!context || typeof context !== 'object') {
+    throw new Error('context is required and must be an object');
+  }
+  
+  if (!settings || typeof settings !== 'object') {
+    throw new Error('settings is required and must be an object');
+  }
+
   const response = await fetch(`${API_BASE_URL}/gemini/enhance-scene-prompt`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ rawIdea, context, prevSceneSummary, settings }),
   });
+  
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Failed to enhance scene prompt' }));
-    throw new Error(error.error || 'Failed to enhance scene prompt');
+    const errorMessage = error.error || 'Failed to enhance scene prompt';
+    console.error('Enhance scene prompt error:', {
+      status: response.status,
+      error: errorMessage,
+      sentData: {
+        hasRawIdea: !!rawIdea,
+        rawIdeaLength: rawIdea?.length || 0,
+        hasContext: !!context,
+        contextKeys: context ? Object.keys(context) : [],
+        hasSettings: !!settings,
+        settingsKeys: settings ? Object.keys(settings) : [],
+      }
+    });
+    throw new Error(errorMessage);
   }
   return response.json();
 };

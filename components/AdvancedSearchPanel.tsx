@@ -241,11 +241,11 @@ const AdvancedSearchPanel: React.FC<AdvancedSearchPanelProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col m-2 sm:m-0">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-          <h2 className="text-xl font-bold text-white">Advanced Search</h2>
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-zinc-800">
+          <h2 className="text-lg sm:text-xl font-bold text-white">Advanced Search</h2>
           <button
             onClick={onClose}
             className="text-zinc-400 hover:text-white transition-colors p-2 hover:bg-zinc-800 rounded"

@@ -322,13 +322,13 @@ const ShootingScheduleGenerator: React.FC<ShootingScheduleGeneratorProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col m-2 sm:m-0">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 border-b border-zinc-800 gap-2 sm:gap-0">
           <div>
-            <h2 className="text-xl font-bold text-white">Shooting Schedule Generator</h2>
-            <p className="text-sm text-zinc-400 mt-1">Auto-generate production schedule optimized by location</p>
+            <h2 className="text-lg sm:text-xl font-bold text-white">Shooting Schedule Generator</h2>
+            <p className="text-xs sm:text-sm text-zinc-400 mt-1">Auto-generate production schedule optimized by location</p>
           </div>
           <button
             onClick={onClose}
@@ -341,7 +341,7 @@ const ShootingScheduleGenerator: React.FC<ShootingScheduleGeneratorProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
           {!generated ? (
             <div className="space-y-6">
               <div className="text-center py-8">

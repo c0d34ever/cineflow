@@ -32,10 +32,12 @@
   - Automatic download when complete
   - Error handling for unsupported browsers
 
-- **GIF Export** (Coming Soon):
-  - Placeholder for future GIF export
-  - Note: GIF export requires additional library
-  - Suggests using video-to-GIF converters for now
+- **GIF Export** ✅:
+  - Full animated GIF export functionality
+  - Uses gif.js library (loaded from CDN)
+  - Creates animated GIFs from scene images
+  - Supports customizable frame duration and transitions
+  - Automatic download when complete
 
 **Technical Details**:
 - Uses HTML5 Canvas for image rendering
@@ -55,7 +57,7 @@
 - Preview information (scenes with images, total duration)
 - Progress bar during export
 - Status messages
-- Format selection (WebM/MP4 recommended, GIF coming soon)
+- Format selection (WebM/MP4 and GIF - both fully supported)
 
 **Files Created**:
 - `components/VideoSlideshowExport.tsx`

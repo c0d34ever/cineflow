@@ -181,18 +181,129 @@ const VideoSlideshowExport: React.FC<VideoSlideshowExportProps> = ({ scenes, pro
       }
 
       setStatus('Encoding GIF...');
+      setProgress(80);
       
-      // GIF export requires a library like gif.js
-      // For now, we'll show a helpful message
-      alert('GIF export is coming soon! For now, please:\n1. Use MP4/WebM export (recommended)\n2. Convert the video to GIF using an online converter or video editing software\n\nGIF export will be available in a future update.');
-      setExporting(false);
-      setStatus('');
+      // Create animated GIF using canvas frames
+      // We'll create a simple animated GIF by encoding frames
+      const gifBlob = await createAnimatedGIF(frames, width, height, durationPerScene);
+      
+      if (gifBlob) {
+        // Download the GIF
+        const url = URL.createObjectURL(gifBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cineflow-slideshow-${Date.now()}.gif`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        setProgress(100);
+        setStatus('GIF exported successfully!');
+        setTimeout(() => {
+          setExporting(false);
+          setStatus('');
+        }, 2000);
+      } else {
+        throw new Error('Failed to create GIF');
+      }
       
     } catch (error) {
       console.error('GIF export error:', error);
       alert('Failed to export GIF. Please try MP4 format instead.');
       setExporting(false);
+      setStatus('');
     }
+  };
+
+  // Create animated GIF from frames using a practical browser-based approach
+  const createAnimatedGIF = async (
+    frames: string[], 
+    width: number, 
+    height: number, 
+    frameDelay: number
+  ): Promise<Blob | null> => {
+    try {
+      // Use gif.js library loaded from CDN for GIF encoding
+      // This is the most reliable browser-based approach
+      return await encodeGIFWithLibrary(frames, width, height, Math.round(frameDelay * 100)); // Convert to milliseconds
+    } catch (error) {
+      console.error('Error creating GIF:', error);
+      // Fallback: Create an animated WebP or suggest video conversion
+      return null;
+    }
+  };
+
+  // Encode GIF using gif.js library (loaded dynamically)
+  const encodeGIFWithLibrary = async (
+    frames: string[], 
+    width: number, 
+    height: number, 
+    delay: number
+  ): Promise<Blob> => {
+    // Load gif.js from CDN if not already loaded
+    if (!(window as any).GIF) {
+      await loadScript('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+      await loadScript('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js');
+    }
+
+    const GIF = (window as any).GIF;
+    if (!GIF) {
+      throw new Error('GIF library failed to load');
+    }
+
+    // Create GIF instance
+    const gif = new GIF({
+      workers: 2,
+      quality: 10,
+      width: width,
+      height: height,
+      workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+    });
+
+    // Convert frames to ImageData and add to GIF
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) throw new Error('Could not get canvas context');
+
+    for (const frameDataUrl of frames) {
+      const img = await loadImage(frameDataUrl);
+      tempCtx.clearRect(0, 0, width, height);
+      drawImageOnCanvas(tempCtx, img, width, height);
+      const imageData = tempCtx.getImageData(0, 0, width, height);
+      gif.addFrame(imageData, { delay: delay });
+    }
+
+    // Render GIF
+    return new Promise((resolve, reject) => {
+      gif.on('finished', (blob: Blob) => {
+        resolve(blob);
+      });
+      gif.on('error', (error: Error) => {
+        reject(error);
+      });
+      gif.render();
+    });
+  };
+
+  // Load script dynamically
+  const loadScript = (src: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      // Check if already loaded
+      const existingScript = document.querySelector(`script[src="${src}"]`);
+      if (existingScript) {
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+      document.head.appendChild(script);
+    });
   };
 
   const exportAsMP4 = async () => {
@@ -344,13 +455,13 @@ const VideoSlideshowExport: React.FC<VideoSlideshowExportProps> = ({ scenes, pro
   });
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col m-2 sm:m-0">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 border-b border-zinc-800 gap-2 sm:gap-0">
           <div>
-            <h2 className="text-xl font-bold text-white">Video Slideshow Export</h2>
-            <p className="text-sm text-zinc-400 mt-1">Generate MP4 or GIF from scene images</p>
+            <h2 className="text-lg sm:text-xl font-bold text-white">Video Slideshow Export</h2>
+            <p className="text-xs sm:text-sm text-zinc-400 mt-1">Generate MP4 or GIF from scene images</p>
           </div>
           <button
             onClick={onClose}
@@ -364,7 +475,7 @@ const VideoSlideshowExport: React.FC<VideoSlideshowExportProps> = ({ scenes, pro
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
@@ -406,11 +517,10 @@ const VideoSlideshowExport: React.FC<VideoSlideshowExportProps> = ({ scenes, pro
                       disabled={exporting}
                     />
                     <span className="text-zinc-300">GIF (Animated)</span>
-                    <span className="text-xs text-zinc-500">(Coming soon)</span>
                   </label>
                 </div>
                 <p className="text-xs text-zinc-500 mt-2">
-                  Note: Video export uses WebM format (compatible with most players). For GIF export, please use a video-to-GIF converter.
+                  Video export uses WebM format (compatible with most players). GIF export creates animated GIFs from scene images.
                 </p>
               </div>
 
