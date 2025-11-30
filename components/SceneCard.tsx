@@ -5,6 +5,7 @@ import { mediaService } from '../apiServices';
 import MediaLibrarySidebar from './MediaLibrarySidebar';
 import SceneGallerySidebar from './SceneGallerySidebar';
 import CopyButton from './CopyButton';
+import SceneStatisticsCard from './SceneStatisticsCard';
 import { getThumbnailUrl, getFullImageUrl } from '../utils/imageUtils';
 
 interface SceneCardProps {
@@ -332,6 +333,13 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
             )}
           </div>
         </div>
+
+        {/* Scene Statistics Card */}
+        {!batchMode && (
+          <div className="mt-4">
+            <SceneStatisticsCard scene={scene} />
+          </div>
+        )}
       </div>
 
       {/* Media Library Sidebar - for uploads */}

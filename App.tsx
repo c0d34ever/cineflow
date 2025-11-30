@@ -45,6 +45,7 @@ import CopySceneSettingsModal from './components/CopySceneSettingsModal';
 import ExportPresetsPanel from './components/ExportPresetsPanel';
 import AISceneSuggestionsPanel from './components/AISceneSuggestionsPanel';
 import StoryArcVisualizer from './components/StoryArcVisualizer';
+import ProjectQuickActionsMenu from './components/ProjectQuickActionsMenu';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -254,6 +255,7 @@ const App: React.FC = () => {
   const [showAISceneSuggestions, setShowAISceneSuggestions] = useState(false);
   const [showStoryArcVisualizer, setShowStoryArcVisualizer] = useState(false);
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
+  const [projectQuickActions, setProjectQuickActions] = useState<{ project: ProjectData; position: { x: number; y: number } } | null>(null);
 
   // Undo/Redo
   const [history, setHistory] = useState<ProjectData[]>([]);
@@ -2207,6 +2209,13 @@ const App: React.FC = () => {
                   <div 
                     key={p.context.id} 
                     onClick={() => handleOpenProject(p)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setProjectQuickActions({
+                        project: p,
+                        position: { x: e.clientX, y: e.clientY }
+                      });
+                    }}
                     className={`bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all cursor-pointer relative group flex flex-col ${
                       libraryViewMode === 'grid' ? 'min-h-[200px]' : 'flex-row min-h-[120px]'
                     }`}
@@ -3501,6 +3510,54 @@ const App: React.FC = () => {
           scenes={scenes}
           storyContext={storyContext}
           onClose={() => setShowStoryArcVisualizer(false)}
+        />
+      )}
+
+      {/* Project Quick Actions Menu */}
+      {projectQuickActions && (
+        <ProjectQuickActionsMenu
+          project={projectQuickActions.project}
+          position={projectQuickActions.position}
+          onClose={() => setProjectQuickActions(null)}
+          onOpen={(project) => handleOpenProject(project)}
+          onDuplicate={async (project) => {
+            try {
+              const event = { stopPropagation: () => {} } as React.MouseEvent;
+              await handleDuplicateProject(event, project);
+              showToast('Project duplicated successfully', 'success');
+            } catch (error: any) {
+              showToast('Failed to duplicate project', 'error');
+            }
+          }}
+          onArchive={(project) => {
+            showToast('Archive feature coming soon', 'info');
+          }}
+          onShare={(project) => {
+            setSelectedProjectForSharing(project);
+            setShowSharingModal(true);
+          }}
+          onDelete={async (project) => {
+            try {
+              await handleDeleteProject(project.context.id);
+              showToast('Project deleted successfully', 'success');
+            } catch (error: any) {
+              showToast('Failed to delete project', 'error');
+            }
+          }}
+          onExport={async (project) => {
+            try {
+              const projectData = await apiService.getProject(project.context.id);
+              setStoryContext(projectData.context);
+              setScenes(projectData.scenes || []);
+              setCurrentSettings(projectData.settings || DEFAULT_DIRECTOR_SETTINGS);
+              setView('studio');
+              setTimeout(() => {
+                handleExport('pdf');
+              }, 500);
+            } catch (error: any) {
+              showToast('Failed to export project', 'error');
+            }
+          }}
         />
       )}
 
