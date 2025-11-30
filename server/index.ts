@@ -27,6 +27,8 @@ import sceneTemplatesRouter from './routes/sceneTemplates.js';
 import activityRouter from './routes/activity.js';
 import mediaRouter from './routes/media.js';
 import comicsRouter from './routes/comics.js';
+import emailsRouter from './routes/emails.js';
+import emailSettingsRouter from './routes/emailSettings.js';
 import { initDatabase } from './db/schema.js';
 import { authenticateToken } from './middleware/auth.js';
 
@@ -174,6 +176,8 @@ app.use('/api/scene-templates', sceneTemplatesRouter);
 app.use('/api/activity', activityRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api/comics', authenticateToken, comicsRouter);
+app.use('/api/emails', emailsRouter);
+app.use('/api/email-settings', emailSettingsRouter);
 
 // 404 handler
 app.use((req, res) => {
@@ -195,6 +199,14 @@ async function startServer() {
     await createConnection();
     await initDatabase();
     console.log('✅ Database connected and initialized');
+    
+    // Seed email settings from environment if available
+    try {
+      const { seedEmailSettings } = await import('./db/migrations/seedEmailSettings.js');
+      await seedEmailSettings();
+    } catch (error) {
+      console.warn('⚠️  Could not seed email settings (this is OK if migration 024 not run yet):', error);
+    }
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);

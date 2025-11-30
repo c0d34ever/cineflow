@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { authService, adminProjectsService, adminApiKeysService } from '../apiServices';
 
-const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL || 'http://localhost:5001/api';
+const ADMIN_API_URL = (import.meta as any).env?.VITE_ADMIN_API_URL || 'http://localhost:5001/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
 
 interface AdminDashboardProps {
   user: any;
@@ -9,7 +10,7 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'projects' | 'api-keys' | 'stats'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'projects' | 'api-keys' | 'stats' | 'email-templates'>('overview');
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -24,6 +25,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showCreateApiKey, setShowCreateApiKey] = useState(false);
   const [newApiKey, setNewApiKey] = useState({ key_name: '', user_id: '' });
   const [editingApiKey, setEditingApiKey] = useState<any>(null);
+  const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [testEmailData, setTestEmailData] = useState({ to: '', template_key: '', variables: {} as any });
+  const [smtpStatus, setSmtpStatus] = useState<string | null>(null);
+  const [emailSettings, setEmailSettings] = useState<any[]>([]);
+  const [editingEmailSettings, setEditingEmailSettings] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'stats' || activeTab === 'overview') {
@@ -35,6 +42,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     } else if (activeTab === 'api-keys') {
       loadApiKeys();
       loadApiKeyStats();
+    } else if (activeTab === 'email-templates') {
+      loadEmailTemplates();
+      loadEmailSettings();
+      checkSmtpStatus();
     }
   }, [activeTab]);
 
@@ -370,7 +381,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
         {/* Tabs */}
         <div className="flex border-b border-zinc-800 mb-6 overflow-x-auto">
-          {(['overview', 'users', 'projects', 'api-keys', 'stats'] as const).map((tab) => (
+          {(['overview', 'users', 'projects', 'api-keys', 'stats', 'email-templates'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -774,8 +785,294 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               )}
             </div>
           )}
+
+          {activeTab === 'email-templates' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">Email Configuration</h2>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${smtpStatus === 'connected' ? 'bg-green-500' : smtpStatus === 'error' ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
+                    <span className="text-xs text-zinc-500">
+                      SMTP: {smtpStatus === 'connected' ? 'Connected' : smtpStatus === 'error' ? 'Error' : 'Checking...'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={checkSmtpStatus}
+                    className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-xs"
+                  >
+                    Verify SMTP
+                  </button>
+                  <button
+                    onClick={() => setEditingEmailSettings(!editingEmailSettings)}
+                    className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs"
+                  >
+                    {editingEmailSettings ? 'Cancel' : 'Edit Settings'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Email Settings Section */}
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                <h3 className="font-bold mb-4">SMTP Settings</h3>
+                {editingEmailSettings ? (
+                  <div className="space-y-3">
+                    {emailSettings.map((setting: any) => (
+                      <div key={setting.key}>
+                        <label className="block text-xs text-zinc-500 uppercase mb-1">
+                          {setting.key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                          {setting.is_encrypted && <span className="text-red-400 ml-1">*</span>}
+                        </label>
+                        <input
+                          type={setting.key === 'smtp_password' || setting.is_encrypted ? 'password' : 'text'}
+                          value={setting.value || ''}
+                          onChange={(e) => {
+                            const updated = emailSettings.map((s: any) =>
+                              s.key === setting.key ? { ...s, value: e.target.value } : s
+                            );
+                            setEmailSettings(updated);
+                          }}
+                          placeholder={setting.description || ''}
+                          className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                        />
+                        {setting.description && (
+                          <p className="text-xs text-zinc-500 mt-1">{setting.description}</p>
+                        )}
+                      </div>
+                    ))}
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={handleSaveEmailSettings}
+                        className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                      >
+                        Save Settings
+                      </button>
+                      <button
+                        onClick={handleTestEmailSettings}
+                        className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+                      >
+                        Test Email
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {emailSettings.map((setting: any) => (
+                      <div key={setting.key} className="flex justify-between items-center py-2 border-b border-zinc-700 last:border-0">
+                        <div>
+                          <span className="text-sm font-medium text-zinc-300">
+                            {setting.key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}:
+                          </span>
+                          <span className="text-sm text-zinc-500 ml-2">
+                            {setting.is_encrypted && setting.value ? '••••••••' : (setting.value || 'Not set')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-zinc-800 pt-6">
+                <h3 className="text-xl font-bold mb-4">Email Templates</h3>
+
+              {loading ? (
+                <div className="text-center py-8 text-zinc-500">Loading templates...</div>
+              ) : emailTemplates.length === 0 ? (
+                <div className="text-center py-8 text-zinc-500">No email templates found</div>
+              ) : (
+                <div className="space-y-4">
+                  {emailTemplates.map((template: any) => (
+                    <div key={template.id} className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h3 className="font-bold text-amber-500">{template.name}</h3>
+                          <p className="text-xs text-zinc-500">Key: {template.template_key}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 rounded text-xs ${template.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                            {template.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                          <button
+                            onClick={() => handleEditTemplate(template.template_key)}
+                            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-sm text-zinc-400 mb-2">
+                        <strong>Subject:</strong> {template.subject}
+                      </div>
+                      {template.variables && (
+                        <div className="text-xs text-zinc-500">
+                          <strong>Variables:</strong> {Array.isArray(template.variables) ? template.variables.join(', ') : 'None'}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Test Email Section */}
+              <div className="mt-8 bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                <h3 className="font-bold mb-4">Send Test Email</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-zinc-500 uppercase mb-1">To Email</label>
+                    <input
+                      type="email"
+                      value={testEmailData.to}
+                      onChange={(e) => setTestEmailData({ ...testEmailData, to: e.target.value })}
+                      placeholder="test@example.com"
+                      className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-500 uppercase mb-1">Template</label>
+                    <select
+                      value={testEmailData.template_key}
+                      onChange={(e) => setTestEmailData({ ...testEmailData, template_key: e.target.value })}
+                      className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                    >
+                      <option value="">Select template...</option>
+                      {emailTemplates.filter((t: any) => t.is_active).map((template: any) => (
+                        <option key={template.id} value={template.template_key}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {testEmailData.template_key && (
+                    <div>
+                      <label className="block text-xs text-zinc-500 uppercase mb-1">Test Variables (JSON)</label>
+                      <textarea
+                        value={JSON.stringify(testEmailData.variables, null, 2)}
+                        onChange={(e) => {
+                          try {
+                            setTestEmailData({ ...testEmailData, variables: JSON.parse(e.target.value) });
+                          } catch {
+                            // Invalid JSON, ignore
+                          }
+                        }}
+                        placeholder='{"username": "Test User", "resetLink": "https://..."}'
+                        className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm font-mono text-xs"
+                        rows={4}
+                      />
+                    </div>
+                  )}
+                  <button
+                    onClick={handleTestEmail}
+                    className="w-full px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                  >
+                    Send Test Email
+                  </button>
+                </div>
+              </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Edit Template Modal */}
+      {editingTemplate && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-4xl max-h-[90vh] p-6 overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Edit Email Template: {editingTemplate.name}</h2>
+              <button
+                onClick={() => setEditingTemplate(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Template Name</label>
+                <input
+                  type="text"
+                  value={editingTemplate.name}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Subject</label>
+                <input
+                  type="text"
+                  value={editingTemplate.subject}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, subject: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                  placeholder="Use {{variable}} for dynamic content"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">HTML Body</label>
+                <textarea
+                  value={editingTemplate.body_html}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, body_html: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm font-mono"
+                  rows={12}
+                  placeholder="HTML email content. Use {{variable}} for dynamic content."
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Text Body (Optional)</label>
+                <textarea
+                  value={editingTemplate.body_text || ''}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, body_text: e.target.value })}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm font-mono"
+                  rows={6}
+                  placeholder="Plain text version. Use {{variable}} for dynamic content."
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 uppercase mb-1">Variables (JSON Array)</label>
+                <input
+                  type="text"
+                  value={Array.isArray(editingTemplate.variables) ? editingTemplate.variables.join(', ') : ''}
+                  onChange={(e) => {
+                    const vars = e.target.value.split(',').map(v => v.trim()).filter(v => v);
+                    setEditingTemplate({ ...editingTemplate, variables: vars });
+                  }}
+                  className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
+                  placeholder="username, resetLink, verificationLink"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Comma-separated list of variable names</p>
+              </div>
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={editingTemplate.is_active}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, is_active: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Active</span>
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingTemplate(null)}
+                  className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveTemplate}
+                  className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm"
+                >
+                  Save Template
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit User Modal */}
       {editingUser && (
