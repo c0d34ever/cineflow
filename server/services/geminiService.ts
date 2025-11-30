@@ -765,6 +765,120 @@ export const extractCharacters = async (
 };
 
 /**
+ * Suggests scenes using AI based on story context
+ */
+export const suggestScenes = async (
+  storyContext: StoryContext,
+  scenes: Scene[],
+  prompt: string,
+  suggestionType: 'next' | 'improve' | 'transition',
+  selectedSceneId?: string,
+  userId?: number
+): Promise<Array<{
+  suggestion: string;
+  reasoning: string;
+  confidence: number;
+  type: 'continuation' | 'improvement' | 'transition' | 'climax' | 'resolution';
+}>> => {
+  const ai = await getAIClient(userId);
+
+  const systemInstruction = `You are a professional screenwriter and story consultant. Analyze the story and provide creative, compelling scene suggestions.
+
+Return a JSON array of suggestion objects with:
+- suggestion: A detailed scene idea (2-3 sentences)
+- reasoning: Why this scene would work well (1-2 sentences)
+- confidence: Confidence score (0-1)
+- type: One of: "continuation", "improvement", "transition", "climax", "resolution"
+
+Provide 3-5 diverse suggestions that offer different creative directions.`;
+
+  // Build context from recent scenes
+  const MAX_SCENES = 10;
+  const MAX_CONTENT_LENGTH = 200;
+  
+  const truncate = (text: string | undefined, maxLength: number): string => {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+
+  const scenesToProcess = scenes.slice(-MAX_SCENES);
+  const scenesContent = scenesToProcess.length > 0 
+    ? scenesToProcess.map((scene, idx) => `
+      Scene ${scene.sequenceNumber || idx + 1}:
+      - Idea: ${truncate(scene.rawIdea, MAX_CONTENT_LENGTH)}
+      - Context: ${truncate(scene.contextSummary, MAX_CONTENT_LENGTH)}
+      - Dialogue: ${truncate(scene.directorSettings?.dialogue, MAX_CONTENT_LENGTH)}
+    `).join('\n')
+    : 'No scenes yet.';
+
+  const selectedScene = selectedSceneId ? scenes.find(s => s.id === selectedSceneId) : null;
+  const selectedSceneContent = selectedScene ? `
+    SELECTED SCENE TO IMPROVE:
+    Scene ${selectedScene.sequenceNumber}:
+    - Idea: ${truncate(selectedScene.rawIdea, MAX_CONTENT_LENGTH)}
+    - Enhanced: ${truncate(selectedScene.enhancedPrompt, MAX_CONTENT_LENGTH)}
+    - Context: ${truncate(selectedScene.contextSummary, MAX_CONTENT_LENGTH)}
+  ` : '';
+
+  const fullPrompt = `
+    STORY CONTEXT:
+    Title: ${storyContext.title || 'Untitled'}
+    Genre: ${storyContext.genre || 'General'}
+    Plot Summary: ${storyContext.plotSummary || ''}
+    Characters: ${storyContext.characters || ''}
+    
+    ${selectedSceneContent}
+    
+    RECENT SCENES:
+    ${scenesContent}
+    
+    REQUEST: ${prompt}
+    
+    Provide ${suggestionType === 'next' ? 'next scene' : suggestionType === 'improve' ? 'improvement' : 'transition'} suggestions that are creative, compelling, and fit the story's tone and progression.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: fullPrompt,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              suggestion: { type: Type.STRING },
+              reasoning: { type: Type.STRING },
+              confidence: { type: Type.NUMBER },
+              type: {
+                type: Type.STRING,
+                enum: ['continuation', 'improvement', 'transition', 'climax', 'resolution']
+              }
+            },
+            required: ['suggestion', 'reasoning', 'confidence', 'type']
+          }
+        }
+      }
+    });
+
+    return safeParseJSON<Array<{
+      suggestion: string;
+      reasoning: string;
+      confidence: number;
+      type: 'continuation' | 'improvement' | 'transition' | 'climax' | 'resolution';
+    }>>(
+      response.text,
+      []
+    );
+  } catch (error: any) {
+    console.error("Error suggesting scenes:", error);
+    throw error;
+  }
+};
+
+/**
  * Analyzes character relationships using AI
  */
 export const analyzeCharacterRelationships = async (

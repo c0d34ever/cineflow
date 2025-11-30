@@ -33,6 +33,8 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [loadingImages, setLoadingImages] = useState(false);
+  const [showQuickPreview, setShowQuickPreview] = useState(false);
+  const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
 
   const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -77,6 +79,16 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
       className={`bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col h-full shadow-lg transition-all ${
         batchMode ? 'hover:border-amber-500' : 'hover:scale-[1.01]'
       } ${isSelected ? 'border-amber-500 bg-amber-900/10' : ''}`}
+      onMouseEnter={(e) => {
+        if (!batchMode && !showQuickPreview) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setPreviewPosition({ x: rect.right + 10, y: rect.top });
+          setShowQuickPreview(true);
+        }
+      }}
+      onMouseLeave={() => {
+        setShowQuickPreview(false);
+      }}
       onClick={batchMode && onToggleSelection ? onToggleSelection : undefined}
     >
       {/* Header / Meta */}
@@ -350,6 +362,34 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
             loadSceneImages();
           }}
         />
+      )}
+
+      {/* Quick Preview on Hover */}
+      {showQuickPreview && !batchMode && (
+        <div
+          className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-4 max-w-md pointer-events-none"
+          style={{
+            left: `${previewPosition.x}px`,
+            top: `${previewPosition.y}px`,
+            transform: previewPosition.x + 400 > window.innerWidth ? 'translateX(-100%)' : 'translateX(0)'
+          }}
+        >
+          <div className="text-xs font-bold text-white mb-2">Scene {scene.sequenceNumber}</div>
+          {primaryImage && (
+            <img
+              src={getThumbnailUrl(primaryImage)}
+              alt={primaryImage.alt_text || `Scene ${scene.sequenceNumber}`}
+              className="w-full rounded mb-2"
+            />
+          )}
+          <div className="text-sm text-zinc-300 mb-2 line-clamp-3">{scene.rawIdea}</div>
+          {scene.directorSettings.dialogue && (
+            <div className="text-xs text-amber-400 italic line-clamp-2">"{scene.directorSettings.dialogue}"</div>
+          )}
+          <div className="mt-2 text-xs text-zinc-500">
+            {scene.directorSettings.lens} / {scene.directorSettings.angle} • {scene.directorSettings.movement}
+          </div>
+        </div>
       )}
     </div>
   );

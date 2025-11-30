@@ -10,6 +10,7 @@ import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import CommentsPanel from './components/CommentsPanel';
 import SceneNotesPanel from './components/SceneNotesPanel';
+import EnhancedSceneNotesPanel from './components/EnhancedSceneNotesPanel';
 import TemplateSelector from './components/TemplateSelector';
 import CharactersPanel from './components/CharactersPanel';
 import TimelineView from './components/TimelineView';
@@ -42,6 +43,8 @@ import ProjectHealthScore from './components/ProjectHealthScore';
 import QuickActionsMenu from './components/QuickActionsMenu';
 import CopySceneSettingsModal from './components/CopySceneSettingsModal';
 import ExportPresetsPanel from './components/ExportPresetsPanel';
+import AISceneSuggestionsPanel from './components/AISceneSuggestionsPanel';
+import StoryArcVisualizer from './components/StoryArcVisualizer';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -175,8 +178,8 @@ const App: React.FC = () => {
   // Password reset routing state
   const [currentHash, setCurrentHash] = useState(window.location.hash);
 
-  const handleSelectSceneTemplate = (template: any) => {
-    setCurrentInput(template.raw_idea);
+  const handleSelectSceneTemplate = (template: any, processedIdea?: string) => {
+    setCurrentInput(processedIdea || template.raw_idea);
     if (template.director_settings) {
       setCurrentSettings({ ...currentSettings, ...template.director_settings });
     }
@@ -248,6 +251,8 @@ const App: React.FC = () => {
   const [showCopySettingsModal, setShowCopySettingsModal] = useState(false);
   const [sourceSceneForCopy, setSourceSceneForCopy] = useState<Scene | null>(null);
   const [showExportPresets, setShowExportPresets] = useState(false);
+  const [showAISceneSuggestions, setShowAISceneSuggestions] = useState(false);
+  const [showStoryArcVisualizer, setShowStoryArcVisualizer] = useState(false);
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
 
   // Undo/Redo
@@ -2809,6 +2814,34 @@ const App: React.FC = () => {
             </button>
           )}
 
+          {/* AI Scene Suggestions Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowAISceneSuggestions(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-700 text-white border border-cyan-500 transition-colors flex items-center gap-1"
+              title="AI Scene Suggestions"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              <span className="hidden sm:inline">AI Ideas</span>
+            </button>
+          )}
+
+          {/* Story Arc Visualizer Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowStoryArcVisualizer(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
+              title="Story Arc Visualizer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline">Arc</span>
+            </button>
+          )}
+
           {/* Export History Button */}
           {view === 'studio' && (
             <button
@@ -3440,6 +3473,37 @@ const App: React.FC = () => {
         />
       )}
 
+      {/* AI Scene Suggestions Panel */}
+      {showAISceneSuggestions && storyContext.id && scenes.length > 0 && (
+        <AISceneSuggestionsPanel
+          scenes={scenes}
+          storyContext={storyContext}
+          projectId={storyContext.id}
+          onClose={() => setShowAISceneSuggestions(false)}
+          onApplySuggestion={(suggestion) => {
+            // Set the suggestion as the current input
+            setCurrentInput(suggestion);
+            // Focus the input field
+            setTimeout(() => {
+              const input = document.querySelector('textarea[placeholder*="Describe"]') as HTMLTextAreaElement;
+              if (input) {
+                input.focus();
+                input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }, 100);
+          }}
+        />
+      )}
+
+      {/* Story Arc Visualizer */}
+      {showStoryArcVisualizer && storyContext.id && scenes.length > 0 && (
+        <StoryArcVisualizer
+          scenes={scenes}
+          storyContext={storyContext}
+          onClose={() => setShowStoryArcVisualizer(false)}
+        />
+      )}
+
       {/* Export Presets Panel */}
       {showExportPresets && (
         <ExportPresetsPanel
@@ -3658,6 +3722,7 @@ const App: React.FC = () => {
       {showSceneTemplates && (
         <SceneTemplatesModal
           templates={sceneTemplates}
+          storyContext={storyContext}
           onSelect={handleSelectSceneTemplate}
           onClose={() => setShowSceneTemplates(false)}
           onSaveCurrentAsTemplate={() => {
@@ -3866,7 +3931,7 @@ const App: React.FC = () => {
 
       {/* Scene Notes Panel */}
       {showSceneNotesPanel && selectedSceneId && (
-        <SceneNotesPanel
+        <EnhancedSceneNotesPanel
           sceneId={selectedSceneId}
           onClose={() => {
             setShowSceneNotesPanel(false);

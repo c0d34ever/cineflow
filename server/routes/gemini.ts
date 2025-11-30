@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent, analyzeCharacterRelationships } from '../services/geminiService.js';
+import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent, analyzeCharacterRelationships, suggestScenes } from '../services/geminiService.js';
 import { StoryContext, DirectorSettings, Scene } from '../../types.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
@@ -261,6 +261,38 @@ router.post('/analyze-character-relationships', authenticateToken, async (req: A
   } catch (error: any) {
     console.error('Error analyzing character relationships:', error);
     res.status(500).json({ error: error.message || 'Failed to analyze character relationships' });
+  }
+});
+
+// POST /api/gemini/suggest-scenes - Get AI-powered scene suggestions
+router.post('/suggest-scenes', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { storyContext, scenes, prompt, suggestionType, selectedSceneId } = req.body;
+    
+    if (!storyContext) {
+      return res.status(400).json({ error: 'Story context is required' });
+    }
+    if (!scenes || !Array.isArray(scenes)) {
+      return res.status(400).json({ error: 'Scenes array is required' });
+    }
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    const userId = req.user!.id;
+    const suggestions = await suggestScenes(
+      storyContext as StoryContext,
+      scenes as Scene[],
+      prompt,
+      suggestionType || 'next',
+      selectedSceneId,
+      userId
+    );
+    
+    res.json({ suggestions });
+  } catch (error: any) {
+    console.error('Error suggesting scenes:', error);
+    res.status(500).json({ error: error.message || 'Failed to suggest scenes' });
   }
 });
 
