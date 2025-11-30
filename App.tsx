@@ -153,6 +153,9 @@ const App: React.FC = () => {
   const [showSaveSceneTemplateModal, setShowSaveSceneTemplateModal] = useState(false);
   const [sceneTemplateName, setSceneTemplateName] = useState('');
 
+  // Password reset routing state
+  const [currentHash, setCurrentHash] = useState(window.location.hash);
+
   const handleSelectSceneTemplate = (template: any) => {
     setCurrentInput(template.raw_idea);
     if (template.director_settings) {
@@ -1566,8 +1569,6 @@ const App: React.FC = () => {
   }
 
   // Handle password reset routing (before auth check)
-  const [currentHash, setCurrentHash] = useState(window.location.hash);
-  
   useEffect(() => {
     const handleHashChange = () => {
       setCurrentHash(window.location.hash);
