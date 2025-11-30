@@ -139,25 +139,41 @@ class EmailService {
       const port = parseInt(smtpPort, 10);
       const encryption = this.getSetting('smtp_encryption', '').toLowerCase();
       
-      // Determine secure based on port or encryption setting
+      // Determine secure and requireTLS based on port and encryption
+      // Port 465 = SSL (secure: true)
+      // Port 587 = TLS/STARTTLS (secure: false, requireTLS: true)
+      // Other ports depend on encryption setting
       let secure = false;
+      let requireTLS = false;
+      
       if (port === 465) {
-        secure = true; // SSL on port 465
-      } else if (port === 587 && encryption === 'tls') {
-        secure = false; // TLS on port 587
-      } else if (encryption === 'ssl') {
-        secure = true; // SSL encryption
-      } else if (encryption === 'tls') {
-        secure = false; // TLS encryption (STARTTLS)
+        // Port 465 always uses SSL
+        secure = true;
+        requireTLS = false;
+      } else if (port === 587) {
+        // Port 587 always uses TLS/STARTTLS
+        secure = false;
+        requireTLS = true;
       } else {
-        // Default: secure for 465, not secure for others
-        secure = port === 465;
+        // For other ports, use encryption setting
+        if (encryption === 'ssl') {
+          secure = true;
+          requireTLS = false;
+        } else if (encryption === 'tls') {
+          secure = false;
+          requireTLS = true;
+        } else {
+          // Default: assume TLS for non-465 ports
+          secure = false;
+          requireTLS = port !== 25; // Port 25 might not support TLS
+        }
       }
 
       const transportConfig: any = {
         host: smtpHost,
         port: port,
         secure: secure,
+        requireTLS: requireTLS,
         auth: {
           user: smtpUser,
           pass: smtpPass,
@@ -171,14 +187,15 @@ class EmailService {
       }
 
       // Add TLS options if using TLS/STARTTLS
-      if (!secure && (encryption === 'tls' || port === 587)) {
-        transportConfig.requireTLS = true;
+      if (requireTLS) {
         transportConfig.tls = {
           rejectUnauthorized: false, // Allow self-signed certificates if needed
         };
       }
 
       this.transporter = nodemailer.createTransport(transportConfig);
+      
+      console.log(`✅ SMTP transporter initialized (${smtpHost}:${port}, secure: ${secure}, requireTLS: ${requireTLS})`);
 
       console.log('✅ SMTP transporter initialized');
     } catch (error) {
