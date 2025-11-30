@@ -765,6 +765,121 @@ export const extractCharacters = async (
 };
 
 /**
+ * Analyzes character relationships using AI
+ */
+export const analyzeCharacterRelationships = async (
+  characters: Array<{ name: string }>,
+  scenes: Scene[],
+  context: StoryContext,
+  userId?: number
+): Promise<Array<{
+  character1: string;
+  character2: string;
+  type: 'allies' | 'enemies' | 'neutral' | 'romantic' | 'family';
+  strength: number;
+  description?: string;
+}>> => {
+  const ai = await getAIClient(userId);
+
+  const systemInstruction = `You are a professional story analyst specializing in character relationships. Analyze the relationships between characters based on their interactions in scenes.
+
+Return a JSON array of relationship objects with:
+- character1: First character name
+- character2: Second character name
+- type: Relationship type - one of: "allies", "enemies", "neutral", "romantic", "family"
+- strength: Relationship strength (0-1, where 1 is strongest)
+- description: Brief description of their relationship (optional)
+
+Analyze the actual content, dialogue, and interactions to determine relationship types accurately.`;
+
+  // Build scenes content summary - limit to prevent timeout
+  const MAX_SCENES = 30;
+  const MAX_CONTENT_LENGTH = 300;
+  
+  const truncate = (text: string | undefined, maxLength: number): string => {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+
+  const scenesToProcess = scenes.slice(0, MAX_SCENES);
+  const scenesContent = scenesToProcess.length > 0 
+    ? scenesToProcess.map((scene, idx) => `
+      Scene ${scene.sequenceNumber || idx + 1}:
+      - Raw Idea: ${truncate(scene.rawIdea, MAX_CONTENT_LENGTH)}
+      - Enhanced Prompt: ${truncate(scene.enhancedPrompt, MAX_CONTENT_LENGTH)}
+      - Context Summary: ${truncate(scene.contextSummary, MAX_CONTENT_LENGTH)}
+      - Dialogue: ${truncate(scene.directorSettings?.dialogue, MAX_CONTENT_LENGTH)}
+    `).join('\n')
+    : 'No scenes generated yet.';
+
+  const characterNames = characters.map(c => c.name).join(', ');
+
+  const prompt = `
+    STORY CONTEXT:
+    Title: ${context.title || 'Untitled'}
+    Genre: ${context.genre || 'General'}
+    Plot Summary: ${context.plotSummary || ''}
+    
+    CHARACTERS TO ANALYZE:
+    ${characterNames}
+    
+    SCENES:
+    ${scenesContent}
+    
+    Analyze the relationships between all pairs of characters listed above. Consider:
+    - Their interactions in dialogue
+    - Their actions toward each other
+    - The context and tone of their scenes together
+    - Whether they cooperate, conflict, or are neutral
+    - Any romantic or familial connections
+    
+    Return relationships for ALL character pairs that appear together in scenes.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              character1: { type: Type.STRING },
+              character2: { type: Type.STRING },
+              type: { 
+                type: Type.STRING,
+                enum: ['allies', 'enemies', 'neutral', 'romantic', 'family']
+              },
+              strength: { type: Type.NUMBER },
+              description: { type: Type.STRING }
+            },
+            required: ['character1', 'character2', 'type', 'strength']
+          }
+        }
+      }
+    });
+
+    return safeParseJSON<Array<{
+      character1: string;
+      character2: string;
+      type: 'allies' | 'enemies' | 'neutral' | 'romantic' | 'family';
+      strength: number;
+      description?: string;
+    }>>(
+      response.text,
+      []
+    );
+  } catch (error: any) {
+    console.error("Error analyzing character relationships:", error);
+    throw error;
+  }
+};
+
+/**
  * Extracts locations from story context and all scenes, returns structured location data
  */
 export const extractLocations = async (

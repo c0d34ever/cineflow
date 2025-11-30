@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Scene, StoryContext } from '../types';
 import { charactersService } from '../apiServices';
+import { analyzeCharacterRelationships } from '../clientGeminiService';
 
 interface CharacterRelationshipGraphProps {
   scenes: Scene[];
@@ -22,6 +23,7 @@ interface Relationship {
   strength: number; // 0-1, based on interaction frequency
   scenes: number[]; // Scene IDs where they interact
   type: 'allies' | 'enemies' | 'neutral' | 'romantic' | 'family';
+  description?: string; // AI-generated description
 }
 
 const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
@@ -35,6 +37,8 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
   const [loading, setLoading] = useState(true);
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'allies' | 'enemies' | 'neutral'>('all');
+  const [useAI, setUseAI] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -43,9 +47,13 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
 
   useEffect(() => {
     if (characters.length > 0 && scenes.length > 0) {
-      analyzeRelationships();
+      if (useAI) {
+        analyzeRelationshipsWithAI();
+      } else {
+        analyzeRelationships();
+      }
     }
-  }, [characters, scenes]);
+  }, [characters, scenes, useAI]);
 
   useEffect(() => {
     if (canvasRef.current && relationships.length > 0) {
@@ -206,18 +214,76 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
       }
     });
 
-    // Convert to relationship array
+    // Convert to relationship array with better type detection
     const rels: Relationship[] = [];
     const maxInteractions = Math.max(...Array.from(interactions.values()).map(d => d.count), 1);
+
+    // Keywords that indicate conflict/enemy relationship
+    const enemyKeywords = [
+      'fight', 'battle', 'attack', 'enemy', 'foe', 'rival', 'opponent', 'adversary', 'conflict',
+      'hate', 'anger', 'rage', 'fury', 'attack', 'strike', 'defeat', 'destroy', 'kill', 'threat',
+      'danger', 'hostile', 'aggressive', 'confront', 'challenge', 'betray', 'betrayal', 'traitor',
+      'enemy', 'villain', 'antagonist', 'oppose', 'against', 'versus', 'vs', 'clash', 'war',
+      'combat', 'struggle', 'resist', 'defend', 'retreat', 'escape', 'flee', 'hunt', 'pursue'
+    ];
+
+    // Keywords that indicate alliance/friendly relationship
+    const allyKeywords = [
+      'friend', 'ally', 'partner', 'team', 'together', 'help', 'assist', 'support', 'protect',
+      'save', 'rescue', 'trust', 'loyal', 'companion', 'comrade', 'brother', 'sister', 'family',
+      'love', 'care', 'cherish', 'unite', 'join', 'cooperate', 'collaborate', 'work together',
+      'side by side', 'stand with', 'defend together', 'fight together', 'alliance', 'bond'
+    ];
 
     interactions.forEach((data, key) => {
       const [char1, char2] = key.split('|');
       const strength = data.count / maxInteractions;
       
-      // Determine relationship type
+      // Analyze interaction context to determine relationship type
+      let enemyScore = 0;
+      let allyScore = 0;
+      
+      // Check scenes where both characters appear
+      const sharedScenes = scenes.filter(s => data.scenes.includes(s.sequenceNumber));
+      
+      sharedScenes.forEach(scene => {
+        const text = `${scene.directorSettings?.dialogue || ''} ${scene.contextSummary || ''} ${scene.rawIdea || ''} ${scene.enhancedPrompt || ''}`.toLowerCase();
+        const char1Lower = char1.toLowerCase();
+        const char2Lower = char2.toLowerCase();
+        
+        // Check if both characters are mentioned in the same context
+        if (text.includes(char1Lower) && text.includes(char2Lower)) {
+          // Count enemy keywords
+          enemyKeywords.forEach(keyword => {
+            if (text.includes(keyword)) {
+              enemyScore++;
+            }
+          });
+          
+          // Count ally keywords
+          allyKeywords.forEach(keyword => {
+            if (text.includes(keyword)) {
+              allyScore++;
+            }
+          });
+        }
+      });
+      
+      // Determine relationship type based on scores
       let type: Relationship['type'] = 'neutral';
-      if (strength > 0.7) type = 'allies';
-      else if (strength > 0.4) type = 'neutral';
+      
+      if (enemyScore > allyScore && enemyScore > 0) {
+        type = 'enemies';
+      } else if (allyScore > enemyScore && allyScore > 0) {
+        type = 'allies';
+      } else if (strength > 0.7 && allyScore >= enemyScore) {
+        // High interaction frequency with no clear conflict = likely allies
+        type = 'allies';
+      } else if (strength > 0.4) {
+        type = 'neutral';
+      } else {
+        type = 'neutral';
+      }
       
       rels.push({
         character1: char1,
@@ -229,6 +295,50 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
     });
 
     setRelationships(rels);
+  };
+
+  const analyzeRelationshipsWithAI = async () => {
+    if (characters.length === 0 || scenes.length === 0) return;
+    
+    setAnalyzing(true);
+    try {
+      const aiRelationships = await analyzeCharacterRelationships(
+        characters.map(c => ({ name: c.name })),
+        scenes,
+        storyContext
+      );
+
+      // Convert AI relationships to our format
+      const rels: Relationship[] = aiRelationships.map(rel => {
+        // Find scenes where both characters appear
+        const sharedScenes = scenes
+          .filter(s => {
+            const text = `${s.directorSettings?.dialogue || ''} ${s.contextSummary || ''} ${s.rawIdea || ''} ${s.enhancedPrompt || ''}`.toLowerCase();
+            const char1Lower = rel.character1.toLowerCase();
+            const char2Lower = rel.character2.toLowerCase();
+            return text.includes(char1Lower) && text.includes(char2Lower);
+          })
+          .map(s => s.sequenceNumber);
+
+        return {
+          character1: rel.character1,
+          character2: rel.character2,
+          strength: rel.strength,
+          scenes: sharedScenes.length > 0 ? sharedScenes : [1], // Fallback to scene 1 if none found
+          type: rel.type,
+          description: rel.description,
+        };
+      });
+
+      setRelationships(rels);
+    } catch (error: any) {
+      console.error('AI relationship analysis failed:', error);
+      // Fallback to keyword-based analysis
+      analyzeRelationships();
+      alert('AI analysis failed. Using keyword-based analysis instead.');
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const drawGraph = () => {
@@ -383,6 +493,16 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">Visual representation of character interactions</p>
           </div>
           <div className="flex items-center gap-2">
+            {/* AI Toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useAI}
+                onChange={(e) => setUseAI(e.target.checked)}
+                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500"
+              />
+              <span className="text-xs text-zinc-400">AI Analysis</span>
+            </label>
             {/* Filter */}
             <select
               value={filterType}
@@ -413,11 +533,16 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-          {loading ? (
+          {loading || analyzing ? (
             <div className="flex items-center justify-center h-96">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
-                <p className="text-zinc-500">Analyzing character relationships...</p>
+                <p className="text-zinc-500">
+                  {analyzing ? 'AI is analyzing character relationships...' : 'Analyzing character relationships...'}
+                </p>
+                {analyzing && (
+                  <p className="text-xs text-zinc-600 mt-2">This may take a moment</p>
+                )}
               </div>
             </div>
           ) : (
@@ -458,6 +583,11 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
                           <div className="text-xs text-zinc-500">
                             {rel.scenes.length} scene{rel.scenes.length > 1 ? 's' : ''} (Scenes: {rel.scenes.join(', ')})
                           </div>
+                          {rel.description && (
+                            <div className="text-xs text-zinc-400 italic mt-1">
+                              "{rel.description}"
+                            </div>
+                          )}
                         </div>
                       );
                     })}

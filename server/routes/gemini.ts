@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent } from '../services/geminiService.js';
+import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent, analyzeCharacterRelationships } from '../services/geminiService.js';
 import { StoryContext, DirectorSettings, Scene } from '../../types.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
@@ -233,6 +233,34 @@ router.post('/extract-locations', authenticateToken, async (req: AuthRequest, re
   } catch (error: any) {
     console.error('Error extracting locations:', error);
     res.status(500).json({ error: error.message || 'Failed to extract locations' });
+  }
+});
+
+// POST /api/gemini/analyze-character-relationships - Analyze character relationships using AI
+router.post('/analyze-character-relationships', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { characters, scenes, context } = req.body;
+    if (!characters || !Array.isArray(characters) || characters.length === 0) {
+      return res.status(400).json({ error: 'Characters array is required' });
+    }
+    if (!scenes || !Array.isArray(scenes)) {
+      return res.status(400).json({ error: 'Scenes array is required' });
+    }
+    if (!context) {
+      return res.status(400).json({ error: 'Story context is required' });
+    }
+
+    const userId = req.user!.id;
+    const relationships = await analyzeCharacterRelationships(
+      characters,
+      scenes as Scene[],
+      context as StoryContext,
+      userId
+    );
+    res.json(relationships);
+  } catch (error: any) {
+    console.error('Error analyzing character relationships:', error);
+    res.status(500).json({ error: error.message || 'Failed to analyze character relationships' });
   }
 });
 
