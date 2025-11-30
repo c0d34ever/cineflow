@@ -1560,19 +1560,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleBulkTagAssignment = async (tagId: number) => {
-    if (selectedSceneIds.size === 0 || !storyContext.id) return;
-
-    try {
-      // For now, we'll add tags to the project
-      // In a full implementation, you might want to add tags to individual scenes
-      await tagsService.addToProject(tagId, storyContext.id);
-      showToast(`Tag assigned to ${selectedSceneIds.size} scene(s)`, 'success');
-    } catch (error: any) {
-      showToast('Failed to assign tag', 'error');
-    }
-  };
-
   // Close export menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
