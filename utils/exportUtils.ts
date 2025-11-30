@@ -1138,6 +1138,66 @@ export async function exportEpisodeWithImages(
 }
 
 /**
+ * Export to Fountain screenplay format
+ * Fountain is a plain text markup language for screenplays
+ */
+export function exportToFountain(data: ExportData): string {
+  const { context, scenes } = data;
+  
+  let fountain = '';
+  
+  // Title Page
+  fountain += `Title: ${context.title}\n`;
+  if (context.genre) {
+    fountain += `Genre: ${context.genre}\n`;
+  }
+  fountain += `\n`;
+  
+  // Convert scenes to screenplay format
+  scenes.forEach((scene, index) => {
+    // Scene Heading (INT./EXT. LOCATION - TIME)
+    // Extract location from enhanced prompt or use default
+    const locationMatch = scene.enhancedPrompt.match(/(?:in|at|inside|outside|on)\s+(?:the\s+)?([a-z]+(?:\s+[a-z]+)?)/i);
+    const location = locationMatch ? locationMatch[1] : 'UNKNOWN';
+    const isInterior = scene.enhancedPrompt.toLowerCase().includes('inside') || 
+                      scene.enhancedPrompt.toLowerCase().includes('interior') ||
+                      scene.enhancedPrompt.toLowerCase().includes('in ');
+    const sceneHeading = `${isInterior ? 'INT' : 'EXT'}. ${location.toUpperCase()} - DAY\n`;
+    fountain += sceneHeading;
+    
+    // Action lines (from enhanced prompt)
+    const actionLines = scene.enhancedPrompt
+      .split('\n')
+      .filter(line => line.trim())
+      .map(line => line.trim());
+    
+    actionLines.forEach(line => {
+      // Skip if it looks like dialogue
+      if (!line.startsWith('"') && !line.match(/^[A-Z][A-Z\s]+:/)) {
+        fountain += `${line}\n`;
+      }
+    });
+    
+    // Dialogue (if present)
+    if (scene.directorSettings.dialogue) {
+      // Extract character name (simplified - could be enhanced)
+      const characterName = 'CHARACTER'; // Default, could extract from context
+      fountain += `\n${characterName}\n`;
+      fountain += `${scene.directorSettings.dialogue}\n\n`;
+    }
+    
+    // Transition (if not Cut)
+    if (scene.directorSettings.transition && scene.directorSettings.transition.toLowerCase() !== 'cut') {
+      fountain += `\n${scene.directorSettings.transition.toUpperCase()}\n\n`;
+    } else {
+      fountain += `\n`;
+    }
+  });
+  
+  return fountain;
+}
+
+/**
  * Download file helper
  */
 export function downloadFile(content: string, filename: string, mimeType: string): void {

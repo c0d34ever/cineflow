@@ -23,11 +23,23 @@ import CommandPalette from './components/CommandPalette';
 import CopyButton from './components/CopyButton';
 import { ToastContainer } from './components/Toast';
 import CoverImageSelector from './components/CoverImageSelector';
+import ExportHistoryPanel from './components/ExportHistoryPanel';
+import ProjectStatisticsPanel from './components/ProjectStatisticsPanel';
+import ScenePreviewModal from './components/ScenePreviewModal';
+import StoryboardPlayback from './components/StoryboardPlayback';
+import AdvancedSearchPanel from './components/AdvancedSearchPanel';
+import ProjectTemplatesLibrary from './components/ProjectTemplatesLibrary';
+import AIStoryAnalysisPanel from './components/AIStoryAnalysisPanel';
+import ShotListGenerator from './components/ShotListGenerator';
+import ShootingScheduleGenerator from './components/ShootingScheduleGenerator';
+import CallSheetGenerator from './components/CallSheetGenerator';
+import BudgetEstimator from './components/BudgetEstimator';
+import VideoSlideshowExport from './components/VideoSlideshowExport';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
 import { authService, tagsService, templatesService, charactersService, sharingService, locationsService, sceneTemplatesService, activityService, archiveProject } from './apiServices';
-import { exportToMarkdown, exportToCSV, exportToPDF, downloadFile, ExportData, exportEpisodeToPDF, EpisodeExportData, PDFStyle } from './utils/exportUtils';
+import { exportToMarkdown, exportToCSV, exportToPDF, exportToFountain, downloadFile, ExportData, exportEpisodeToPDF, EpisodeExportData, PDFStyle } from './utils/exportUtils';
 import { mediaService, episodesService, comicsService } from './apiServices';
 
 const DEFAULT_DIRECTOR_SETTINGS: DirectorSettings = {
@@ -207,6 +219,20 @@ const App: React.FC = () => {
 
   // Sharing
   const [showSharingModal, setShowSharingModal] = useState(false);
+  const [showExportHistoryPanel, setShowExportHistoryPanel] = useState(false);
+  const [showProjectStatisticsPanel, setShowProjectStatisticsPanel] = useState(false);
+  const [showScenePreviewModal, setShowScenePreviewModal] = useState(false);
+  const [previewSceneIndex, setPreviewSceneIndex] = useState(0);
+  const [showStoryboardPlayback, setShowStoryboardPlayback] = useState(false);
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [showTemplatesLibrary, setShowTemplatesLibrary] = useState(false);
+  const [showAIStoryAnalysis, setShowAIStoryAnalysis] = useState(false);
+  const [showShotListGenerator, setShowShotListGenerator] = useState(false);
+  const [showShootingSchedule, setShowShootingSchedule] = useState(false);
+  const [showCallSheet, setShowCallSheet] = useState(false);
+  const [callSheetDay, setCallSheetDay] = useState<any>(null);
+  const [showBudgetEstimator, setShowBudgetEstimator] = useState(false);
+  const [showVideoExport, setShowVideoExport] = useState(false);
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
 
   // Undo/Redo
@@ -432,9 +458,18 @@ const App: React.FC = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle shortcuts when not typing in inputs
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      // Only handle shortcuts when not typing in inputs (except Ctrl+F for search)
+      if ((e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) && 
+          !((e.ctrlKey || e.metaKey) && e.key === 'f')) {
         return;
+      }
+
+      // Ctrl+F or Cmd+F - Open Advanced Search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowAdvancedSearch(true);
+        return;
+      }
       }
 
       // Ctrl/Cmd + S - Save
@@ -493,10 +528,16 @@ const App: React.FC = () => {
         }
       }
 
+      // Ctrl/Cmd + F - Advanced Search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowAdvancedSearch(true);
+      }
+
       // Ctrl/Cmd + / - Show shortcuts help
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
-        alert(`Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`);
+        alert(`Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`);
       }
 
       // Escape - Close modals
@@ -505,6 +546,7 @@ const App: React.FC = () => {
         setShowTagsMenu(false);
         setShowCommentsPanel(false);
         setShowSceneNotesPanel(false);
+        setShowAdvancedSearch(false);
       }
     };
 
@@ -982,7 +1024,7 @@ const App: React.FC = () => {
     };
   };
 
-  const handleExport = async (format: 'json' | 'markdown' | 'csv' | 'pdf') => {
+  const handleExport = async (format: 'json' | 'markdown' | 'csv' | 'pdf' | 'fountain') => {
     const filename = `${storyContext.title.replace(/\s+/g, '_')}_storyboard`;
     
     try {
@@ -1008,6 +1050,13 @@ const App: React.FC = () => {
             exportToCSV(data),
             `${filename}.csv`,
             'text/csv'
+          );
+          break;
+        case 'fountain':
+          downloadFile(
+            exportToFountain(data),
+            `${filename}.fountain`,
+            'text/plain'
           );
           break;
           case 'pdf':
@@ -1237,11 +1286,35 @@ const App: React.FC = () => {
     setScenes(updatedScenes);
     setDraggedSceneIndex(null);
 
-    // Save reordered scenes
+    // Save reordered scenes to backend using batch endpoint
     try {
       const updatedContext = { ...storyContext, lastUpdated: Date.now() };
       const apiAvailable = await checkApiAvailability();
+      
       if (apiAvailable) {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const token = localStorage.getItem('auth_token');
+        
+        // Update sequence numbers using batch endpoint
+        const sequenceUpdates = updatedScenes.map((scene, idx) => ({
+          id: scene.id,
+          sequence_number: idx + 1,
+        }));
+
+        await fetch(`${API_BASE_URL}/clips/batch`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            clip_ids: updatedScenes.map(s => s.id),
+            operation: 'update_sequence',
+            data: { sequence_updates: sequenceUpdates },
+          }),
+        });
+
+        // Also save project metadata
         await apiService.saveProject({
           context: updatedContext,
           scenes: updatedScenes,
@@ -1295,16 +1368,23 @@ const App: React.FC = () => {
       const token = localStorage.getItem('auth_token');
       const idsToDelete = Array.from(selectedSceneIds);
 
-      // Delete from backend
+      // Delete from backend using batch endpoint
       if (apiAvailable) {
-        await Promise.all(
-          idsToDelete.map(sceneId =>
-            fetch(`${API_BASE_URL}/clips/${sceneId}`, {
-              method: 'DELETE',
-              headers: { 'Authorization': `Bearer ${token}` },
-            })
-          )
-        );
+        const response = await fetch(`${API_BASE_URL}/clips/batch`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            clip_ids: idsToDelete,
+            operation: 'delete',
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete scenes');
+        }
       }
 
       // Update local state
@@ -1331,20 +1411,24 @@ const App: React.FC = () => {
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
       const token = localStorage.getItem('auth_token');
 
-      // Update in backend
+      // Update in backend using batch endpoint
       if (apiAvailable) {
-        await Promise.all(
-          Array.from(selectedSceneIds).map(sceneId =>
-            fetch(`${API_BASE_URL}/clips/${sceneId}`, {
-              method: 'PUT',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ status }),
-            })
-          )
-        );
+        const response = await fetch(`${API_BASE_URL}/clips/batch`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            clip_ids: Array.from(selectedSceneIds),
+            operation: 'update_status',
+            data: { status },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update scenes');
+        }
       }
 
       // Update local state
@@ -2372,6 +2456,12 @@ const App: React.FC = () => {
                 >
                   <span>📄</span> Export as PDF
                 </button>
+                <button
+                  onClick={() => handleExport('fountain')}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>🎬</span> Export as Fountain (Screenplay)
+                </button>
                 {comicExists && (
                   <>
                     <div className="border-t border-zinc-700 my-1"></div>
@@ -2438,6 +2528,130 @@ const App: React.FC = () => {
               Analytics
             </button>
           )}
+
+          {/* Statistics Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowProjectStatisticsPanel(true)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Project Statistics"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Stats
+            </button>
+          )}
+
+          {/* AI Story Analysis Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowAIStoryAnalysis(true)}
+              className="text-xs px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-700 text-white border border-purple-500 transition-colors flex items-center gap-1"
+              title="AI Story Analysis"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              AI Analysis
+            </button>
+          )}
+
+          {/* Shot List Generator Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowShotListGenerator(true)}
+              className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 transition-colors flex items-center gap-1"
+              title="Generate Shot List"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              Shot List
+            </button>
+          )}
+
+          {/* Shooting Schedule Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowShootingSchedule(true)}
+              className="text-xs px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white border border-green-500 transition-colors flex items-center gap-1"
+              title="Generate Shooting Schedule"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Schedule
+            </button>
+          )}
+
+          {/* Budget Estimator Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowBudgetEstimator(true)}
+              className="text-xs px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
+              title="Budget Estimator"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Budget
+            </button>
+          )}
+
+          {/* Video Export Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowVideoExport(true)}
+              className="text-xs px-3 py-1.5 rounded bg-pink-600 hover:bg-pink-700 text-white border border-pink-500 transition-colors flex items-center gap-1"
+              title="Export Video Slideshow"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+              </svg>
+              Video Export
+            </button>
+          )}
+
+          {/* Export History Button */}
+          {view === 'studio' && (
+            <button
+              onClick={() => setShowExportHistoryPanel(true)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Export History"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path fillRule="evenodd" d="M10 2a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5H4.25a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 0110 2z" clipRule="evenodd" />
+              </svg>
+              Exports
+            </button>
+          )}
+
+          {/* Storyboard Playback Button */}
+          {view === 'studio' && scenes.length > 0 && (
+            <button
+              onClick={() => setShowStoryboardPlayback(true)}
+              className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white border border-amber-500 transition-colors flex items-center gap-1"
+              title="Playback Storyboard"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+              </svg>
+              Playback
+            </button>
+          )}
+
+          {/* Advanced Search Button */}
+          <button
+            onClick={() => setShowAdvancedSearch(true)}
+            className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+            title="Advanced Search (Ctrl+F)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+            </svg>
+            Search
+          </button>
 
           {/* Comments Button */}
           {view === 'studio' && storyContext.id && (
@@ -2589,6 +2803,7 @@ const App: React.FC = () => {
         {studioViewMode === 'timeline' ? (
           <TimelineView
             scenes={scenes}
+            projectId={storyContext.id}
             onSceneClick={(scene) => {
               // Scroll to scene in storyboard view
               setStudioViewMode('storyboard');
@@ -2682,6 +2897,13 @@ const App: React.FC = () => {
                           setSelectedSceneId(sceneId);
                           setShowSceneNotesPanel(true);
                         }}
+                        onPreview={!batchMode ? () => {
+                          const sceneIndex = scenes.findIndex(s => s.id === scene.id);
+                          if (sceneIndex >= 0) {
+                            setPreviewSceneIndex(sceneIndex);
+                            setShowScenePreviewModal(true);
+                          }
+                        } : undefined}
                         onDelete={async (sceneId) => {
                           try {
                             const apiAvailable = await checkApiAvailability();
@@ -2745,6 +2967,276 @@ const App: React.FC = () => {
         <AnalyticsPanel
           projectId={storyContext.id}
           onClose={() => setShowAnalyticsPanel(false)}
+        />
+      )}
+
+      {/* Project Statistics Panel */}
+      {showProjectStatisticsPanel && storyContext.id && (
+        <ProjectStatisticsPanel
+          projectId={storyContext.id}
+          scenes={scenes}
+          onClose={() => setShowProjectStatisticsPanel(false)}
+        />
+      )}
+
+      {/* Export History Panel */}
+      {showExportHistoryPanel && (
+        <ExportHistoryPanel
+          onClose={() => setShowExportHistoryPanel(false)}
+        />
+      )}
+
+      {/* Scene Preview Modal */}
+      {showScenePreviewModal && scenes[previewSceneIndex] && (
+        <ScenePreviewModal
+          scene={scenes[previewSceneIndex]}
+          projectId={storyContext.id}
+          scenes={scenes}
+          onClose={() => setShowScenePreviewModal(false)}
+          onPrevious={() => {
+            if (previewSceneIndex > 0) {
+              setPreviewSceneIndex(previewSceneIndex - 1);
+            }
+          }}
+          onNext={() => {
+            if (previewSceneIndex < scenes.length - 1) {
+              setPreviewSceneIndex(previewSceneIndex + 1);
+            }
+          }}
+        />
+      )}
+
+      {/* Storyboard Playback */}
+      {showStoryboardPlayback && storyContext.id && scenes.length > 0 && (
+        <StoryboardPlayback
+          scenes={scenes}
+          projectId={storyContext.id}
+          onClose={() => setShowStoryboardPlayback(false)}
+        />
+      )}
+
+      {/* AI Story Analysis Panel */}
+      {showAIStoryAnalysis && storyContext.id && (
+        <AIStoryAnalysisPanel
+          projectId={storyContext.id}
+          storyContext={storyContext}
+          scenes={scenes}
+          onClose={() => setShowAIStoryAnalysis(false)}
+        />
+      )}
+
+      {/* Shot List Generator */}
+      {showShotListGenerator && storyContext.id && (
+        <ShotListGenerator
+          scenes={scenes}
+          projectId={storyContext.id}
+          onClose={() => setShowShotListGenerator(false)}
+        />
+      )}
+
+      {/* Shooting Schedule Generator */}
+      {showShootingSchedule && storyContext.id && (
+        <ShootingScheduleGenerator
+          scenes={scenes}
+          projectId={storyContext.id}
+          storyContext={storyContext}
+          onClose={() => setShowShootingSchedule(false)}
+          onGenerateCallSheet={(day) => {
+            setCallSheetDay(day);
+            setShowShootingSchedule(false);
+            setShowCallSheet(true);
+          }}
+        />
+      )}
+
+      {/* Call Sheet Generator */}
+      {showCallSheet && storyContext.id && (
+        <CallSheetGenerator
+          scenes={scenes}
+          projectId={storyContext.id}
+          storyContext={storyContext}
+          scheduleDay={callSheetDay}
+          onClose={() => {
+            setShowCallSheet(false);
+            setCallSheetDay(null);
+          }}
+        />
+      )}
+
+      {/* Budget Estimator */}
+      {showBudgetEstimator && storyContext.id && (
+        <BudgetEstimator
+          scenes={scenes}
+          projectId={storyContext.id}
+          onClose={() => setShowBudgetEstimator(false)}
+        />
+      )}
+
+      {/* Video Slideshow Export */}
+      {showVideoExport && storyContext.id && (
+        <VideoSlideshowExport
+          scenes={scenes}
+          projectId={storyContext.id}
+          onClose={() => setShowVideoExport(false)}
+        />
+      )}
+
+      {/* Project Templates Library */}
+      {showTemplatesLibrary && (
+        <ProjectTemplatesLibrary
+          onClose={() => setShowTemplatesLibrary(false)}
+          onSelectTemplate={async (template) => {
+            try {
+              const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+              const token = localStorage.getItem('auth_token');
+              
+              // Create project from template
+              const response = await fetch(`${API_BASE_URL}/templates/${template.id}/create-project`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+              });
+
+              if (!response.ok) throw new Error('Failed to create project from template');
+
+              const result = await response.json();
+              
+              // Load the newly created project
+              const projectData = await apiService.getProject(result.id);
+              setStoryContext(projectData.context);
+              setScenes(projectData.scenes || []);
+              setCurrentSettings(projectData.settings || DEFAULT_DIRECTOR_SETTINGS);
+              setView('studio');
+              setShowTemplatesLibrary(false);
+              showToast('Project created from template!', 'success');
+            } catch (error: any) {
+              showToast('Failed to create project from template', 'error');
+            }
+          }}
+          onSaveCurrentAsTemplate={async () => {
+            if (!storyContext.id || !storyContext.title) {
+              showToast('Please save your project first', 'error');
+              return;
+            }
+
+            const templateName = window.prompt('Enter template name:');
+            if (!templateName) return;
+
+            try {
+              const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+              const token = localStorage.getItem('auth_token');
+              
+              await fetch(`${API_BASE_URL}/templates`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  name: templateName,
+                  description: `Template based on: ${storyContext.title}`,
+                  genre: storyContext.genre,
+                  plot_summary: storyContext.plotSummary,
+                  characters: storyContext.characters,
+                  initial_context: storyContext.initialContext,
+                  director_settings: currentSettings,
+                }),
+              });
+
+              showToast('Template saved successfully!', 'success');
+              setShowTemplatesLibrary(false);
+            } catch (error: any) {
+              showToast('Failed to save template', 'error');
+            }
+          }}
+        />
+      )}
+
+      {/* Advanced Search Panel */}
+      {showAdvancedSearch && (
+        <AdvancedSearchPanel
+          projects={projects}
+          scenes={scenes}
+          currentProjectId={storyContext.id}
+          onClose={() => setShowAdvancedSearch(false)}
+          onSelectProject={async (projectId) => {
+            try {
+              const apiAvailable = await checkApiAvailability();
+              let projectData: ProjectData | null = null;
+
+              if (apiAvailable) {
+                projectData = await apiService.getProject(projectId);
+              } else {
+                const allProjects = await getProjectsFromDB();
+                projectData = allProjects.find(p => p.context.id === projectId) || null;
+              }
+
+              if (projectData) {
+                setStoryContext(projectData.context);
+                setScenes(projectData.scenes || []);
+                setCurrentSettings(projectData.settings || DEFAULT_DIRECTOR_SETTINGS);
+                setView('studio');
+                showToast('Project loaded', 'success');
+              }
+            } catch (error: any) {
+              showToast('Failed to load project', 'error');
+            }
+          }}
+          onSelectScene={(sceneId, projectId) => {
+            // If it's the current project, just scroll to scene
+            if (projectId === storyContext.id) {
+              const sceneElement = document.querySelector(`[data-scene-id="${sceneId}"]`);
+              if (sceneElement) {
+                sceneElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Highlight the scene briefly
+                sceneElement.classList.add('ring-2', 'ring-amber-500');
+                setTimeout(() => {
+                  sceneElement.classList.remove('ring-2', 'ring-amber-500');
+                }, 2000);
+              }
+            } else {
+              // Load the project first
+              const loadProject = async () => {
+                try {
+                  const apiAvailable = await checkApiAvailability();
+                  let projectData: ProjectData | null = null;
+
+                  if (apiAvailable) {
+                    projectData = await apiService.getProject(projectId);
+                  } else {
+                    const allProjects = await getProjectsFromDB();
+                    projectData = allProjects.find(p => p.context.id === projectId) || null;
+                  }
+
+                  if (projectData) {
+                    setStoryContext(projectData.context);
+                    setScenes(projectData.scenes || []);
+                    setCurrentSettings(projectData.settings || DEFAULT_DIRECTOR_SETTINGS);
+                    setView('studio');
+                    
+                    // Scroll to scene after a short delay
+                    setTimeout(() => {
+                      const sceneElement = document.querySelector(`[data-scene-id="${sceneId}"]`);
+                      if (sceneElement) {
+                        sceneElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        sceneElement.classList.add('ring-2', 'ring-amber-500');
+                        setTimeout(() => {
+                          sceneElement.classList.remove('ring-2', 'ring-amber-500');
+                        }, 2000);
+                      }
+                    }, 500);
+                    
+                    showToast('Project loaded', 'success');
+                  }
+                } catch (error: any) {
+                  showToast('Failed to load project', 'error');
+                }
+              };
+              loadProject();
+            }
+          }}
         />
       )}
 
@@ -2904,6 +3396,17 @@ const App: React.FC = () => {
             keywords: ['analytics', 'stats', 'statistics'],
             action: () => {
               setShowAnalyticsPanel(true);
+              setShowCommandPalette(false);
+            }
+          },
+          {
+            id: 'search',
+            label: 'Advanced Search',
+            description: 'Search across projects and scenes',
+            icon: '🔍',
+            keywords: ['search', 'find', 'look'],
+            action: () => {
+              setShowAdvancedSearch(true);
               setShowCommandPalette(false);
             }
           },

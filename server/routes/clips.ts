@@ -307,5 +307,64 @@ router.post('/:id/move', authenticateToken, async (req: AuthRequest, res: Respon
   }
 });
 
+// POST /api/clips/batch - Batch operations on multiple clips
+router.post('/batch', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { clip_ids, operation, data } = req.body;
+
+    if (!Array.isArray(clip_ids) || clip_ids.length === 0) {
+      return res.status(400).json({ error: 'clip_ids array is required' });
+    }
+
+    if (!operation) {
+      return res.status(400).json({ error: 'operation is required' });
+    }
+
+    const pool = getPool();
+    const placeholders = clip_ids.map(() => '?').join(',');
+
+    switch (operation) {
+      case 'delete':
+        // Delete clips and their director settings
+        await pool.query(`DELETE FROM scenes WHERE id IN (${placeholders})`, clip_ids);
+        res.json({ message: `${clip_ids.length} clip(s) deleted successfully` });
+        break;
+
+      case 'update_status':
+        if (!data || !data.status) {
+          return res.status(400).json({ error: 'status is required for update_status operation' });
+        }
+        await pool.query(
+          `UPDATE scenes SET status = ? WHERE id IN (${placeholders})`,
+          [data.status, ...clip_ids]
+        );
+        res.json({ message: `${clip_ids.length} clip(s) status updated to ${data.status}` });
+        break;
+
+      case 'update_sequence':
+        if (!data || !Array.isArray(data.sequence_updates)) {
+          return res.status(400).json({ error: 'sequence_updates array is required' });
+        }
+        // Update sequence numbers for each clip
+        for (const update of data.sequence_updates) {
+          if (update.id && update.sequence_number !== undefined) {
+            await pool.query(
+              'UPDATE scenes SET sequence_number = ? WHERE id = ?',
+              [update.sequence_number, update.id]
+            );
+          }
+        }
+        res.json({ message: `${data.sequence_updates.length} clip(s) sequence numbers updated` });
+        break;
+
+      default:
+        return res.status(400).json({ error: `Unknown operation: ${operation}` });
+    }
+  } catch (error) {
+    console.error('Error in batch operation:', error);
+    res.status(500).json({ error: 'Failed to perform batch operation' });
+  }
+});
+
 export default router;
 

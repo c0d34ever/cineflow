@@ -12,6 +12,7 @@ interface SceneCardProps {
   projectId?: string;
   onNotesClick?: (sceneId: string) => void;
   onDelete?: (sceneId: string) => void;
+  onPreview?: () => void;
   batchMode?: boolean;
   isSelected?: boolean;
   onToggleSelection?: () => void;
@@ -27,7 +28,7 @@ interface MediaItem {
   is_primary: boolean;
 }
 
-const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, onDelete, batchMode = false, isSelected = false, onToggleSelection }) => {
+const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, onDelete, onPreview, batchMode = false, isSelected = false, onToggleSelection }) => {
   const [sceneImages, setSceneImages] = useState<MediaItem[]>([]);
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
@@ -110,6 +111,21 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                 <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909.47.47a.75.75 0 11-1.06 1.06L6.53 8.091a.75.75 0 00-1.06 0l-2.97 2.97zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
+          {onPreview && !batchMode && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview();
+              }}
+              className="text-zinc-400 hover:text-blue-500 transition-colors"
+              title="Preview Scene"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+                <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
               </svg>
             </button>
           )}
