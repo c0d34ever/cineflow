@@ -68,52 +68,98 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
   };
 
   const analyzeRelationships = () => {
-    // Build character map from database characters
+    // Technical terms blacklist - these should NOT be considered characters
+    const technicalTerms = new Set([
+      'lens', 'shutter', 'angle', 'damping', 'framing', 'key', 'light', 'position', 'color', 'palette',
+      'exposure', 'value', 'texture', 'fluid', 'dynamics', 'impact', 'velocity', 'destruction', 'physics',
+      'movement', 'drag', 'foley', 'shot', 'stunts', 'cloth', 'simulation', 'particle', 'emission',
+      'surfaces', 'movements', 'energy', 'zoom', 'operations', 'volumetric', 'fog', 'density', 'mixing',
+      'notes', 'ambience', 'motion', 'camera', 'model', 'focal', 'length', 'type', 'ratios', 'rates',
+      'skin', 'scattering', 'wirework', 'specs', 'stems', 'layers', 'music', 'intensity', 'slow', 'push',
+      'trajectory', 'off', 'hex', 'mist', 'coalescence', 'pose', 'breath', 'luminous', 'surface', 'force',
+      'face', 'backlight', 'epic', 'pacing', 'mood', 'leap', 'mural', 'rooftop', 'rain', 'landing',
+      'scene', 'context', 'end', 'frame', 'name', 'look', 'visuals', 'performance', 'directions', 'control',
+      'sidekick', 'intro', 'dialogue', 'specifics', 'visual', 'reference', 'continuous', 'silhouettes',
+      'score', 'flight', 'elevations', 'compression', 'hero', 'touchdown', 'group', 'reaction', 'insert',
+      'ensemble', 'kalki', 'creatures', 'legend', 'allies', 'enemies', 'neutral', 'selected', 'line',
+      'thickness', 'indicates', 'relationship', 'strength', 'thicker', 'lines', 'more', 'interactions',
+      'screams', 'stunt', 'operations', 'emission', 'rates', 'particle', 'emission', 'rates'
+    ]);
+
+    // Build character map from database characters (these are trusted)
     const charMap = new Map<string, Character>();
     characters.forEach(char => {
       charMap.set(char.name.toLowerCase(), char);
     });
 
-    // Also extract character names from scenes if no characters in database
+    // Extract character names from scenes - focus on dialogue patterns
     const extractedChars = new Set<string>();
-    const charNamePattern = /(?:^|\s)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?:\s*:|\s+said|\s+says)/g;
     
     scenes.forEach(scene => {
-      const text = `${scene.directorSettings?.dialogue || ''} ${scene.enhancedPrompt || ''} ${scene.contextSummary || ''} ${scene.rawIdea || ''}`;
+      const dialogue = scene.directorSettings?.dialogue || '';
+      const contextSummary = scene.contextSummary || '';
+      const rawIdea = scene.rawIdea || '';
       
-      // Extract potential character names (capitalized words before colons or dialogue markers)
-      const dialogueMatches = text.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*[:"]/g) || [];
-      dialogueMatches.forEach(match => {
-        const name = match.replace(/[:"]/g, '').trim();
-        if (name.length > 1 && name.length < 30) {
+      // Primary: Extract from dialogue (CHARACTER: "line")
+      const dialoguePattern = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*:\s*["']/g;
+      let match;
+      while ((match = dialoguePattern.exec(dialogue)) !== null) {
+        const name = match[1].trim();
+        const lowerName = name.toLowerCase();
+        // Filter out technical terms and common words
+        if (name.length > 1 && 
+            name.length < 30 && 
+            !technicalTerms.has(lowerName) &&
+            !lowerName.includes(' ') || (lowerName.split(' ').length <= 2)) {
           extractedChars.add(name);
         }
-      });
+      }
       
-      // Also check for common character patterns
-      const commonPatterns = [
-        /(?:character|protagonist|antagonist|hero|villain|person|man|woman|boy|girl)\s+([A-Z][a-z]+)/gi,
-        /([A-Z][a-z]+)\s+(?:said|says|replied|answered|whispered|shouted)/gi,
+      // Secondary: Look for character mentions in context (but be more careful)
+      const contextText = `${contextSummary} ${rawIdea}`;
+      // Look for patterns like "CharacterName said", "CharacterName's", etc.
+      const contextPatterns = [
+        /([A-Z][a-z]+)\s+(?:said|says|replied|answered|whispered|shouted|exclaimed|muttered|thought)/gi,
+        /([A-Z][a-z]+)'s\s+(?:voice|hand|eyes|face|body)/gi,
+        /(?:protagonist|hero|villain|antagonist|character)\s+([A-Z][a-z]+)/gi,
       ];
       
-      commonPatterns.forEach(pattern => {
+      contextPatterns.forEach(pattern => {
         let match;
-        while ((match = pattern.exec(text)) !== null) {
+        while ((match = pattern.exec(contextText)) !== null) {
           const name = match[1] || match[0];
-          if (name && name.length > 1 && name.length < 30) {
+          const lowerName = name.toLowerCase();
+          if (name && 
+              name.length > 1 && 
+              name.length < 30 && 
+              !technicalTerms.has(lowerName) &&
+              !lowerName.includes(' ') || (lowerName.split(' ').length <= 2)) {
             extractedChars.add(name);
           }
         }
       });
     });
 
-    // Combine database characters with extracted ones
+    // Combine database characters (trusted) with extracted ones (filtered)
     const allChars = new Set<string>();
+    // First add database characters (these are definitely characters)
     characters.forEach(char => allChars.add(char.name));
+    
+    // Then add extracted ones, but filter more strictly
     extractedChars.forEach(name => {
-      // Only add if it looks like a proper name (not common words)
-      const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
-      if (!commonWords.includes(name.toLowerCase()) && name.length > 1) {
+      const lowerName = name.toLowerCase();
+      const words = lowerName.split(' ');
+      
+      // Filter criteria:
+      // 1. Not a technical term
+      // 2. Not a common word
+      // 3. Not too long
+      // 4. Not multiple technical words together
+      const isTechnical = words.some(word => technicalTerms.has(word));
+      const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can'];
+      const isCommon = words.some(word => commonWords.includes(word));
+      
+      if (!isTechnical && !isCommon && name.length > 1 && name.length < 30 && words.length <= 2) {
         allChars.add(name);
       }
     });
