@@ -30,7 +30,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [testEmailData, setTestEmailData] = useState({ to: '', template_key: '', variables: {} as any });
   const [smtpStatus, setSmtpStatus] = useState<string | null>(null);
   const [emailSettings, setEmailSettings] = useState<any[]>([]);
-  const [editingEmailSettings, setEditingEmailSettings] = useState(false);
+  const [editingEmailSettings, setEditingEmailSettings] = useState<any | null>(null);
 
   useEffect(() => {
     if (activeTab === 'stats' || activeTab === 'overview') {
@@ -346,6 +346,258 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
       alert('API Key deleted successfully!');
       loadApiKeys();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Email Templates Functions
+  const loadEmailTemplates = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/emails/templates`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        throw new Error(`Failed to load email templates: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setEmailTemplates(data.templates || []);
+    } catch (error: any) {
+      console.error('Error loading email templates:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadEmailSettings = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/email-settings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        throw new Error(`Failed to load email settings: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setEmailSettings(data.settings || []);
+    } catch (error: any) {
+      console.error('Error loading email settings:', error);
+    }
+  };
+
+  const checkSmtpStatus = async () => {
+    setSmtpStatus('checking');
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/emails/verify`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        const error = await response.json();
+        throw new Error(error.error || 'SMTP verification failed');
+      }
+
+      setSmtpStatus('connected');
+      alert('SMTP connection verified successfully!');
+    } catch (error: any) {
+      setSmtpStatus('error');
+      alert('SMTP verification failed: ' + error.message);
+    }
+  };
+
+  const handleSaveEmailSettings = async () => {
+    if (!editingEmailSettings) return;
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/email-settings`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          settings: editingEmailSettings.map((s: any) => ({ key: s.key, value: s.value })),
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save email settings');
+      }
+
+      alert('Email settings saved successfully!');
+      setEditingEmailSettings(null);
+      loadEmailSettings();
+      checkSmtpStatus();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleTestEmailSettings = async () => {
+    const email = prompt('Enter email address to send test email to:');
+    if (!email) return;
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/email-settings/test`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ to: email }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send test email');
+      }
+
+      alert('Test email sent successfully!');
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleEditTemplate = async (templateKey: string) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/emails/templates/${templateKey}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        throw new Error(`Failed to load template: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setEditingTemplate(data.template);
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!editingTemplate) return;
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/emails/templates/${editingTemplate.template_key}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editingTemplate.name,
+          subject: editingTemplate.subject,
+          body_html: editingTemplate.body_html,
+          body_text: editingTemplate.body_text,
+          variables: editingTemplate.variables,
+          is_active: editingTemplate.is_active,
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save template');
+      }
+
+      alert('Template saved successfully!');
+      setEditingTemplate(null);
+      loadEmailTemplates();
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!testEmailData.to || !testEmailData.template_key) {
+      alert('Please fill in email address and select a template');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/emails/test`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: testEmailData.to,
+          template_key: testEmailData.template_key,
+          variables: testEmailData.variables,
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          return;
+        }
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send test email');
+      }
+
+      alert('Test email sent successfully!');
+      setTestEmailData({ to: '', template_key: '', variables: {} });
     } catch (error: any) {
       alert('Error: ' + error.message);
     }
@@ -804,7 +1056,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     Verify SMTP
                   </button>
                   <button
-                    onClick={() => setEditingEmailSettings(!editingEmailSettings)}
+                    onClick={() => {
+                      if (editingEmailSettings) {
+                        setEditingEmailSettings(null);
+                      } else {
+                        setEditingEmailSettings(emailSettings.map((s: any) => ({ ...s })));
+                      }
+                    }}
                     className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs"
                   >
                     {editingEmailSettings ? 'Cancel' : 'Edit Settings'}
@@ -817,7 +1075,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 <h3 className="font-bold mb-4">SMTP Settings</h3>
                 {editingEmailSettings ? (
                   <div className="space-y-3">
-                    {emailSettings.map((setting: any) => (
+                    {editingEmailSettings.map((setting: any) => (
                       <div key={setting.key}>
                         <label className="block text-xs text-zinc-500 uppercase mb-1">
                           {setting.key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
@@ -827,10 +1085,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                           type={setting.key === 'smtp_password' || setting.is_encrypted ? 'password' : 'text'}
                           value={setting.value || ''}
                           onChange={(e) => {
-                            const updated = emailSettings.map((s: any) =>
+                            const updated = editingEmailSettings.map((s: any) =>
                               s.key === setting.key ? { ...s, value: e.target.value } : s
                             );
-                            setEmailSettings(updated);
+                            setEditingEmailSettings(updated);
                           }}
                           placeholder={setting.description || ''}
                           className="w-full bg-black border border-zinc-700 rounded px-3 py-2 text-sm"
@@ -857,18 +1115,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {emailSettings.map((setting: any) => (
-                      <div key={setting.key} className="flex justify-between items-center py-2 border-b border-zinc-700 last:border-0">
-                        <div>
-                          <span className="text-sm font-medium text-zinc-300">
-                            {setting.key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}:
-                          </span>
-                          <span className="text-sm text-zinc-500 ml-2">
-                            {setting.is_encrypted && setting.value ? '••••••••' : (setting.value || 'Not set')}
-                          </span>
+                    {emailSettings.length === 0 ? (
+                      <div className="text-center py-4 text-zinc-500 text-sm">No email settings found. Click "Edit Settings" to configure SMTP.</div>
+                    ) : (
+                      emailSettings.map((setting: any) => (
+                        <div key={setting.key} className="flex justify-between items-center py-2 border-b border-zinc-700 last:border-0">
+                          <div>
+                            <span className="text-sm font-medium text-zinc-300">
+                              {setting.key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}:
+                            </span>
+                            <span className="text-sm text-zinc-500 ml-2">
+                              {setting.is_encrypted && setting.value ? '••••••••' : (setting.value || 'Not set')}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 )}
               </div>
