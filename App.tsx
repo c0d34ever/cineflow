@@ -224,7 +224,7 @@ const App: React.FC = () => {
   const [showScenePreviewModal, setShowScenePreviewModal] = useState(false);
   const [previewSceneIndex, setPreviewSceneIndex] = useState(0);
   const [showStoryboardPlayback, setShowStoryboardPlayback] = useState(false);
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [showAdvancedSearchPanel, setShowAdvancedSearchPanel] = useState(false);
   const [showTemplatesLibrary, setShowTemplatesLibrary] = useState(false);
   const [showAIStoryAnalysis, setShowAIStoryAnalysis] = useState(false);
   const [showShotListGenerator, setShowShotListGenerator] = useState(false);
@@ -467,9 +467,12 @@ const App: React.FC = () => {
       // Ctrl+F or Cmd+F - Open Advanced Search
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
-        setShowAdvancedSearch(true);
+        if (view === 'library') {
+          setShowAdvancedSearch(true);
+        } else if (view === 'studio') {
+          setShowAdvancedSearchPanel(true);
+        }
         return;
-      }
       }
 
       // Ctrl/Cmd + S - Save
@@ -531,7 +534,11 @@ const App: React.FC = () => {
       // Ctrl/Cmd + F - Advanced Search
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
-        setShowAdvancedSearch(true);
+        if (view === 'library') {
+          setShowAdvancedSearch(true);
+        } else if (view === 'studio') {
+          setShowAdvancedSearchPanel(true);
+        }
       }
 
       // Ctrl/Cmd + / - Show shortcuts help
@@ -546,7 +553,11 @@ const App: React.FC = () => {
         setShowTagsMenu(false);
         setShowCommentsPanel(false);
         setShowSceneNotesPanel(false);
-        setShowAdvancedSearch(false);
+        if (view === 'library') {
+          setShowAdvancedSearch(false);
+        } else {
+          setShowAdvancedSearchPanel(false);
+        }
       }
     };
 
@@ -2643,7 +2654,7 @@ const App: React.FC = () => {
 
           {/* Advanced Search Button */}
           <button
-            onClick={() => setShowAdvancedSearch(true)}
+            onClick={() => setShowAdvancedSearchPanel(true)}
             className="text-xs px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
             title="Advanced Search (Ctrl+F)"
           >
@@ -3155,12 +3166,12 @@ const App: React.FC = () => {
       )}
 
       {/* Advanced Search Panel */}
-      {showAdvancedSearch && (
+      {showAdvancedSearchPanel && (
         <AdvancedSearchPanel
           projects={projects}
           scenes={scenes}
           currentProjectId={storyContext.id}
-          onClose={() => setShowAdvancedSearch(false)}
+          onClose={() => setShowAdvancedSearchPanel(false)}
           onSelectProject={async (projectId) => {
             try {
               const apiAvailable = await checkApiAvailability();
@@ -3406,7 +3417,7 @@ const App: React.FC = () => {
             icon: '🔍',
             keywords: ['search', 'find', 'look'],
             action: () => {
-              setShowAdvancedSearch(true);
+              setShowAdvancedSearchPanel(true);
               setShowCommandPalette(false);
             }
           },
