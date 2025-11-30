@@ -31,9 +31,18 @@ class EmailService {
   private readonly ALGORITHM = 'aes-256-cbc';
 
   constructor() {
-    this.loadSettings().then(() => {
-      this.initializeTransporter();
-    });
+    // Delay loading settings until database is ready
+    // This will be called after database initialization
+    setTimeout(() => {
+      this.loadSettings().then(() => {
+        this.initializeTransporter();
+      }).catch((error) => {
+        console.warn('Failed to load email settings on startup, will retry:', error.message);
+        // Fallback to env
+        this.loadSettingsFromEnv();
+        this.initializeTransporter();
+      });
+    }, 1000);
   }
 
   private decrypt(encryptedText: string): string {

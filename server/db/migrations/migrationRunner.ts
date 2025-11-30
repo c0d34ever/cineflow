@@ -26,10 +26,10 @@ export async function runMigrations(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
-    // Get all migration files
+    // Get all migration files (both .sql and .ts)
     const migrationsDir = __dirname;
     const files = fs.readdirSync(migrationsDir)
-      .filter(file => file.endsWith('.sql'))
+      .filter(file => file.endsWith('.sql') || file.endsWith('.ts'))
       .sort();
 
     console.log(`📦 Found ${files.length} migration files`);
@@ -61,7 +61,7 @@ export async function runMigrations(): Promise<void> {
 
     // Run pending migrations
     for (const file of files) {
-      const migrationName = file.replace('.sql', '');
+      const migrationName = file.replace(/\.(sql|ts)$/, '');
       
       if (executedNames.has(migrationName)) {
         console.log(`⏭️  Skipping already executed: ${migrationName}`);
@@ -71,6 +71,39 @@ export async function runMigrations(): Promise<void> {
       console.log(`🔄 Running migration: ${migrationName}`);
 
       const filePath = path.join(migrationsDir, file);
+
+      // Handle TypeScript migrations
+      if (file.endsWith('.ts')) {
+        try {
+          // For TypeScript migrations, import the module
+          // The path should work in both dev (tsx) and production (compiled)
+          const migrationModule = await import(filePath);
+          if (typeof migrationModule.up === 'function') {
+            await connection.beginTransaction();
+            try {
+              await migrationModule.up();
+              // Record migration
+              await connection.query(
+                'INSERT INTO migrations (name) VALUES (?)',
+                [migrationName]
+              );
+              await connection.commit();
+              console.log(`✅ Migration completed: ${migrationName}`);
+            } catch (error) {
+              await connection.rollback();
+              throw error;
+            }
+          } else {
+            throw new Error(`Migration ${migrationName} does not export an 'up' function`);
+          }
+        } catch (error: any) {
+          console.error(`❌ Migration failed: ${migrationName}`, error);
+          throw error;
+        }
+        continue;
+      }
+
+      // Handle SQL migrations
       const sql = fs.readFileSync(filePath, 'utf-8');
 
       // Remove comments and split by semicolon
