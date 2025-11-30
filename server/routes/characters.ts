@@ -4,6 +4,115 @@ import { AuthRequest, authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// GET /api/characters/project/:projectId/relationships - Get saved character relationships
+router.get('/project/:projectId/relationships', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const projectId = req.params.projectId;
+    const pool = getPool();
+
+    const [relationships] = await pool.query(
+      'SELECT * FROM character_relationships WHERE project_id = ? ORDER BY updated_at DESC',
+      [projectId]
+    ) as [any[], any];
+
+    // Parse JSON fields
+    const parsedRelationships = (relationships || []).map((rel: any) => ({
+      character1: rel.character1,
+      character2: rel.character2,
+      type: rel.relationship_type,
+      strength: parseFloat(rel.strength),
+      description: rel.description,
+      scenes: typeof rel.scenes === 'string' ? JSON.parse(rel.scenes) : (rel.scenes || []),
+      analysisMethod: rel.analysis_method,
+    }));
+
+    res.json({ relationships: parsedRelationships });
+  } catch (error) {
+    console.error('Error fetching relationships:', error);
+    res.status(500).json({ error: 'Failed to fetch relationships' });
+  }
+});
+
+// POST /api/characters/project/:projectId/relationships - Save character relationships
+router.post('/project/:projectId/relationships', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const projectId = req.params.projectId;
+    const { relationships, analysisMethod } = req.body;
+
+    if (!relationships || !Array.isArray(relationships)) {
+      return res.status(400).json({ error: 'Relationships array is required' });
+    }
+
+    const pool = getPool();
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      // Delete existing relationships for this project
+      await connection.query(
+        'DELETE FROM character_relationships WHERE project_id = ?',
+        [projectId]
+      );
+
+      // Insert new relationships
+      for (const rel of relationships) {
+        await connection.query(
+          `INSERT INTO character_relationships 
+           (project_id, character1, character2, relationship_type, strength, description, scenes, analysis_method)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+           relationship_type = VALUES(relationship_type),
+           strength = VALUES(strength),
+           description = VALUES(description),
+           scenes = VALUES(scenes),
+           analysis_method = VALUES(analysis_method),
+           updated_at = CURRENT_TIMESTAMP`,
+          [
+            projectId,
+            rel.character1,
+            rel.character2,
+            rel.type || 'neutral',
+            rel.strength || 0.5,
+            rel.description || null,
+            JSON.stringify(rel.scenes || []),
+            analysisMethod || 'keyword',
+          ]
+        );
+      }
+
+      await connection.commit();
+      res.json({ success: true, count: relationships.length });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error: any) {
+    console.error('Error saving relationships:', error);
+    res.status(500).json({ error: error.message || 'Failed to save relationships' });
+  }
+});
+
+// DELETE /api/characters/project/:projectId/relationships - Clear saved relationships
+router.delete('/project/:projectId/relationships', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const projectId = req.params.projectId;
+    const pool = getPool();
+
+    await pool.query(
+      'DELETE FROM character_relationships WHERE project_id = ?',
+      [projectId]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting relationships:', error);
+    res.status(500).json({ error: 'Failed to delete relationships' });
+  }
+});
+
 // GET /api/characters/project/:projectId - Get all characters for a project
 router.get('/project/:projectId', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

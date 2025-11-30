@@ -146,6 +146,10 @@ export const charactersService = {
     apiCall(`/characters/scene/${sceneId}`, { method: 'POST', body: JSON.stringify({ character_id: characterId, role_in_scene: roleInScene }) }),
   removeFromScene: (sceneId: string, characterId: number) =>
     apiCall(`/characters/scene/${sceneId}/${characterId}`, { method: 'DELETE' }),
+  getRelationships: (projectId: string) => apiCall(`/characters/project/${projectId}/relationships`),
+  saveRelationships: (projectId: string, relationships: any[], analysisMethod: string) =>
+    apiCall(`/characters/project/${projectId}/relationships`, { method: 'POST', body: JSON.stringify({ relationships, analysisMethod }) }),
+  clearRelationships: (projectId: string) => apiCall(`/characters/project/${projectId}/relationships`, { method: 'DELETE' }),
 };
 
 // Projects Service - Archive

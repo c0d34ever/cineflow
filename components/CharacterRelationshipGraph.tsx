@@ -39,21 +39,25 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
   const [filterType, setFilterType] = useState<'all' | 'allies' | 'enemies' | 'neutral'>('all');
   const [useAI, setUseAI] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [hasSavedAnalysis, setHasSavedAnalysis] = useState(false);
+  const [analysisMethod, setAnalysisMethod] = useState<'ai' | 'keyword'>('keyword');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     loadCharacters();
+    loadSavedRelationships();
   }, [projectId]);
 
   useEffect(() => {
-    if (characters.length > 0 && scenes.length > 0) {
+    // Only analyze if we don't have saved relationships and have characters/scenes
+    if (!hasSavedAnalysis && characters.length > 0 && scenes.length > 0) {
       if (useAI) {
         analyzeRelationshipsWithAI();
       } else {
         analyzeRelationships();
       }
     }
-  }, [characters, scenes, useAI]);
+  }, [characters, scenes, useAI, hasSavedAnalysis]);
 
   useEffect(() => {
     if (canvasRef.current && relationships.length > 0) {
@@ -72,6 +76,47 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
       setCharacters([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSavedRelationships = async () => {
+    try {
+      const response = await charactersService.getRelationships(projectId);
+      const savedRels = (response as any)?.relationships || [];
+      
+      if (savedRels.length > 0) {
+        // Convert saved relationships to our format
+        const rels: Relationship[] = savedRels.map((rel: any) => ({
+          character1: rel.character1,
+          character2: rel.character2,
+          strength: rel.strength,
+          scenes: Array.isArray(rel.scenes) ? rel.scenes : [],
+          type: rel.type,
+          description: rel.description,
+        }));
+        
+        setRelationships(rels);
+        setHasSavedAnalysis(true);
+        const method = savedRels[0]?.analysisMethod || 'keyword';
+        setAnalysisMethod(method);
+        setUseAI(method === 'ai');
+        setLoading(false);
+        return true; // Indicate we loaded saved data
+      }
+      return false; // No saved data
+    } catch (error) {
+      console.error('Failed to load saved relationships:', error);
+      return false; // Continue with normal analysis if loading fails
+    }
+  };
+
+  const saveRelationships = async (rels: Relationship[], method: 'ai' | 'keyword') => {
+    try {
+      await charactersService.saveRelationships(projectId, rels, method);
+      setHasSavedAnalysis(true);
+      setAnalysisMethod(method);
+    } catch (error) {
+      console.error('Failed to save relationships:', error);
     }
   };
 
@@ -295,6 +340,8 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
     });
 
     setRelationships(rels);
+    // Auto-save relationships
+    saveRelationships(rels, 'keyword');
   };
 
   const analyzeRelationshipsWithAI = async () => {
@@ -331,6 +378,8 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
       });
 
       setRelationships(rels);
+      // Auto-save AI relationships
+      saveRelationships(rels, 'ai');
     } catch (error: any) {
       console.error('AI relationship analysis failed:', error);
       // Fallback to keyword-based analysis
@@ -498,11 +547,69 @@ const CharacterRelationshipGraph: React.FC<CharacterRelationshipGraphProps> = ({
               <input
                 type="checkbox"
                 checked={useAI}
-                onChange={(e) => setUseAI(e.target.checked)}
+                onChange={async (e) => {
+                  const newUseAI = e.target.checked;
+                  setUseAI(newUseAI);
+                  
+                  // If we have saved analysis but switching methods, ask to refresh
+                  if (hasSavedAnalysis && analysisMethod !== (newUseAI ? 'ai' : 'keyword')) {
+                    if (confirm(`Switch to ${newUseAI ? 'AI' : 'keyword'}-based analysis? This will clear saved analysis and re-analyze.`)) {
+                      try {
+                        await charactersService.clearRelationships(projectId);
+                        setHasSavedAnalysis(false);
+                        setAnalyzing(true);
+                        if (newUseAI) {
+                          await analyzeRelationshipsWithAI();
+                        } else {
+                          analyzeRelationships();
+                        }
+                      } catch (error) {
+                        console.error('Failed to switch analysis method:', error);
+                        setAnalyzing(false);
+                      }
+                    } else {
+                      // Revert checkbox if user cancels
+                      setUseAI(!newUseAI);
+                    }
+                  }
+                }}
                 className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500"
               />
               <span className="text-xs text-zinc-400">AI Analysis</span>
             </label>
+            {hasSavedAnalysis && (
+              <span className="text-xs text-green-400 flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Saved ({analysisMethod})
+              </span>
+            )}
+            {hasSavedAnalysis && (
+              <button
+                onClick={async () => {
+                  if (confirm('Clear saved analysis and re-analyze? This will use AI credits if AI Analysis is enabled.')) {
+                    try {
+                      await charactersService.clearRelationships(projectId);
+                      setHasSavedAnalysis(false);
+                      setAnalyzing(true);
+                      if (useAI) {
+                        await analyzeRelationshipsWithAI();
+                      } else {
+                        analyzeRelationships();
+                      }
+                    } catch (error) {
+                      console.error('Failed to clear relationships:', error);
+                      setAnalyzing(false);
+                    }
+                  }
+                }}
+                className="text-xs px-2 py-1 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors"
+                title="Refresh Analysis"
+              >
+                Refresh
+              </button>
+            )}
             {/* Filter */}
             <select
               value={filterType}
