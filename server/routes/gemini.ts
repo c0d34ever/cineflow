@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent, analyzeCharacterRelationships, suggestScenes } from '../services/geminiService.js';
+import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent, analyzeCharacterRelationships, suggestScenes, analyzeStory } from '../services/geminiService.js';
 import { StoryContext, DirectorSettings, Scene } from '../../types.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
@@ -293,6 +293,31 @@ router.post('/suggest-scenes', authenticateToken, async (req: AuthRequest, res: 
   } catch (error: any) {
     console.error('Error suggesting scenes:', error);
     res.status(500).json({ error: error.message || 'Failed to suggest scenes' });
+  }
+});
+
+// POST /api/gemini/analyze-story - Analyze story for pacing, structure, plot holes, etc.
+router.post('/analyze-story', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { context, scenes } = req.body;
+    if (!context) {
+      return res.status(400).json({ error: 'Story context is required' });
+    }
+    if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
+      return res.status(400).json({ error: 'At least one scene is required for analysis' });
+    }
+
+    const userId = req.user!.id;
+    const analysis = await analyzeStory(
+      context as StoryContext,
+      scenes as Scene[],
+      userId
+    );
+    
+    res.json(analysis);
+  } catch (error: any) {
+    console.error('Error analyzing story:', error);
+    res.status(500).json({ error: error.message || 'Failed to analyze story' });
   }
 });
 

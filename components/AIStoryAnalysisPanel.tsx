@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Scene, StoryContext } from '../types';
-import { enhanceScenePrompt } from '../clientGeminiService';
+import { analyzeStory } from '../clientGeminiService';
 
 interface AIStoryAnalysisPanelProps {
   projectId: string;
@@ -56,87 +56,11 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
     setError(null);
 
     try {
-      // Prepare story data for analysis
-      const storyData = {
-        title: storyContext.title,
-        genre: storyContext.genre,
-        plotSummary: storyContext.plotSummary,
-        characters: storyContext.characters,
-        scenes: scenes.map(scene => ({
-          sequenceNumber: scene.sequenceNumber,
-          prompt: scene.enhancedPrompt,
-          dialogue: scene.directorSettings.dialogue,
-          context: scene.contextSummary,
-        })),
-      };
-
-      // Create analysis prompt
-      const analysisPrompt = `Analyze this storyboard project and provide detailed feedback:
-
-Title: ${storyData.title}
-Genre: ${storyData.genre}
-Plot Summary: ${storyData.plotSummary}
-Characters: ${storyData.characters}
-
-Scenes (${storyData.scenes.length} total):
-${storyData.scenes.map((s, i) => `
-Scene ${i + 1}:
-- Prompt: ${s.prompt}
-- Dialogue: ${s.dialogue || 'None'}
-- Context: ${s.context || 'None'}
-`).join('\n')}
-
-Please provide a comprehensive analysis in JSON format with the following structure:
-{
-  "pacing": {
-    "score": 0-100,
-    "issues": ["issue1", "issue2"],
-    "suggestions": ["suggestion1", "suggestion2"]
-  },
-  "characterDevelopment": {
-    "score": 0-100,
-    "issues": ["issue1"],
-    "suggestions": ["suggestion1"]
-  },
-  "plotHoles": {
-    "found": true/false,
-    "issues": ["hole1", "hole2"]
-  },
-  "structure": {
-    "score": 0-100,
-    "analysis": "detailed analysis text",
-    "suggestions": ["suggestion1"]
-  },
-  "dialogue": {
-    "score": 0-100,
-    "issues": ["issue1"],
-    "suggestions": ["suggestion1"]
-  }
-}
-
-Focus on:
-1. Pacing - Are scenes well-paced? Too fast/slow?
-2. Character Development - Are characters well-developed? Consistent?
-3. Plot Holes - Any inconsistencies or missing connections?
-4. Structure - Does it follow good story structure (three-act, etc.)?
-5. Dialogue - Is dialogue natural and character-appropriate?
-
-Return ONLY valid JSON, no markdown formatting.`;
-
-      const response = await enhanceScenePrompt(analysisPrompt, '');
-      
-      // Try to extract JSON from response
-      let jsonText = response;
-      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[0];
-      }
-
-      const result = JSON.parse(jsonText) as AnalysisResult;
+      const result = await analyzeStory(storyContext, scenes);
       setAnalysis(result);
     } catch (error: any) {
       console.error('Analysis error:', error);
-      setError('Failed to analyze story. Please try again.');
+      setError(error.message || 'Failed to analyze story. Please try again.');
     } finally {
       setAnalyzing(false);
     }

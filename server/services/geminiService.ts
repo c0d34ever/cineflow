@@ -1071,6 +1071,179 @@ export const extractLocations = async (
 };
 
 /**
+ * Analyzes a complete story for pacing, character development, plot holes, structure, and dialogue
+ */
+export const analyzeStory = async (
+  context: StoryContext,
+  scenes: Scene[],
+  userId?: number
+): Promise<{
+  pacing: { score: number; issues: string[]; suggestions: string[] };
+  characterDevelopment: { score: number; issues: string[]; suggestions: string[] };
+  plotHoles: { found: boolean; issues: string[] };
+  structure: { score: number; analysis: string; suggestions: string[] };
+  dialogue: { score: number; issues: string[]; suggestions: string[] };
+}> => {
+  const ai = await getAIClient(userId);
+
+  const systemInstruction = `You are a professional story analyst and script consultant. Analyze storyboard projects and provide comprehensive feedback on pacing, character development, plot structure, and dialogue quality.
+
+Return a JSON object with the following structure:
+{
+  "pacing": {
+    "score": 0-100,
+    "issues": ["issue1", "issue2"],
+    "suggestions": ["suggestion1", "suggestion2"]
+  },
+  "characterDevelopment": {
+    "score": 0-100,
+    "issues": ["issue1"],
+    "suggestions": ["suggestion1"]
+  },
+  "plotHoles": {
+    "found": true/false,
+    "issues": ["hole1", "hole2"]
+  },
+  "structure": {
+    "score": 0-100,
+    "analysis": "detailed analysis text",
+    "suggestions": ["suggestion1"]
+  },
+  "dialogue": {
+    "score": 0-100,
+    "issues": ["issue1"],
+    "suggestions": ["suggestion1"]
+  }
+}
+
+Focus on:
+1. Pacing - Are scenes well-paced? Too fast/slow? Transitions smooth?
+2. Character Development - Are characters well-developed? Consistent? Growth arcs?
+3. Plot Holes - Any inconsistencies or missing connections?
+4. Structure - Does it follow good story structure (three-act, etc.)?
+5. Dialogue - Is dialogue natural and character-appropriate?
+
+Provide specific, actionable feedback.`;
+
+  // Limit scenes to prevent timeout
+  const MAX_SCENES = 50;
+  const MAX_CONTENT_LENGTH = 300;
+  
+  const truncate = (text: string | undefined, maxLength: number): string => {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+
+  const scenesToProcess = scenes.slice(0, MAX_SCENES);
+  const scenesContent = scenesToProcess.length > 0
+    ? scenesToProcess.map((scene, idx) => `
+      Scene ${scene.sequenceNumber || idx + 1}:
+      - Prompt: ${truncate(scene.enhancedPrompt, MAX_CONTENT_LENGTH)}
+      - Dialogue: ${truncate(scene.directorSettings?.dialogue, MAX_CONTENT_LENGTH) || 'None'}
+      - Context: ${truncate(scene.contextSummary, MAX_CONTENT_LENGTH) || 'None'}
+    `).join('\n')
+    : 'No scenes generated yet.';
+
+  if (scenes.length > MAX_SCENES) {
+    console.warn(`Story analysis: Processing only first ${MAX_SCENES} of ${scenes.length} scenes`);
+  }
+
+  const prompt = `
+    STORY CONTEXT:
+    Title: ${context.title || 'Untitled'}
+    Genre: ${context.genre || 'General'}
+    Plot Summary: ${context.plotSummary || ''}
+    Characters: ${context.characters || ''}
+    
+    SCENES (${scenesToProcess.length} of ${scenes.length} total):
+    ${scenesContent}
+    
+    Analyze this storyboard project comprehensively. Provide detailed feedback on pacing, character development, plot structure, and dialogue quality.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            pacing: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                issues: { type: Type.ARRAY, items: { type: Type.STRING } },
+                suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ['score', 'issues', 'suggestions']
+            },
+            characterDevelopment: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                issues: { type: Type.ARRAY, items: { type: Type.STRING } },
+                suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ['score', 'issues', 'suggestions']
+            },
+            plotHoles: {
+              type: Type.OBJECT,
+              properties: {
+                found: { type: Type.BOOLEAN },
+                issues: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ['found', 'issues']
+            },
+            structure: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                analysis: { type: Type.STRING },
+                suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ['score', 'analysis', 'suggestions']
+            },
+            dialogue: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                issues: { type: Type.ARRAY, items: { type: Type.STRING } },
+                suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ['score', 'issues', 'suggestions']
+            }
+          },
+          required: ['pacing', 'characterDevelopment', 'plotHoles', 'structure', 'dialogue']
+        }
+      }
+    });
+
+    return safeParseJSON<{
+      pacing: { score: number; issues: string[]; suggestions: string[] };
+      characterDevelopment: { score: number; issues: string[]; suggestions: string[] };
+      plotHoles: { found: boolean; issues: string[] };
+      structure: { score: number; analysis: string; suggestions: string[] };
+      dialogue: { score: number; issues: string[]; suggestions: string[] };
+    }>(
+      response.text,
+      {
+        pacing: { score: 0, issues: [], suggestions: [] },
+        characterDevelopment: { score: 0, issues: [], suggestions: [] },
+        plotHoles: { found: false, issues: [] },
+        structure: { score: 0, analysis: 'Analysis failed', suggestions: [] },
+        dialogue: { score: 0, issues: [], suggestions: [] }
+      }
+    );
+  } catch (error: any) {
+    console.error("Error analyzing story:", error);
+    throw error;
+  }
+};
+
+/**
  * Generates hashtags and captions for an episode
  */
 export const generateEpisodeContent = async (

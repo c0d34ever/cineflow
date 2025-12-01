@@ -190,6 +190,37 @@ export const analyzeCharacterRelationships = async (
   return response.json();
 };
 
+export const analyzeStory = async (
+  context: StoryContext,
+  scenes: Scene[]
+): Promise<{
+  pacing: { score: number; issues: string[]; suggestions: string[] };
+  characterDevelopment: { score: number; issues: string[]; suggestions: string[] };
+  plotHoles: { found: boolean; issues: string[] };
+  structure: { score: number; analysis: string; suggestions: string[] };
+  dialogue: { score: number; issues: string[]; suggestions: string[] };
+}> => {
+  const token = getAuthToken();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/gemini/analyze-story`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ context, scenes }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to analyze story' }));
+    throw new Error(error.error || 'Failed to analyze story');
+  }
+  return response.json();
+};
+
 export const enhanceScenePrompt = async (
   rawIdea: string,
   context: StoryContext,

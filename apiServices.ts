@@ -102,6 +102,17 @@ export const sceneNotesService = {
   delete: (id: number) => apiCall(`/scene-notes/${id}`, { method: 'DELETE' }),
 };
 
+// Scene Bookmarks Service
+export const sceneBookmarksService = {
+  getByProject: (projectId: string) => apiCall(`/scene-bookmarks/project/${projectId}`),
+  create: (data: { project_id: string; scene_id: string; category?: string; notes?: string }) =>
+    apiCall('/scene-bookmarks', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: { category?: string; notes?: string }) =>
+    apiCall(`/scene-bookmarks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => apiCall(`/scene-bookmarks/${id}`, { method: 'DELETE' }),
+  deleteByScene: (sceneId: string) => apiCall(`/scene-bookmarks/scene/${sceneId}`, { method: 'DELETE' }),
+};
+
 // Templates Service
 export const templatesService = {
   getAll: () => apiCall('/templates'),

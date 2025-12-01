@@ -46,6 +46,8 @@ import ExportPresetsPanel from './components/ExportPresetsPanel';
 import AISceneSuggestionsPanel from './components/AISceneSuggestionsPanel';
 import StoryArcVisualizer from './components/StoryArcVisualizer';
 import ProjectQuickActionsMenu from './components/ProjectQuickActionsMenu';
+import SceneBookmarksPanel from './components/SceneBookmarksPanel';
+import QuickActionsMenuWrapper, { setShowToast as setQuickActionsToast } from './components/QuickActionsMenuWrapper';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -216,6 +218,11 @@ const App: React.FC = () => {
     }
   };
 
+  // Set up toast callback for QuickActionsMenuWrapper
+  useEffect(() => {
+    setQuickActionsToast(showToast);
+  }, []);
+
   // Toast Notifications
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' | 'warning' }>>([]);
 
@@ -256,6 +263,7 @@ const App: React.FC = () => {
   const [showStoryArcVisualizer, setShowStoryArcVisualizer] = useState(false);
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
   const [projectQuickActions, setProjectQuickActions] = useState<{ project: ProjectData; position: { x: number; y: number } } | null>(null);
+  const [showSceneBookmarks, setShowSceneBookmarks] = useState(false);
 
   // Undo/Redo
   const [history, setHistory] = useState<ProjectData[]>([]);
@@ -2851,6 +2859,20 @@ const App: React.FC = () => {
             </button>
           )}
 
+          {/* Scene Bookmarks Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowSceneBookmarks(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-violet-600 hover:bg-violet-700 text-white border border-violet-500 transition-colors flex items-center gap-1"
+              title="Scene Bookmarks"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path fillRule="evenodd" d="M10 2c-1.716 0-3.408.106-5.07.31C3.806 2.45 3 3.414 3 4.517V17.25a.75.75 0 001.075.676L10 15.082l5.925 2.844A.75.75 0 0017 17.25V4.517c0-1.103-.806-2.068-1.93-2.207A41.403 41.403 0 0010 2z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline">Bookmarks</span>
+            </button>
+          )}
+
           {/* Export History Button */}
           {view === 'studio' && (
             <button
@@ -3426,13 +3448,84 @@ const App: React.FC = () => {
 
       {/* Quick Actions Menu */}
       {quickActionsMenu && (
-        <QuickActionsMenu
+        <QuickActionsMenuWrapper
           scene={quickActionsMenu.scene}
           position={quickActionsMenu.position}
+          projectId={storyContext.id}
           onClose={() => setQuickActionsMenu(null)}
           onDuplicate={handleDuplicateScene}
           onCopySettings={handleCopySceneSettings}
           onDelete={async (sceneId) => {
+            const scene = scenes.find(s => s.id === sceneId);
+            if (!scene) return;
+            
+            try {
+              const apiAvailable = await checkApiAvailability();
+              const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+              const token = localStorage.getItem('auth_token');
+
+              if (apiAvailable) {
+                const response = await fetch(`${API_BASE_URL}/clips/${sceneId}`, {
+                  method: 'DELETE',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                  },
+                });
+                if (!response.ok) throw new Error('Failed to delete scene');
+              }
+
+              setScenes(prev => {
+                const filtered = prev.filter(s => s.id !== sceneId);
+                return filtered.map((s, idx) => ({
+                  ...s,
+                  sequenceNumber: idx + 1
+                }));
+              });
+
+              showToast('Scene deleted successfully', 'success');
+            } catch (error: any) {
+              showToast('Failed to delete scene', 'error');
+            }
+          }}
+          onEdit={handleEditScene}
+          onExport={handleExportScene}
+        />
+      )}
+
+      {/* Copy Scene Settings Modal */}
+      {showCopySettingsModal && sourceSceneForCopy && (
+        
+        return (
+          <QuickActionsMenu
+            scene={quickActionsMenu.scene}
+            position={quickActionsMenu.position}
+            onClose={() => setQuickActionsMenu(null)}
+            onDuplicate={handleDuplicateScene}
+            onCopySettings={handleCopySceneSettings}
+            onBookmark={async () => {
+              if (!storyContext.id) return;
+              const { sceneBookmarksService } = await import('./apiServices');
+              try {
+                if (isBookmarked) {
+                  const bookmark = (bookmarks as any).bookmarks?.find((b: any) => b.scene_id === quickActionsMenu.scene.id);
+                  if (bookmark) {
+                    await sceneBookmarksService.delete(bookmark.id);
+                    showToast('Bookmark removed', 'success');
+                  }
+                } else {
+                  await sceneBookmarksService.create({
+                    project_id: storyContext.id,
+                    scene_id: quickActionsMenu.scene.id,
+                    category: 'general'
+                  });
+                  showToast('Scene bookmarked', 'success');
+                }
+              } catch (error: any) {
+                showToast('Failed to update bookmark', 'error');
+              }
+            }}
+            isBookmarked={isBookmarked}
+            onDelete={async (sceneId) => {
             const scene = scenes.find(s => s.id === sceneId);
             if (!scene) return;
             
@@ -3557,6 +3650,28 @@ const App: React.FC = () => {
             } catch (error: any) {
               showToast('Failed to export project', 'error');
             }
+          }}
+        />
+      )}
+
+      {/* Scene Bookmarks Panel */}
+      {showSceneBookmarks && storyContext.id && scenes.length > 0 && (
+        <SceneBookmarksPanel
+          projectId={storyContext.id}
+          scenes={scenes}
+          onClose={() => setShowSceneBookmarks(false)}
+          onNavigateToScene={(sceneId) => {
+            setShowSceneBookmarks(false);
+            setTimeout(() => {
+              const sceneElement = document.querySelector(`[data-scene-id="${sceneId}"]`);
+              if (sceneElement) {
+                sceneElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                sceneElement.classList.add('ring-2', 'ring-amber-500');
+                setTimeout(() => {
+                  sceneElement.classList.remove('ring-2', 'ring-amber-500');
+                }, 2000);
+              }
+            }, 100);
           }}
         />
       )}

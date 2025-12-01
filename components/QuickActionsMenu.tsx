@@ -10,6 +10,8 @@ interface QuickActionsMenuProps {
   onDelete: (sceneId: string) => void;
   onEdit: (scene: Scene) => void;
   onExport: (scene: Scene) => void;
+  onBookmark?: () => void;
+  isBookmarked?: boolean;
 }
 
 const QuickActionsMenu: React.FC<QuickActionsMenuProps> = ({
@@ -20,7 +22,9 @@ const QuickActionsMenu: React.FC<QuickActionsMenuProps> = ({
   onCopySettings,
   onDelete,
   onEdit,
-  onExport
+  onExport,
+  onBookmark,
+  isBookmarked = false
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -113,6 +117,25 @@ const QuickActionsMenu: React.FC<QuickActionsMenuProps> = ({
         </svg>
         Export Scene
       </button>
+
+      {onBookmark && (
+        <>
+          <div className="border-t border-zinc-800 my-1"></div>
+          <button
+            onClick={() => handleAction(onBookmark)}
+            className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${
+              isBookmarked
+                ? 'text-amber-400 hover:bg-amber-900/20 hover:text-amber-300'
+                : 'text-violet-400 hover:bg-violet-900/20 hover:text-violet-300'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 2c-1.716 0-3.408.106-5.07.31C3.806 2.45 3 3.414 3 4.517V17.25a.75.75 0 001.075.676L10 15.082l5.925 2.844A.75.75 0 0017 17.25V4.517c0-1.103-.806-2.068-1.93-2.207A41.403 41.403 0 0010 2z" clipRule="evenodd" />
+            </svg>
+            {isBookmarked ? 'Remove Bookmark' : 'Bookmark'}
+          </button>
+        </>
+      )}
 
       <div className="border-t border-zinc-800 my-1"></div>
 
