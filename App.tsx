@@ -2005,6 +2005,61 @@ const App: React.FC = () => {
     setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
   };
 
+  // Scene context menu handler
+  const handleSceneContextMenu = (e: React.MouseEvent, scene: Scene) => {
+    e.preventDefault();
+    setQuickActionsMenu({
+      scene,
+      position: { x: e.clientX, y: e.clientY }
+    });
+  };
+
+  // Duplicate scene handler
+  const handleDuplicateScene = async (scene: Scene) => {
+    try {
+      const newSequenceNumber = scenes.length + 1;
+      const duplicatedScene: Scene = {
+        ...scene,
+        id: `scene-${Date.now()}`,
+        sequenceNumber: newSequenceNumber,
+        is_ai_generated: false, // User-created duplicate, not AI-generated
+      };
+
+      setScenes(prev => [...prev, duplicatedScene]);
+
+      // Save to backend
+      const updatedContext = { ...storyContext, lastUpdated: Date.now() };
+      const updatedScenes = [...scenes, duplicatedScene];
+      
+      const apiAvailable = await checkApiAvailability();
+      if (apiAvailable) {
+        await apiService.saveProject({
+          context: updatedContext,
+          scenes: updatedScenes,
+          settings: currentSettings
+        });
+      } else {
+        await saveProjectToDB({
+          context: updatedContext,
+          scenes: updatedScenes,
+          settings: currentSettings
+        });
+      }
+
+      setStoryContext(updatedContext);
+      showToast('Scene duplicated successfully', 'success');
+    } catch (error: any) {
+      showToast('Failed to duplicate scene', 'error');
+      console.error('Failed to duplicate scene:', error);
+    }
+  };
+
+  // Copy scene settings handler
+  const handleCopySceneSettings = (scene: Scene) => {
+    setSourceSceneForCopy(scene);
+    setShowCopySettingsModal(true);
+  };
+
   const handleAutoDraft = async () => {
     setIsAutoFilling(true);
     try {

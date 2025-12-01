@@ -256,15 +256,33 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
   // Character usage
   const characterUsage = useMemo(() => {
     const usage: Record<string, number> = {};
-    const characters = storyContext.characters || [];
     
-    characters.forEach(char => {
+    // Handle characters as string (from storyContext) or array (from API)
+    let characterNames: string[] = [];
+    if (typeof storyContext.characters === 'string') {
+      // Parse string - could be JSON, comma-separated, or newline-separated
+      try {
+        const parsed = JSON.parse(storyContext.characters);
+        if (Array.isArray(parsed)) {
+          characterNames = parsed.map((c: any) => typeof c === 'string' ? c : c.name || c);
+        } else {
+          characterNames = storyContext.characters.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+        }
+      } catch {
+        // Not JSON, try splitting by comma or newline
+        characterNames = storyContext.characters.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+      }
+    } else if (Array.isArray(storyContext.characters)) {
+      characterNames = storyContext.characters.map((c: any) => typeof c === 'string' ? c : c.name || c);
+    }
+    
+    characterNames.forEach(charName => {
       const count = scenes.filter(s => {
         const text = `${s.rawIdea} ${s.enhancedPrompt} ${s.contextSummary} ${s.directorSettings?.dialogue || ''}`.toLowerCase();
-        return text.includes(char.name.toLowerCase());
+        return text.includes(charName.toLowerCase());
       }).length;
       if (count > 0) {
-        usage[char.name] = count;
+        usage[charName] = count;
       }
     });
     
@@ -274,26 +292,22 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
       .map(([name, count]) => ({ label: name, value: count }));
   }, [scenes, storyContext.characters]);
 
-  // Location usage
+  // Location usage - locations are stored separately, not in storyContext
   const locationUsage = useMemo(() => {
     const usage: Record<string, number> = {};
-    const locations = storyContext.locations || [];
     
-    locations.forEach(loc => {
-      const count = scenes.filter(s => {
-        const text = `${s.rawIdea} ${s.enhancedPrompt} ${s.contextSummary}`.toLowerCase();
-        return text.includes(loc.name.toLowerCase());
-      }).length;
-      if (count > 0) {
-        usage[loc.name] = count;
-      }
+    // Extract location mentions from scenes (locations are managed separately via API)
+    // For now, we'll extract potential location names from scene content
+    const locationPatterns = new Set<string>();
+    scenes.forEach(s => {
+      const text = `${s.rawIdea} ${s.enhancedPrompt} ${s.contextSummary}`.toLowerCase();
+      // Simple heuristic: look for capitalized words that might be locations
+      // This is a fallback - ideally locations should be loaded from the API
     });
     
-    return Object.entries(usage)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([name, count]) => ({ label: name, value: count }));
-  }, [scenes, storyContext.locations]);
+    // Return empty for now - locations should be loaded from locationsService
+    return [];
+  }, [scenes]);
 
   // Export trends (simplified - would need export history data)
   const exportTrends = useMemo(() => {
