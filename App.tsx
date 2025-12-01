@@ -49,6 +49,7 @@ import ProjectQuickActionsMenu from './components/ProjectQuickActionsMenu';
 import SceneBookmarksPanel from './components/SceneBookmarksPanel';
 import QuickActionsMenuWrapper, { setShowToast as setQuickActionsToast } from './components/QuickActionsMenuWrapper';
 import ExportQueuePanel, { ExportJob } from './components/ExportQueuePanel';
+import SceneDependencyTracker from './components/SceneDependencyTracker';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -268,6 +269,7 @@ const App: React.FC = () => {
   const [showExportQueue, setShowExportQueue] = useState(false);
   const [exportQueue, setExportQueue] = useState<ExportJob[]>([]);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
+  const [showSceneDependencyTracker, setShowSceneDependencyTracker] = useState(false);
 
   // Undo/Redo
   const [history, setHistory] = useState<ProjectData[]>([]);
@@ -3181,6 +3183,20 @@ const App: React.FC = () => {
             </button>
           )}
 
+          {/* Scene Dependency Tracker Button */}
+          {view === 'studio' && storyContext.id && scenes.length > 0 && (
+            <button
+              onClick={() => setShowSceneDependencyTracker(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
+              title="Scene Dependency Tracker"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline">Dependencies</span>
+            </button>
+          )}
+
           {/* Export History Button */}
           {view === 'studio' && (
             <button
@@ -3921,6 +3937,16 @@ const App: React.FC = () => {
               showToast('Failed to export project', 'error');
             }
           }}
+        />
+      )}
+
+      {/* Scene Dependency Tracker */}
+      {showSceneDependencyTracker && storyContext.id && scenes.length > 0 && (
+        <SceneDependencyTracker
+          scenes={scenes}
+          storyContext={storyContext}
+          projectId={storyContext.id}
+          onClose={() => setShowSceneDependencyTracker(false)}
         />
       )}
 
