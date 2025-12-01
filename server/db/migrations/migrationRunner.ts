@@ -150,11 +150,20 @@ export async function runMigrations(): Promise<void> {
           }
         }
 
-        // Record migration
-        await connection.query(
-          'INSERT INTO migrations (name) VALUES (?)',
-          [migrationName]
-        );
+        // Record migration - handle duplicate entry if another service already inserted it
+        try {
+          await connection.query(
+            'INSERT INTO migrations (name) VALUES (?)',
+            [migrationName]
+          );
+        } catch (error: any) {
+          // If migration record already exists (another service may have inserted it), that's okay
+          if (error.code === 'ER_DUP_ENTRY') {
+            console.log(`  ⚠️  Migration record already exists (likely inserted by another service), continuing...`);
+          } else {
+            throw error; // Re-throw other errors
+          }
+        }
 
         await connection.commit();
         console.log(`✅ Migration completed: ${migrationName}`);
