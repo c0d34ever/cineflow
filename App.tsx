@@ -3957,6 +3957,18 @@ const App: React.FC = () => {
           storyContext={storyContext}
           scenes={scenes}
           onClose={() => setShowAIStoryAnalysis(false)}
+          onCreateScene={async (sceneIdea: string, purpose?: string) => {
+            // Set the scene idea in the input and trigger generation
+            setCurrentInput(sceneIdea);
+            // Close the analysis panel
+            setShowAIStoryAnalysis(false);
+            // Show toast
+            showToast(purpose ? `Generated scene idea: ${purpose}` : 'Scene idea ready to generate', 'success');
+            // Optionally auto-generate the scene
+            // You can uncomment this to auto-generate:
+            // setTimeout(() => handleGenerateScene(), 500);
+          }}
+          onShowToast={showToast}
         />
       )}
 

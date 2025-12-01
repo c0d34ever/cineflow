@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Scene, StoryContext } from '../types';
-import { analyzeStory } from '../clientGeminiService';
+import { analyzeStory, suggestNextScene } from '../clientGeminiService';
 
 interface AIStoryAnalysisPanelProps {
   projectId: string;
   storyContext: StoryContext;
   scenes: Scene[];
   onClose: () => void;
+  onCreateScene?: (sceneIdea: string, purpose?: string) => void;
+  onShowToast?: (message: string, type?: 'success' | 'error' | 'warning') => void;
 }
 
 interface AnalysisResult {
@@ -41,10 +43,13 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
   storyContext,
   scenes,
   onClose,
+  onCreateScene,
+  onShowToast,
 }) => {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fixing, setFixing] = useState<string | null>(null);
 
   const performAnalysis = async () => {
     if (scenes.length === 0) {
@@ -76,6 +81,57 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
     if (score >= 80) return 'bg-green-900/20 border-green-800/50';
     if (score >= 60) return 'bg-yellow-900/20 border-yellow-800/50';
     return 'bg-red-900/20 border-red-800/50';
+  };
+
+  const handleGenerateFixScene = async (purpose: string, issue: string) => {
+    if (!onCreateScene) {
+      onShowToast?.('Scene creation not available', 'error');
+      return;
+    }
+
+    setFixing(purpose);
+    try {
+      // Use AI to generate a scene idea that addresses the issue
+      const recentScenes = scenes.slice(-5);
+      
+      // Modify context to include the fix requirement
+      const modifiedContext: StoryContext = {
+        ...storyContext,
+        plotSummary: `${storyContext.plotSummary}\n\n[FIX NEEDED: ${purpose}]\nIssue: ${issue}\n\nGenerate a scene that addresses this specific issue.`,
+      };
+      
+      const sceneIdea = await suggestNextScene(modifiedContext, recentScenes);
+      onCreateScene(sceneIdea, purpose);
+      onShowToast?.(`Generated scene idea to address: ${purpose}`, 'success');
+    } catch (error: any) {
+      console.error('Error generating fix scene:', error);
+      // Fallback: create a simple scene idea based on the issue
+      const fallbackIdea = `Scene to address ${purpose.toLowerCase()}: ${issue}`;
+      onCreateScene(fallbackIdea, purpose);
+      onShowToast?.(`Created scene idea (using fallback)`, 'warning');
+    } finally {
+      setFixing(null);
+    }
+  };
+
+  const handleApplySuggestion = async (suggestion: string, category: string) => {
+    if (!onCreateScene) {
+      onShowToast?.('Scene creation not available', 'error');
+      return;
+    }
+
+    setFixing(`${category}-${suggestion.substring(0, 20)}`);
+    try {
+      const recentScenes = scenes.slice(-5);
+      const sceneIdea = await suggestNextScene(storyContext, recentScenes);
+      onCreateScene(sceneIdea, `Apply suggestion: ${suggestion.substring(0, 50)}`);
+      onShowToast?.(`Applied suggestion: ${category}`, 'success');
+    } catch (error: any) {
+      console.error('Error applying suggestion:', error);
+      onShowToast?.(`Failed to apply suggestion: ${error.message || 'Unknown error'}`, 'error');
+    } finally {
+      setFixing(null);
+    }
   };
 
   return (
@@ -191,10 +247,35 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                   </h3>
                   {analysis.pacing.issues.length > 0 && (
                     <div className="mb-3">
-                      <div className="text-sm font-semibold text-red-400 mb-2">Issues:</div>
+                      <div className="text-sm font-semibold text-red-400 mb-2 flex items-center justify-between">
+                        <span>Issues:</span>
+                        {onCreateScene && (
+                          <button
+                            onClick={() => handleGenerateFixScene('Fix Pacing', analysis.pacing.issues[0])}
+                            disabled={fixing === 'Fix Pacing'}
+                            className="text-xs px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {fixing === 'Fix Pacing' ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                </svg>
+                                Generate Fix Scene
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                       <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                         {analysis.pacing.issues.map((issue, i) => (
-                          <li key={i}>{issue}</li>
+                          <li key={i} className="flex items-start justify-between gap-2">
+                            <span>{issue}</span>
+                          </li>
                         ))}
                       </ul>
                     </div>
@@ -204,7 +285,19 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                       <div className="text-sm font-semibold text-amber-400 mb-2">Suggestions:</div>
                       <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                         {analysis.pacing.suggestions.map((suggestion, i) => (
-                          <li key={i}>{suggestion}</li>
+                          <li key={i} className="flex items-start justify-between gap-2">
+                            <span>{suggestion}</span>
+                            {onCreateScene && (
+                              <button
+                                onClick={() => handleApplySuggestion(suggestion, 'Pacing')}
+                                disabled={fixing?.startsWith('Pacing')}
+                                className="text-xs px-2 py-0.5 bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 rounded disabled:opacity-50 shrink-0"
+                                title="Apply this suggestion"
+                              >
+                                Apply
+                              </button>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     </div>
@@ -219,7 +312,30 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                   </h3>
                   {analysis.characterDevelopment.issues.length > 0 && (
                     <div className="mb-3">
-                      <div className="text-sm font-semibold text-red-400 mb-2">Issues:</div>
+                      <div className="text-sm font-semibold text-red-400 mb-2 flex items-center justify-between">
+                        <span>Issues:</span>
+                        {onCreateScene && (
+                          <button
+                            onClick={() => handleGenerateFixScene('Improve Character Development', analysis.characterDevelopment.issues[0])}
+                            disabled={fixing === 'Improve Character Development'}
+                            className="text-xs px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {fixing === 'Improve Character Development' ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                </svg>
+                                Generate Fix Scene
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                       <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                         {analysis.characterDevelopment.issues.map((issue, i) => (
                           <li key={i}>{issue}</li>
@@ -232,7 +348,19 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                       <div className="text-sm font-semibold text-amber-400 mb-2">Suggestions:</div>
                       <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                         {analysis.characterDevelopment.suggestions.map((suggestion, i) => (
-                          <li key={i}>{suggestion}</li>
+                          <li key={i} className="flex items-start justify-between gap-2">
+                            <span>{suggestion}</span>
+                            {onCreateScene && (
+                              <button
+                                onClick={() => handleApplySuggestion(suggestion, 'Character Development')}
+                                disabled={fixing?.startsWith('Character Development')}
+                                className="text-xs px-2 py-0.5 bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 rounded disabled:opacity-50 shrink-0"
+                                title="Apply this suggestion"
+                              >
+                                Apply
+                              </button>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     </div>
@@ -242,10 +370,45 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                 {/* Plot Holes */}
                 {analysis.plotHoles.found && (
                   <div className="bg-red-900/20 border border-red-800/50 rounded-lg p-4">
-                    <h3 className="text-lg font-bold text-red-400 mb-3">⚠️ Plot Holes Detected</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-bold text-red-400">⚠️ Plot Holes Detected</h3>
+                      {onCreateScene && (
+                        <button
+                          onClick={() => handleGenerateFixScene('Fix Plot Hole', analysis.plotHoles.issues[0])}
+                          disabled={fixing === 'Fix Plot Hole'}
+                          className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {fixing === 'Fix Plot Hole' ? (
+                            <>
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                              </svg>
+                              Generate Fix Scene
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
                     <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                       {analysis.plotHoles.issues.map((issue, i) => (
-                        <li key={i}>{issue}</li>
+                        <li key={i} className="flex items-start justify-between gap-2">
+                          <span>{issue}</span>
+                          {onCreateScene && (
+                            <button
+                              onClick={() => handleGenerateFixScene(`Fix Plot Hole ${i + 1}`, issue)}
+                              disabled={fixing?.includes('Plot Hole')}
+                              className="text-xs px-2 py-0.5 bg-red-600/20 hover:bg-red-600/40 text-red-300 rounded disabled:opacity-50 shrink-0"
+                              title="Generate scene to fix this plot hole"
+                            >
+                              Fix
+                            </button>
+                          )}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -263,7 +426,19 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                       <div className="text-sm font-semibold text-amber-400 mb-2">Suggestions:</div>
                       <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                         {analysis.structure.suggestions.map((suggestion, i) => (
-                          <li key={i}>{suggestion}</li>
+                          <li key={i} className="flex items-start justify-between gap-2">
+                            <span>{suggestion}</span>
+                            {onCreateScene && (
+                              <button
+                                onClick={() => handleApplySuggestion(suggestion, 'Structure')}
+                                disabled={fixing?.startsWith('Structure')}
+                                className="text-xs px-2 py-0.5 bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 rounded disabled:opacity-50 shrink-0"
+                                title="Apply this suggestion"
+                              >
+                                Apply
+                              </button>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     </div>
@@ -278,7 +453,30 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                   </h3>
                   {analysis.dialogue.issues.length > 0 && (
                     <div className="mb-3">
-                      <div className="text-sm font-semibold text-red-400 mb-2">Issues:</div>
+                      <div className="text-sm font-semibold text-red-400 mb-2 flex items-center justify-between">
+                        <span>Issues:</span>
+                        {onCreateScene && (
+                          <button
+                            onClick={() => handleGenerateFixScene('Improve Dialogue', analysis.dialogue.issues[0])}
+                            disabled={fixing === 'Improve Dialogue'}
+                            className="text-xs px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {fixing === 'Improve Dialogue' ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                </svg>
+                                Generate Fix Scene
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                       <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                         {analysis.dialogue.issues.map((issue, i) => (
                           <li key={i}>{issue}</li>
@@ -291,7 +489,19 @@ const AIStoryAnalysisPanel: React.FC<AIStoryAnalysisPanelProps> = ({
                       <div className="text-sm font-semibold text-amber-400 mb-2">Suggestions:</div>
                       <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300">
                         {analysis.dialogue.suggestions.map((suggestion, i) => (
-                          <li key={i}>{suggestion}</li>
+                          <li key={i} className="flex items-start justify-between gap-2">
+                            <span>{suggestion}</span>
+                            {onCreateScene && (
+                              <button
+                                onClick={() => handleApplySuggestion(suggestion, 'Dialogue')}
+                                disabled={fixing?.startsWith('Dialogue')}
+                                className="text-xs px-2 py-0.5 bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 rounded disabled:opacity-50 shrink-0"
+                                title="Apply this suggestion"
+                              >
+                                Apply
+                              </button>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     </div>
