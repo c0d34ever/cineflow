@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { DirectorSettings, TechnicalStyle } from '../types';
 
 interface DirectorPanelProps {
@@ -11,6 +11,7 @@ interface DirectorPanelProps {
 }
 
 const DirectorPanel: React.FC<DirectorPanelProps> = ({ settings, onChange, onAutoSuggest, onClear, disabled }) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
   
   const handleChange = (key: keyof DirectorSettings, value: any) => {
     onChange({ ...settings, [key]: value });
@@ -30,12 +31,29 @@ const DirectorPanel: React.FC<DirectorPanelProps> = ({ settings, onChange, onAut
   ];
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2 sm:p-4 space-y-3 sm:space-y-4 max-h-[300px] overflow-y-auto relative">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2 sm:p-4 space-y-3 sm:space-y-4 relative">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between sticky top-0 bg-zinc-900 z-10 py-2 border-b border-zinc-800 mb-2 gap-2 sm:gap-0">
-        <h3 className="text-amber-500 font-serif font-bold tracking-widest text-xs sm:text-sm uppercase">
-          Technical Direction
-        </h3>
-        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 flex-1">
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="text-zinc-400 hover:text-amber-500 transition-colors p-1"
+            title={isCollapsed ? 'Expand panel' : 'Collapse panel'}
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 20 20" 
+              fill="currentColor" 
+              className={`w-4 h-4 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+            >
+              <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+            </svg>
+          </button>
+          <h3 className="text-amber-500 font-serif font-bold tracking-widest text-xs sm:text-sm uppercase">
+            Technical Direction
+          </h3>
+        </div>
+        {!isCollapsed && (
+          <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
           <button 
             onClick={onClear}
             disabled={disabled}
@@ -55,10 +73,13 @@ const DirectorPanel: React.FC<DirectorPanelProps> = ({ settings, onChange, onAut
             <span className="hidden sm:inline">Auto-Suggest</span>
             <span className="sm:hidden">Auto</span>
           </button>
-        </div>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+      {!isCollapsed && (
+        <div className="max-h-[300px] overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         {/* Scene ID */}
         <div>
           <label className="block text-xs text-zinc-400 mb-1">Scene ID (Optional)</label>
@@ -204,23 +225,25 @@ const DirectorPanel: React.FC<DirectorPanelProps> = ({ settings, onChange, onAut
             placeholder="e.g. Swelling strings, heavy breathing"
             className="w-full bg-black border border-zinc-700 text-zinc-200 text-sm rounded px-2 py-1.5 focus:border-amber-500 outline-none placeholder-zinc-600"
           />
+          </div>
         </div>
-      </div>
 
-      {/* Toggles */}
-      <div className="flex items-center space-x-2 pt-2 border-t border-zinc-800">
-        <input
-          type="checkbox"
-          id="physicsFocus"
-          checked={settings.physicsFocus}
-          onChange={(e) => handleChange('physicsFocus', e.target.checked)}
-          disabled={disabled}
-          className="w-4 h-4 accent-amber-500 bg-zinc-800 border-zinc-600 rounded"
-        />
-        <label htmlFor="physicsFocus" className="text-sm text-zinc-300 cursor-pointer select-none">
-          Enable <span className="text-amber-500 font-semibold">High-Fidelity Physics & Texture</span> (Skin, Fabrics, Gravity)
-        </label>
-      </div>
+        {/* Toggles */}
+        <div className="flex items-center space-x-2 pt-2 border-t border-zinc-800">
+          <input
+            type="checkbox"
+            id="physicsFocus"
+            checked={settings.physicsFocus}
+            onChange={(e) => handleChange('physicsFocus', e.target.checked)}
+            disabled={disabled}
+            className="w-4 h-4 accent-amber-500 bg-zinc-800 border-zinc-600 rounded"
+          />
+          <label htmlFor="physicsFocus" className="text-sm text-zinc-300 cursor-pointer select-none">
+            Enable <span className="text-amber-500 font-semibold">High-Fidelity Physics & Texture</span> (Skin, Fabrics, Gravity)
+          </label>
+        </div>
+        </div>
+      )}
     </div>
   );
 };
