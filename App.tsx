@@ -2093,7 +2093,8 @@ const App: React.FC = () => {
         ...newScene, 
         enhancedPrompt, 
         contextSummary,
-        status: 'completed' 
+        status: 'completed',
+        is_ai_generated: true // Mark as AI-generated since enhanceScenePrompt was used
       };
 
       // 1. Update UI State with completed scene

@@ -115,20 +115,6 @@ const CommentsPanel: React.FC<CommentsPanelProps> = ({ projectId, sceneId, onClo
     setShowMentionSuggestions(false);
   }, []);
 
-  const searchUsers = async (query: string) => {
-    if (query.length < 1) {
-      setMentionSuggestions([]);
-      return;
-    }
-    try {
-      const response = await commentsService.searchUsers(query);
-      setMentionSuggestions((response as any)?.users || []);
-      setSelectedMentionIndex(0);
-    } catch (error) {
-      console.error('Failed to search users:', error);
-    }
-  };
-
   const insertMention = (user: User) => {
     const textarea = textareaRef.current;
     if (!textarea) return;

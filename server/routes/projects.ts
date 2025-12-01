@@ -26,6 +26,7 @@ interface SceneRow {
   context_summary: string;
   status: string;
   thumbnail_url?: string | null;
+  is_ai_generated?: boolean | null;
 }
 
 interface DirectorSettingsRow {
@@ -139,6 +140,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
               contextSummary: scene.context_summary || '',
               status: scene.status as any,
               thumbnailUrl: scene.thumbnail_url || undefined,
+              is_ai_generated: scene.is_ai_generated || false,
               directorSettings,
             };
           })
@@ -455,15 +457,16 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
           // Use INSERT ... ON DUPLICATE KEY UPDATE to preserve existing scenes
           await connection.query(
-            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url, is_ai_generated)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                sequence_number = VALUES(sequence_number),
                raw_idea = VALUES(raw_idea),
                enhanced_prompt = VALUES(enhanced_prompt),
                context_summary = VALUES(context_summary),
                status = VALUES(status),
-               thumbnail_url = COALESCE(VALUES(thumbnail_url), thumbnail_url)`,
+               thumbnail_url = COALESCE(VALUES(thumbnail_url), thumbnail_url),
+               is_ai_generated = VALUES(is_ai_generated)`,
             [
               scene.id,
               context.id,
@@ -473,6 +476,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
               scene.contextSummary || '',
               scene.status || 'completed',
               thumbnailUrl,
+              scene.is_ai_generated || false,
             ]
           );
 
@@ -612,8 +616,8 @@ router.post('/:id/duplicate', authenticateToken, async (req: AuthRequest, res: R
         for (const scene of scenes) {
           const newSceneId = `scene-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           await connection.query(
-            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url, is_ai_generated)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               newSceneId,
               newProjectId,
@@ -622,7 +626,8 @@ router.post('/:id/duplicate', authenticateToken, async (req: AuthRequest, res: R
               scene.enhanced_prompt,
               scene.context_summary,
               scene.status || 'completed',
-              scene.thumbnail_url || null
+              scene.thumbnail_url || null,
+              scene.is_ai_generated || false
             ]
           );
 

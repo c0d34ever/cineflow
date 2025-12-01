@@ -30,6 +30,7 @@ export interface Scene {
   directorSettings: DirectorSettings;
   contextSummary: string; // What happened in this scene (for next scene context)
   thumbnailUrl?: string; // URL to primary image thumbnail for quick access
+  is_ai_generated?: boolean; // Indicates if content was AI-generated
 }
 
 export interface StoryContext {
