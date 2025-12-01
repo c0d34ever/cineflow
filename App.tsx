@@ -48,6 +48,7 @@ import StoryArcVisualizer from './components/StoryArcVisualizer';
 import ProjectQuickActionsMenu from './components/ProjectQuickActionsMenu';
 import SceneBookmarksPanel from './components/SceneBookmarksPanel';
 import QuickActionsMenuWrapper, { setShowToast as setQuickActionsToast } from './components/QuickActionsMenuWrapper';
+import ExportQueuePanel, { ExportJob } from './components/ExportQueuePanel';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
@@ -264,6 +265,9 @@ const App: React.FC = () => {
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
   const [projectQuickActions, setProjectQuickActions] = useState<{ project: ProjectData; position: { x: number; y: number } } | null>(null);
   const [showSceneBookmarks, setShowSceneBookmarks] = useState(false);
+  const [showExportQueue, setShowExportQueue] = useState(false);
+  const [exportQueue, setExportQueue] = useState<ExportJob[]>([]);
+  const [processingJobId, setProcessingJobId] = useState<string | null>(null);
 
   // Undo/Redo
   const [history, setHistory] = useState<ProjectData[]>([]);
@@ -1151,6 +1155,162 @@ const App: React.FC = () => {
     }
   };
 
+  // Export Queue Management
+  const addExportToQueue = (job: Omit<ExportJob, 'id' | 'status' | 'progress' | 'createdAt'>) => {
+    const newJob: ExportJob = {
+      ...job,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      status: 'queued',
+      progress: 0,
+      createdAt: new Date()
+    };
+    setExportQueue(prev => [...prev, newJob]);
+    processExportQueue();
+    showToast(`Export added to queue`, 'info');
+  };
+
+  const processExportQueue = async () => {
+    if (processingJobId) return; // Already processing
+
+    const nextJob = exportQueue.find(j => j.status === 'queued');
+    if (!nextJob) return;
+
+    setProcessingJobId(nextJob.id);
+    setExportQueue(prev => prev.map(j => 
+      j.id === nextJob.id ? { ...j, status: 'processing' as const, progress: 10 } : j
+    ));
+
+    try {
+      const filename = `${nextJob.projectTitle.replace(/\s+/g, '_')}_storyboard`;
+      const data = await getExportData();
+      
+      // Update progress
+      setExportQueue(prev => prev.map(j => 
+        j.id === nextJob.id ? { ...j, progress: 30 } : j
+      ));
+
+      let fileDownloaded = false;
+      switch (nextJob.format) {
+        case 'json':
+          downloadFile(JSON.stringify(data, null, 2), `${filename}.json`, 'application/json');
+          fileDownloaded = true;
+          break;
+        case 'markdown':
+          downloadFile(exportToMarkdown(data), `${filename}.md`, 'text/markdown');
+          fileDownloaded = true;
+          break;
+        case 'csv':
+          downloadFile(exportToCSV(data), `${filename}.csv`, 'text/csv');
+          fileDownloaded = true;
+          break;
+        case 'fountain':
+          downloadFile(exportToFountain(data), `${filename}.fountain`, 'text/plain');
+          fileDownloaded = true;
+          break;
+        case 'pdf':
+          setExportQueue(prev => prev.map(j => 
+            j.id === nextJob.id ? { ...j, progress: 50 } : j
+          ));
+          const styleChoice = window.prompt(
+            'Choose PDF Export Style:\n\n' +
+            'Enter "1" for Comic Book Style\n' +
+            'Enter "2" for Raw/Plain Style\n\n' +
+            'Your choice (1 or 2):',
+            '1'
+          );
+          const pdfStyle: PDFStyle = (styleChoice === '2') ? 'raw' : 'comic';
+          if (pdfStyle === 'comic') {
+            setSelectedCoverImageId(null);
+            setShowCoverImageSelector(true);
+            // Store job info for later completion
+            (window as any).pendingPdfExportJob = nextJob.id;
+            setExportQueue(prev => prev.map(j => 
+              j.id === nextJob.id ? { ...j, progress: 70 } : j
+            ));
+            return; // Will complete after cover image selection
+          }
+          await exportToPDF(data, pdfStyle);
+          fileDownloaded = true;
+          break;
+      }
+
+      setExportQueue(prev => prev.map(j => 
+        j.id === nextJob.id ? { 
+          ...j, 
+          status: 'completed' as const, 
+          progress: 100,
+          fileName: `${filename}.${nextJob.format === 'pdf' ? 'pdf' : nextJob.format}`
+        } : j
+      ));
+
+      // Track export in database
+      try {
+        const apiAvailable = await checkApiAvailability();
+        if (apiAvailable && storyContext.id) {
+          const token = localStorage.getItem('auth_token');
+          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/exports`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              project_id: storyContext.id,
+              export_type: nextJob.format,
+              file_name: `${filename}.${nextJob.format === 'pdf' ? 'pdf' : nextJob.format}`,
+            }),
+          });
+        }
+      } catch (e) {
+        console.error('Failed to track export:', e);
+      }
+
+      showToast(`Export completed: ${filename}`, 'success');
+    } catch (error: any) {
+      setExportQueue(prev => prev.map(j => 
+        j.id === nextJob.id ? { 
+          ...j, 
+          status: 'failed' as const,
+          error: error.message || 'Export failed'
+        } : j
+      ));
+      showToast(`Export failed: ${error.message || 'Unknown error'}`, 'error');
+    } finally {
+      setProcessingJobId(null);
+      // Process next job
+      setTimeout(() => processExportQueue(), 500);
+    }
+  };
+
+  const cancelExportJob = (jobId: string) => {
+    setExportQueue(prev => prev.map(j => 
+      j.id === jobId ? { ...j, status: 'cancelled' as const } : j
+    ));
+    if (processingJobId === jobId) {
+      setProcessingJobId(null);
+      setTimeout(() => processExportQueue(), 500);
+    }
+    showToast('Export cancelled', 'info');
+  };
+
+  const retryExportJob = (jobId: string) => {
+    setExportQueue(prev => prev.map(j => 
+      j.id === jobId ? { 
+        ...j, 
+        status: 'queued' as const, 
+        progress: 0,
+        error: undefined
+      } : j
+    ));
+    processExportQueue();
+    showToast('Export retried', 'info');
+  };
+
+  const clearCompletedExports = () => {
+    setExportQueue(prev => prev.filter(j => j.status !== 'completed'));
+    showToast('Completed exports cleared', 'info');
+  };
+
   // Load tags and check comic existence when project is loaded
   useEffect(() => {
     if (view === 'studio' && storyContext.id) {
@@ -1186,7 +1346,68 @@ const App: React.FC = () => {
     setSelectedCoverImageId(imageId);
     setShowCoverImageSelector(false);
     
-    // Now proceed with the export
+    // Check if this is for a queued export
+    const pendingJobId = (window as any).pendingPdfExportJob;
+    if (pendingJobId) {
+      const job = exportQueue.find(j => j.id === pendingJobId);
+      if (job) {
+        try {
+          setExportQueue(prev => prev.map(j => 
+            j.id === pendingJobId ? { ...j, progress: 80 } : j
+          ));
+          const data = await getExportData();
+          await exportToPDF(data, 'comic', undefined, imageId);
+          const filename = `${job.projectTitle.replace(/\s+/g, '_')}_storyboard`;
+          setExportQueue(prev => prev.map(j => 
+            j.id === pendingJobId ? { 
+              ...j, 
+              status: 'completed' as const, 
+              progress: 100,
+              fileName: `${filename}.pdf`
+            } : j
+          ));
+          showToast(`Export completed: ${filename}`, 'success');
+          // Track export
+          try {
+            const apiAvailable = await checkApiAvailability();
+            if (apiAvailable && storyContext.id) {
+              const token = localStorage.getItem('auth_token');
+              await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/exports`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  project_id: storyContext.id,
+                  export_type: 'pdf',
+                  file_name: `${filename}.pdf`,
+                }),
+              });
+            }
+          } catch (e) {
+            console.error('Failed to track export:', e);
+          }
+          setProcessingJobId(null);
+          setTimeout(() => processExportQueue(), 500);
+        } catch (error: any) {
+          setExportQueue(prev => prev.map(j => 
+            j.id === pendingJobId ? { 
+              ...j, 
+              status: 'failed' as const,
+              error: error.message || 'Export failed'
+            } : j
+          ));
+          showToast(`Export failed: ${error.message || 'Unknown error'}`, 'error');
+          setProcessingJobId(null);
+          setTimeout(() => processExportQueue(), 500);
+        }
+        (window as any).pendingPdfExportJob = null;
+        return;
+      }
+    }
+    
+    // Regular export (not queued)
     try {
       const data = await getExportData();
       await exportToPDF(data, 'comic', undefined, imageId);
@@ -2614,6 +2835,93 @@ const App: React.FC = () => {
                 >
                   <span>🎬</span> Export as Fountain (Screenplay)
                 </button>
+                <div className="border-t border-zinc-700 my-1"></div>
+                <div className="px-4 py-2 text-xs text-zinc-500 uppercase font-semibold">Queue Export</div>
+                <button
+                  onClick={() => {
+                    if (!storyContext.id) {
+                      showToast('No project loaded', 'warning');
+                      return;
+                    }
+                    addExportToQueue({
+                      projectId: storyContext.id,
+                      projectTitle: storyContext.title,
+                      format: 'json'
+                    });
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📄</span> Queue JSON Export
+                </button>
+                <button
+                  onClick={() => {
+                    if (!storyContext.id) {
+                      showToast('No project loaded', 'warning');
+                      return;
+                    }
+                    addExportToQueue({
+                      projectId: storyContext.id,
+                      projectTitle: storyContext.title,
+                      format: 'markdown'
+                    });
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📝</span> Queue Markdown Export
+                </button>
+                <button
+                  onClick={() => {
+                    if (!storyContext.id) {
+                      showToast('No project loaded', 'warning');
+                      return;
+                    }
+                    addExportToQueue({
+                      projectId: storyContext.id,
+                      projectTitle: storyContext.title,
+                      format: 'csv'
+                    });
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📊</span> Queue CSV Export
+                </button>
+                <button
+                  onClick={() => {
+                    if (!storyContext.id) {
+                      showToast('No project loaded', 'warning');
+                      return;
+                    }
+                    addExportToQueue({
+                      projectId: storyContext.id,
+                      projectTitle: storyContext.title,
+                      format: 'pdf'
+                    });
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>📄</span> Queue PDF Export
+                </button>
+                <button
+                  onClick={() => {
+                    if (!storyContext.id) {
+                      showToast('No project loaded', 'warning');
+                      return;
+                    }
+                    addExportToQueue({
+                      projectId: storyContext.id,
+                      projectTitle: storyContext.title,
+                      format: 'fountain'
+                    });
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <span>🎬</span> Queue Fountain Export
+                </button>
                 {comicExists && (
                   <>
                     <div className="border-t border-zinc-700 my-1"></div>
@@ -2884,6 +3192,25 @@ const App: React.FC = () => {
                 <path fillRule="evenodd" d="M10 2a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5H4.25a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 0110 2z" clipRule="evenodd" />
               </svg>
               <span className="hidden sm:inline">Exports</span>
+            </button>
+          )}
+
+          {/* Export Queue Button */}
+          {view === 'studio' && (
+            <button
+              onClick={() => setShowExportQueue(true)}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1 relative"
+              title="Export Queue"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline">Queue</span>
+              {exportQueue.filter(j => j.status === 'queued' || j.status === 'processing').length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-amber-600 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                  {exportQueue.filter(j => j.status === 'queued' || j.status === 'processing').length}
+                </span>
+              )}
             </button>
           )}
 
@@ -3305,6 +3632,19 @@ const App: React.FC = () => {
         />
       )}
 
+      {/* Export Queue Panel */}
+      {showExportQueue && (
+        <ExportQueuePanel
+          isOpen={showExportQueue}
+          onClose={() => setShowExportQueue(false)}
+          onAddExport={addExportToQueue}
+          jobs={exportQueue}
+          onCancelJob={cancelExportJob}
+          onRetryJob={retryExportJob}
+          onClearCompleted={clearCompletedExports}
+        />
+      )}
+
       {/* Scene Preview Modal */}
       {showScenePreviewModal && scenes[previewSceneIndex] && (
         <ScenePreviewModal
@@ -3456,76 +3796,6 @@ const App: React.FC = () => {
           onDuplicate={handleDuplicateScene}
           onCopySettings={handleCopySceneSettings}
           onDelete={async (sceneId) => {
-            const scene = scenes.find(s => s.id === sceneId);
-            if (!scene) return;
-            
-            try {
-              const apiAvailable = await checkApiAvailability();
-              const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-              const token = localStorage.getItem('auth_token');
-
-              if (apiAvailable) {
-                const response = await fetch(`${API_BASE_URL}/clips/${sceneId}`, {
-                  method: 'DELETE',
-                  headers: {
-                    'Authorization': `Bearer ${token}`,
-                  },
-                });
-                if (!response.ok) throw new Error('Failed to delete scene');
-              }
-
-              setScenes(prev => {
-                const filtered = prev.filter(s => s.id !== sceneId);
-                return filtered.map((s, idx) => ({
-                  ...s,
-                  sequenceNumber: idx + 1
-                }));
-              });
-
-              showToast('Scene deleted successfully', 'success');
-            } catch (error: any) {
-              showToast('Failed to delete scene', 'error');
-            }
-          }}
-          onEdit={handleEditScene}
-          onExport={handleExportScene}
-        />
-      )}
-
-      {/* Copy Scene Settings Modal */}
-      {showCopySettingsModal && sourceSceneForCopy && (
-        
-        return (
-          <QuickActionsMenu
-            scene={quickActionsMenu.scene}
-            position={quickActionsMenu.position}
-            onClose={() => setQuickActionsMenu(null)}
-            onDuplicate={handleDuplicateScene}
-            onCopySettings={handleCopySceneSettings}
-            onBookmark={async () => {
-              if (!storyContext.id) return;
-              const { sceneBookmarksService } = await import('./apiServices');
-              try {
-                if (isBookmarked) {
-                  const bookmark = (bookmarks as any).bookmarks?.find((b: any) => b.scene_id === quickActionsMenu.scene.id);
-                  if (bookmark) {
-                    await sceneBookmarksService.delete(bookmark.id);
-                    showToast('Bookmark removed', 'success');
-                  }
-                } else {
-                  await sceneBookmarksService.create({
-                    project_id: storyContext.id,
-                    scene_id: quickActionsMenu.scene.id,
-                    category: 'general'
-                  });
-                  showToast('Scene bookmarked', 'success');
-                }
-              } catch (error: any) {
-                showToast('Failed to update bookmark', 'error');
-              }
-            }}
-            isBookmarked={isBookmarked}
-            onDelete={async (sceneId) => {
             const scene = scenes.find(s => s.id === sceneId);
             if (!scene) return;
             
