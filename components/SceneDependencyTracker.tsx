@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Scene, StoryContext } from '../types';
+import { charactersService, locationsService } from '../apiServices';
 
 interface SceneDependencyTrackerProps {
   scenes: Scene[];
@@ -35,16 +36,35 @@ const SceneDependencyTracker: React.FC<SceneDependencyTrackerProps> = ({
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'graph' | 'list' | 'issues'>('graph');
   const [filterType, setFilterType] = useState<'all' | 'context' | 'character' | 'location' | 'plot_point'>('all');
+  const [characters, setCharacters] = useState<Array<{ name: string; [key: string]: any }>>([]);
+  const [locations, setLocations] = useState<Array<{ name: string; [key: string]: any }>>([]);
 
-  // Extract characters from story context
-  const characters = useMemo(() => {
-    return storyContext.characters || [];
-  }, [storyContext.characters]);
+  // Fetch characters and locations from API
+  useEffect(() => {
+    if (projectId) {
+      // Fetch characters
+      charactersService.getByProject(projectId)
+        .then(data => {
+          if (Array.isArray(data)) {
+            setCharacters(data);
+          } else {
+            setCharacters([]);
+          }
+        })
+        .catch(() => setCharacters([]));
 
-  // Extract locations from story context
-  const locations = useMemo(() => {
-    return storyContext.locations || [];
-  }, [storyContext.locations]);
+      // Fetch locations
+      locationsService.getByProject(projectId)
+        .then(data => {
+          if (Array.isArray(data)) {
+            setLocations(data);
+          } else {
+            setLocations([]);
+          }
+        })
+        .catch(() => setLocations([]));
+    }
+  }, [projectId]);
 
   // Analyze scene dependencies
   const sceneNodes = useMemo(() => {
