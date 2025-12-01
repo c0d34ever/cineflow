@@ -84,12 +84,21 @@ export const favoritesService = {
 
 // Comments Service
 export const commentsService = {
-  getByProject: (projectId: string) => apiCall(`/comments/project/${projectId}`),
-  create: (projectId: string, data: { content: string; is_pinned?: boolean }) =>
+  getByProject: (projectId: string, sceneId?: string) => 
+    apiCall(`/comments/project/${projectId}${sceneId ? `?scene_id=${sceneId}` : ''}`),
+  getReplies: (commentId: number) => apiCall(`/comments/${commentId}/replies`),
+  create: (projectId: string, data: { 
+    content: string; 
+    is_pinned?: boolean; 
+    scene_id?: string; 
+    parent_comment_id?: number;
+    mentioned_user_ids?: number[];
+  }) =>
     apiCall(`/comments/project/${projectId}`, { method: 'POST', body: JSON.stringify(data) }),
   update: (id: number, data: { content?: string; is_pinned?: boolean }) =>
     apiCall(`/comments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: number) => apiCall(`/comments/${id}`, { method: 'DELETE' }),
+  searchUsers: (query: string) => apiCall(`/comments/users/search?q=${encodeURIComponent(query)}`),
 };
 
 // Scene Notes Service
@@ -103,6 +112,16 @@ export const sceneNotesService = {
 };
 
 // Scene Bookmarks Service
+export const savedSearchesService = {
+  getAll: () => apiCall('/saved-searches'),
+  create: (data: { name: string; search_query?: string; filters?: any }) =>
+    apiCall('/saved-searches', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: { name?: string; search_query?: string; filters?: any }) =>
+    apiCall(`/saved-searches/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => apiCall(`/saved-searches/${id}`, { method: 'DELETE' }),
+  recordUsage: (id: number) => apiCall(`/saved-searches/${id}/use`, { method: 'POST' }),
+};
+
 export const sceneBookmarksService = {
   getByProject: (projectId: string) => apiCall(`/scene-bookmarks/project/${projectId}`),
   create: (data: { project_id: string; scene_id: string; category?: string; notes?: string }) =>
@@ -202,6 +221,7 @@ export const activityService = {
   getNotifications: (limit?: number) => apiCall(`/activity/notifications${limit ? `?limit=${limit}` : ''}`),
   markNotificationRead: (id: number) => apiCall(`/activity/notifications/${id}/read`, { method: 'PUT' }),
   markAllNotificationsRead: () => apiCall('/activity/notifications/read-all', { method: 'PUT' }),
+  deleteNotification: (id: number) => apiCall(`/activity/notifications/${id}`, { method: 'DELETE' }),
 };
 
 // Scene Templates Service

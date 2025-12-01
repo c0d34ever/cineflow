@@ -128,5 +128,24 @@ router.put('/notifications/read-all', authenticateToken, async (req: AuthRequest
   }
 });
 
+// DELETE /api/activity/notifications/:id - Delete notification
+router.delete('/notifications/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const notificationId = parseInt(req.params.id);
+    const userId = req.user!.id;
+    const pool = getPool();
+
+    await pool.query(
+      'DELETE FROM notifications WHERE id = ? AND user_id = ?',
+      [notificationId, userId]
+    );
+
+    res.json({ message: 'Notification deleted' });
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+    res.status(500).json({ error: 'Failed to delete notification' });
+  }
+});
+
 export default router;
 

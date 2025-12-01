@@ -77,7 +77,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
 
   return (
     <div 
-      className={`bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col h-full shadow-lg transition-all ${
+      className={`bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col h-full shadow-lg transition-all relative ${
         batchMode ? 'hover:border-amber-500' : 'hover:scale-[1.01]'
       } ${isSelected ? 'border-amber-500 bg-amber-900/10' : ''}`}
       onMouseEnter={(e) => {
@@ -106,6 +106,13 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
               onClick={(e) => e.stopPropagation()}
               className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-zinc-900 cursor-pointer"
             />
+          )}
+          {!batchMode && (
+            <div className="cursor-move text-zinc-600 hover:text-zinc-400 transition-colors" title="Drag to reorder">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path d="M7 2a2 2 0 011 1v1h3a1 1 0 110 2H9.578a18.87 18.87 0 01-1.724 4.78c.29.354.596.696.914 1.026a1.892 1.892 0 001.3.463 1.892 1.892 0 001.3-.463c.218-.33.624-.672.914-1.026a18.87 18.87 0 01-1.724-4.78H10a1 1 0 110-2h1V3a2 2 0 00-2-2H7zM4.05 13.5a1 1 0 011.796 0l.518 1.19a1.8 1.8 0 001.372 1.01l1.642.294a1 1 0 11-.18 1.992l-1.642-.293a3.8 3.8 0 01-2.9-2.13l-.518-1.19a1 1 0 010-.897zm11.9 0a1 1 0 011.796 0l.518 1.19a1.8 1.8 0 001.372 1.01l1.642.294a1 1 0 11-.18 1.992l-1.642-.293a3.8 3.8 0 01-2.9-2.13l-.518-1.19a1 1 0 010-.897z" />
+              </svg>
+            </div>
           )}
            <div className="bg-amber-900/30 text-amber-500 px-2 py-1 rounded text-xs font-mono border border-amber-900/50 font-bold">
              {scene.directorSettings.customSceneId || `SEQ #${scene.sequenceNumber.toString().padStart(2, '0')}`}

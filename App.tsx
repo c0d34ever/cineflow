@@ -17,6 +17,8 @@ import TimelineView from './components/TimelineView';
 import SharingModal from './components/SharingModal';
 import LocationsPanel from './components/LocationsPanel';
 import AnalyticsPanel from './components/AnalyticsPanel';
+import AdvancedAnalyticsDashboard from './components/AdvancedAnalyticsDashboard';
+import NotificationCenter from './components/NotificationCenter';
 import SceneTemplatesModal from './components/SceneTemplatesModal';
 import ActivityPanel from './components/ActivityPanel';
 import SettingsPanel from './components/SettingsPanel';
@@ -164,9 +166,11 @@ const App: React.FC = () => {
 
   // Analytics
   const [showAnalyticsPanel, setShowAnalyticsPanel] = useState(false);
+  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
 
   // Activity & Notifications
   const [showActivityPanel, setShowActivityPanel] = useState(false);
+  const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [activities, setActivities] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -577,10 +581,16 @@ const App: React.FC = () => {
         }
       }
 
+      // Ctrl/Cmd + Arrow Up/Down - Reorder scenes
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && view === 'studio' && !batchMode) {
+        e.preventDefault();
+        handleSceneReorder(e.key === 'ArrowUp' ? 'up' : 'down');
+      }
+
       // Ctrl/Cmd + / - Show shortcuts help
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
-        alert(`Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`);
+        alert(`Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`);
       }
 
       // Escape - Close modals
@@ -631,6 +641,51 @@ const App: React.FC = () => {
       } catch (fallbackError) {
         console.error("IndexedDB fallback also failed:", fallbackError);
       }
+    }
+  };
+
+  // Load notifications
+  const loadNotifications = async () => {
+    if (!isAuthenticated) return;
+    try {
+      const apiAvailable = await checkApiAvailability();
+      if (apiAvailable) {
+        const data = await activityService.getNotifications(50);
+        setNotifications((data as any)?.notifications || []);
+        setUnreadNotificationCount((data as any)?.unread_count || 0);
+      }
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+    }
+  };
+
+  // Notification handlers
+  const handleMarkNotificationRead = async (id: number) => {
+    try {
+      await activityService.markNotificationRead(id);
+      await loadNotifications();
+    } catch (error) {
+      showToast('Failed to mark notification as read', 'error');
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      await activityService.markAllNotificationsRead();
+      await loadNotifications();
+      showToast('All notifications marked as read', 'success');
+    } catch (error) {
+      showToast('Failed to mark all as read', 'error');
+    }
+  };
+
+  const handleDeleteNotification = async (id: number) => {
+    try {
+      await activityService.deleteNotification(id);
+      await loadNotifications();
+      showToast('Notification deleted', 'success');
+    } catch (error) {
+      showToast('Failed to delete notification', 'error');
     }
   };
 
@@ -1321,6 +1376,18 @@ const App: React.FC = () => {
     }
   }, [view, storyContext.id]);
 
+  // Load notifications on mount and poll for updates
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadNotifications();
+      // Poll for new notifications every 30 seconds
+      const interval = setInterval(() => {
+        loadNotifications();
+      }, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
+
   // Listen for comic generation events
   useEffect(() => {
     const handleComicGenerated = () => {
@@ -1511,21 +1578,38 @@ const App: React.FC = () => {
   };
 
   // Drag and drop handlers
-  const handleDragStart = (index: number) => {
+  const handleDragStart = (e: React.DragEvent, index: number) => {
     if (!batchMode) {
       setDraggedSceneIndex(index);
+      // Set drag image for better visual feedback
+      const target = e.currentTarget as HTMLElement;
+      const dragImage = target.cloneNode(true) as HTMLElement;
+      dragImage.style.opacity = '0.8';
+      dragImage.style.transform = 'rotate(2deg)';
+      dragImage.style.width = `${target.offsetWidth}px`;
+      document.body.appendChild(dragImage);
+      e.dataTransfer.setDragImage(dragImage, e.clientX - target.getBoundingClientRect().left, e.clientY - target.getBoundingClientRect().top);
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => document.body.removeChild(dragImage), 0);
     }
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
-    if (!batchMode && draggedSceneIndex !== null) {
+    if (!batchMode && draggedSceneIndex !== null && draggedSceneIndex !== index) {
       e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
       setDragOverIndex(index);
     }
   };
 
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear if we're actually leaving the drop zone
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDragOverIndex(null);
+    }
   };
 
   const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
@@ -1592,11 +1676,94 @@ const App: React.FC = () => {
         });
       }
       setStoryContext(updatedContext);
-      showToast('Scenes reordered successfully', 'success');
+      const movedFrom = draggedSceneIndex + 1;
+      const movedTo = dropIndex + 1;
+      showToast(`Scene moved from position ${movedFrom} to ${movedTo}`, 'success');
     } catch (error) {
       console.error('Failed to save reordered scenes:', error);
       showToast('Failed to save reordered scenes', 'error');
     }
+  };
+
+  // Keyboard shortcuts for scene reordering
+  const handleSceneReorder = (direction: 'up' | 'down') => {
+    if (batchMode || scenes.length === 0 || view !== 'studio') return;
+    
+    // Find the first selected scene, or use the first scene if none selected
+    const selectedSceneId = selectedSceneIds.size > 0 
+      ? Array.from(selectedSceneIds)[0] 
+      : scenes[0]?.id;
+    
+    if (!selectedSceneId) return;
+    
+    const currentIndex = scenes.findIndex(s => s.id === selectedSceneId);
+    if (currentIndex === -1) return;
+    
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= scenes.length) return;
+    
+    // Simulate drag and drop
+    const newScenes = [...scenes];
+    const draggedScene = newScenes[currentIndex];
+    newScenes.splice(currentIndex, 1);
+    newScenes.splice(newIndex, 0, draggedScene);
+    
+    const updatedScenes = newScenes.map((scene, idx) => ({
+      ...scene,
+      sequenceNumber: idx + 1,
+    }));
+    
+    setScenes(updatedScenes);
+    
+    // Save to backend
+    (async () => {
+      try {
+        const updatedContext = { ...storyContext, lastUpdated: Date.now() };
+        const apiAvailable = await checkApiAvailability();
+        
+        if (apiAvailable) {
+          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          const token = localStorage.getItem('auth_token');
+          
+          const sequenceUpdates = updatedScenes.map((scene, idx) => ({
+            id: scene.id,
+            sequence_number: idx + 1,
+          }));
+          
+          await fetch(`${API_BASE_URL}/clips/batch`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              clip_ids: updatedScenes.map(s => s.id),
+              operation: 'update_sequence',
+              data: { sequence_updates: sequenceUpdates },
+            }),
+          });
+          
+          await apiService.saveProject({
+            context: updatedContext,
+            scenes: updatedScenes,
+            settings: currentSettings
+          });
+        } else {
+          await saveProjectToDB({
+            context: updatedContext,
+            scenes: updatedScenes,
+            settings: currentSettings
+          });
+        }
+        
+        setStoryContext(updatedContext);
+        showToast(`Scene moved ${direction === 'up' ? 'up' : 'down'}`, 'success');
+      } catch (error: any) {
+        console.error('Failed to reorder scene:', error);
+        showToast('Failed to reorder scene', 'error');
+        setScenes(scenes);
+      }
+    })();
   };
 
   // Batch selection handlers
@@ -2122,23 +2289,17 @@ const App: React.FC = () => {
               {/* Notifications Button */}
               <button
                 onClick={async () => {
-                  try {
-                    const data = await activityService.getNotifications();
-                    setNotifications((data as any)?.notifications || []);
-                    setUnreadNotificationCount((data as any)?.unread_count || 0);
-                    setShowActivityPanel(true);
-                  } catch (error) {
-                    showToast('Failed to load notifications', 'error');
-                  }
+                  await loadNotifications();
+                  setShowNotificationCenter(true);
                 }}
                 className="relative text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
-                title="Activity & Notifications"
+                title="Notifications"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                   <path fillRule="evenodd" d="M10 2a6 6 0 00-6 6c0 1.887-.454 3.665-1.257 5.234a.75.75 0 00.515 1.076 32.94 32.94 0 003.256.508 3.5 3.5 0 006.972 0 32.933 32.933 0 003.256-.508.75.75 0 00.515-1.076A11.71 11.71 0 0116 8a6 6 0 00-6-6zM8.05 14.943a33.54 33.54 0 003.9 0 2 2 0 01-3.9 0z" clipRule="evenodd" />
                 </svg>
                 {unreadNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center animate-pulse">
                     {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
                   </span>
                 )}
@@ -2989,16 +3150,45 @@ const App: React.FC = () => {
 
           {/* Analytics Button */}
           {view === 'studio' && storyContext.id && (
-            <button
-              onClick={() => setShowAnalyticsPanel(true)}
-              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
-              title="Project Analytics"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
-                <path d="M10 2a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V2.75A.75.75 0 0110 2zM5.404 4.343a.75.75 0 010 1.06 6.5 6.5 0 109.192 0 .75.75 0 111.06-1.06 8 8 0 11-11.313 0 .75.75 0 011.06 0zM8 8a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 8zm3.25.75a.75.75 0 00-1.5 0v5.5a.75.75 0 001.5 0v-5.5z" />
-              </svg>
-              <span className="hidden sm:inline">Analytics</span>
-            </button>
+            <div className="relative group">
+              <button
+                onClick={() => setShowAdvancedAnalytics(true)}
+                className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+                title="Advanced Analytics Dashboard"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                  <path d="M10 2a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V2.75A.75.75 0 0110 2zM5.404 4.343a.75.75 0 010 1.06 6.5 6.5 0 109.192 0 .75.75 0 111.06-1.06 8 8 0 11-11.313 0 .75.75 0 011.06 0zM8 8a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 8zm3.25.75a.75.75 0 00-1.5 0v5.5a.75.75 0 001.5 0v-5.5z" />
+                </svg>
+                <span className="hidden sm:inline">Analytics</span>
+              </button>
+              {/* Advanced Analytics Dropdown */}
+              <div className="absolute right-0 mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <button
+                  onClick={() => {
+                    setShowAnalyticsPanel(true);
+                    setShowAdvancedAnalytics(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path d="M10 2a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5H4.25a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 0110 2z" />
+                  </svg>
+                  Basic Analytics
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAdvancedAnalytics(true);
+                    setShowAnalyticsPanel(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2 border-t border-zinc-800"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path fillRule="evenodd" d="M3 3.5A1.5 1.5 0 014.5 2h6.879a1.5 1.5 0 011.06.44l4.122 4.12A1.5 1.5 0 0116 7.622V16.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 013 16.5v-13zM13.25 9a.75.75 0 01-.75.75H9.5v2.75a.75.75 0 01-1.5 0V9.75H5.5a.75.75 0 010-1.5h2.5V5.5a.75.75 0 011.5 0v2.75h3a.75.75 0 01.75.75z" clipRule="evenodd" />
+                  </svg>
+                  Advanced Dashboard
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Statistics Button */}
@@ -3534,19 +3724,23 @@ const App: React.FC = () => {
                       key={scene.id}
                       data-scene-id={scene.id}
                       draggable={!batchMode}
-                      onDragStart={() => handleDragStart(index)}
+                      onDragStart={(e) => handleDragStart(e, index)}
                       onDragOver={(e) => handleDragOver(e, index)}
-                      onDragLeave={handleDragLeave}
+                      onDragLeave={(e) => handleDragLeave(e)}
                       onDrop={(e) => handleDrop(e, index)}
                       onContextMenu={(e) => !batchMode && handleSceneContextMenu(e, scene)}
-                      className={`w-full transition-all ${
+                      className={`w-full transition-all duration-200 ${
                         batchMode ? 'cursor-pointer' : 'cursor-move'
                       } ${
-                        draggedSceneIndex === index ? 'opacity-50 scale-95' : ''
+                        draggedSceneIndex === index ? 'opacity-30 scale-95 rotate-1 shadow-2xl' : ''
                       } ${
-                        dragOverIndex === index && draggedSceneIndex !== null ? 'translate-y-2 border-t-2 border-amber-500' : ''
+                        dragOverIndex === index && draggedSceneIndex !== null 
+                          ? 'translate-y-4 border-t-4 border-amber-500 bg-amber-900/10' 
+                          : ''
                       } ${
                         selectedSceneIds.has(scene.id) ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''
+                      } ${
+                        !batchMode ? 'hover:shadow-xl' : ''
                       }`}
                     >
                       <SceneCard 
@@ -3629,6 +3823,16 @@ const App: React.FC = () => {
         <AnalyticsPanel
           projectId={storyContext.id}
           onClose={() => setShowAnalyticsPanel(false)}
+        />
+      )}
+
+      {/* Advanced Analytics Dashboard */}
+      {showAdvancedAnalytics && storyContext.id && scenes.length > 0 && (
+        <AdvancedAnalyticsDashboard
+          projectId={storyContext.id}
+          scenes={scenes}
+          storyContext={storyContext}
+          onClose={() => setShowAdvancedAnalytics(false)}
         />
       )}
 
@@ -4245,6 +4449,20 @@ const App: React.FC = () => {
             onClose={() => setShowActivityPanel(false)}
           />
         </div>
+      )}
+
+      {/* Notification Center */}
+      {showNotificationCenter && (
+        <NotificationCenter
+          isOpen={showNotificationCenter}
+          onClose={() => setShowNotificationCenter(false)}
+          notifications={notifications}
+          unreadCount={unreadNotificationCount}
+          onMarkAsRead={handleMarkNotificationRead}
+          onMarkAllAsRead={handleMarkAllNotificationsRead}
+          onDelete={handleDeleteNotification}
+          onRefresh={loadNotifications}
+        />
       )}
 
       {/* Settings Panel */}
