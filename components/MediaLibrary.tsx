@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { mediaService } from '../apiServices';
+import BackgroundRemovalModal from './BackgroundRemovalModal';
+import BatchBackgroundRemoval from './BatchBackgroundRemoval';
 
 interface MediaLibraryProps {
   projectId: string;
@@ -34,6 +36,10 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
   const [bulkUploading, setBulkUploading] = useState(false);
   const [removingBg, setRemovingBg] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
+  const [showBgRemovalModal, setShowBgRemovalModal] = useState(false);
+  const [bgRemovalFile, setBgRemovalFile] = useState<File | null>(null);
+  const [showBatchBgRemoval, setShowBatchBgRemoval] = useState(false);
+  const [batchBgRemovalFiles, setBatchBgRemovalFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -74,20 +80,19 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
       return;
     }
 
+    if (removeBg) {
+      // Show preview modal
+      setBgRemovalFile(file);
+      setShowBgRemovalModal(true);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     try {
       setUploading(true);
-      if (removeBg) setRemovingBg(true);
-      
-      if (removeBg) {
-        // Remove background first, then upload
-        const result = await mediaService.removeBackground(file);
-        const processedFile = new File([result], 'nobg.png', { type: 'image/png' });
-        await mediaService.uploadImage(projectId, processedFile, sceneId);
-      } else {
-        await mediaService.uploadImage(projectId, file, sceneId);
-      }
-      
-      // Reload media after successful upload
+      await mediaService.uploadImage(projectId, file, sceneId);
       await loadMedia();
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -97,39 +102,80 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
       alert('Failed to upload image: ' + error.message);
     } finally {
       setUploading(false);
-      setRemovingBg(false);
     }
   };
 
-  const handleBulkUpload = async (files: FileList | null, removeBg: boolean = false) => {
+  const handleBgRemovalConfirm = async (processedFile: File, processedUrl: string) => {
+    setUploading(true);
+    try {
+      await mediaService.uploadImage(projectId, processedFile, sceneId);
+      await loadMedia();
+    } catch (error: any) {
+      alert('Failed to upload processed image: ' + error.message);
+    } finally {
+      setUploading(false);
+      setBgRemovalFile(null);
+    }
+  };
+
+  const handleBulkFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setBulkUploading(true);
-    if (removeBg) setRemovingBg(true);
+    const fileArray = Array.from(files);
+    const imageFiles = fileArray.filter(f => f.type.startsWith('image/'));
     
-    try {
-      const fileArray = Array.from(files);
-      const results = await mediaService.bulkUpload(projectId, fileArray, sceneId, removeBg);
+    if (imageFiles.length === 0) {
+      alert('Please select image files');
+      return;
+    }
 
-      if (results.success) {
-        const uploaded = results.uploaded || 0;
-        const failed = results.failed || 0;
-        alert(`Successfully uploaded ${uploaded} image(s)${failed > 0 ? `, ${failed} failed` : ''}`);
-        await loadMedia();
-      } else {
-        alert('Bulk upload failed');
-      }
+    // Ask user if they want to remove backgrounds
+    const removeBg = window.confirm(`Process ${imageFiles.length} image(s) with background removal?`);
+    
+    if (removeBg) {
+      setBatchBgRemovalFiles(imageFiles);
+      setShowBatchBgRemoval(true);
+    } else {
+      handleBulkUpload(imageFiles, false);
+    }
+
+    if (bulkFileInputRef.current) {
+      bulkFileInputRef.current.value = '';
+    }
+  };
+
+  const handleBulkUpload = async (files: File[], removeBg: boolean = false) => {
+    if (files.length === 0) return;
+
+    setBulkUploading(true);
+    try {
+      await mediaService.bulkUpload(projectId, files, sceneId, removeBg);
+      await loadMedia();
     } catch (error: any) {
       console.error('Bulk upload failed:', error);
       alert('Failed to upload images: ' + error.message);
     } finally {
       setBulkUploading(false);
-      setRemovingBg(false);
-      if (bulkFileInputRef.current) {
-        bulkFileInputRef.current.value = '';
-      }
     }
   };
+
+  const handleBatchBgRemovalComplete = async (results: Array<{ file: File; url: string }>) => {
+    if (results.length === 0) return;
+    
+    setBulkUploading(true);
+    try {
+      const files = results.map(r => r.file);
+      await mediaService.bulkUpload(projectId, files, sceneId, false);
+      await loadMedia();
+    } catch (error: any) {
+      alert('Failed to upload processed images: ' + error.message);
+    } finally {
+      setBulkUploading(false);
+      setBatchBgRemovalFiles([]);
+    }
+  };
+
 
   const handleDelete = async (mediaId: string) => {
     if (!window.confirm('Delete this image?')) return;
@@ -211,7 +257,7 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={(e) => handleBulkUpload(e.target.files, false)}
+                  onChange={handleBulkFileSelect}
                   className="hidden"
                 />
                 <div className="flex gap-2">
@@ -235,11 +281,11 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
                       };
                       newInput.click();
                     }}
-                    disabled={uploading || bulkUploading || removingBg}
+                    disabled={uploading || bulkUploading}
                     className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 rounded text-sm disabled:opacity-50 text-white"
                     title="Upload image with background removed"
                   >
-                    {removingBg ? 'Removing...' : 'Upload & Remove BG'}
+                    Upload & Remove BG
                   </button>
                   <button
                     onClick={() => bulkFileInputRef.current?.click()}
@@ -366,6 +412,34 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
           </div>
         )}
       </div>
+
+      {/* Background Removal Modal */}
+      {showBgRemovalModal && bgRemovalFile && (
+        <BackgroundRemovalModal
+          file={bgRemovalFile}
+          onClose={() => {
+            setShowBgRemovalModal(false);
+            setBgRemovalFile(null);
+          }}
+          onConfirm={handleBgRemovalConfirm}
+          projectId={projectId}
+          sceneId={sceneId}
+        />
+      )}
+
+      {/* Batch Background Removal */}
+      {showBatchBgRemoval && batchBgRemovalFiles.length > 0 && (
+        <BatchBackgroundRemoval
+          files={batchBgRemovalFiles}
+          projectId={projectId}
+          sceneId={sceneId}
+          onClose={() => {
+            setShowBatchBgRemoval(false);
+            setBatchBgRemovalFiles([]);
+          }}
+          onComplete={handleBatchBgRemovalComplete}
+        />
+      )}
     </div>
   );
 };

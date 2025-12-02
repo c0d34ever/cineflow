@@ -3,6 +3,7 @@ import { charactersService, mediaService } from '../apiServices';
 import { extractCharacters } from '../clientGeminiService';
 import { StoryContext, Scene } from '../types';
 import { getFullImageUrl } from '../utils/imageUtils';
+import BackgroundRemovalModal from './BackgroundRemovalModal';
 
 interface Character {
   id: number;
@@ -40,6 +41,8 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   const [removingBg, setRemovingBg] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [bulkUploading, setBulkUploading] = useState(false);
+  const [showBgRemovalModal, setShowBgRemovalModal] = useState(false);
+  const [bgRemovalFile, setBgRemovalFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,47 +106,51 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   };
 
   const handleImageUpload = async (file: File, removeBg: boolean = false) => {
+    if (removeBg) {
+      // Show preview modal instead of processing immediately
+      setBgRemovalFile(file);
+      setShowBgRemovalModal(true);
+      return;
+    }
+
     setUploading(true);
     try {
-      let imageUrl = '';
+      const result = await mediaService.uploadImage(projectId, file);
+      const imageUrl = result.imagekit_url || result.file_path || '';
+      const fullUrl = imageUrl && !imageUrl.startsWith('http')
+        ? `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${imageUrl}`
+        : imageUrl;
 
-      if (removeBg) {
-        setRemovingBg(true);
-        try {
-          const result = await mediaService.removeBackground(file);
-          // Use the processed image URL
-          imageUrl = result.imagekit_url || result.processedPath || '';
-          if (imageUrl && !imageUrl.startsWith('http')) {
-            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-            imageUrl = `${API_BASE_URL.replace('/api', '')}${imageUrl}`;
-          }
-        } catch (error: any) {
-          console.error('Background removal failed:', error);
-          alert('Background removal failed: ' + error.message);
-          // Fall through to regular upload
-        } finally {
-          setRemovingBg(false);
-        }
-      }
-
-      // If background removal wasn't requested or failed, do regular upload
-      if (!imageUrl) {
-        const result = await mediaService.uploadImage(projectId, file);
-        imageUrl = result.imagekit_url || result.file_path || '';
-        if (imageUrl && !imageUrl.startsWith('http')) {
-          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-          imageUrl = `${API_BASE_URL.replace('/api', '')}${imageUrl}`;
-        }
-      }
-
-      if (imageUrl) {
-        setFormData({ ...formData, image_url: imageUrl });
-        setImagePreview(imageUrl);
+      if (fullUrl) {
+        setFormData({ ...formData, image_url: fullUrl });
+        setImagePreview(fullUrl);
       }
     } catch (error: any) {
       alert('Error uploading image: ' + error.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleBgRemovalConfirm = async (processedFile: File, processedUrl: string) => {
+    setUploading(true);
+    try {
+      // Upload the processed file
+      const result = await mediaService.uploadImage(projectId, processedFile);
+      const imageUrl = result.imagekit_url || result.file_path || processedUrl;
+      const fullUrl = imageUrl && !imageUrl.startsWith('http')
+        ? `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${imageUrl}`
+        : imageUrl;
+
+      if (fullUrl) {
+        setFormData({ ...formData, image_url: fullUrl });
+        setImagePreview(fullUrl);
+      }
+    } catch (error: any) {
+      alert('Error uploading processed image: ' + error.message);
+    } finally {
+      setUploading(false);
+      setBgRemovalFile(null);
     }
   };
 
@@ -348,7 +355,7 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
                       />
                     </label>
                     <label className="px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded text-sm cursor-pointer">
-                      {removingBg ? 'Removing BG...' : 'Upload & Remove BG'}
+                      Upload & Remove BG
                       <input
                         type="file"
                         accept="image/*"
@@ -359,7 +366,7 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
                             handleImageUpload(file, true);
                           }
                         }}
-                        disabled={removingBg || uploading}
+                        disabled={uploading}
                       />
                     </label>
                     <label className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm cursor-pointer">
@@ -476,6 +483,19 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
           )}
         </div>
       </div>
+
+      {/* Background Removal Modal */}
+      {showBgRemovalModal && bgRemovalFile && (
+        <BackgroundRemovalModal
+          file={bgRemovalFile}
+          onClose={() => {
+            setShowBgRemovalModal(false);
+            setBgRemovalFile(null);
+          }}
+          onConfirm={handleBgRemovalConfirm}
+          projectId={projectId}
+        />
+      )}
     </div>
   );
 };

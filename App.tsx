@@ -48,14 +48,21 @@ import ExportPresetsPanel from './components/ExportPresetsPanel';
 import AISceneSuggestionsPanel from './components/AISceneSuggestionsPanel';
 import StoryArcVisualizer from './components/StoryArcVisualizer';
 import ProjectQuickActionsMenu from './components/ProjectQuickActionsMenu';
+import CoverImageManager from './components/CoverImageManager';
+import LazyImage from './components/LazyImage';
+import ProjectStatsTooltip from './components/ProjectStatsTooltip';
 import SceneBookmarksPanel from './components/SceneBookmarksPanel';
+import QuickTemplateCreator from './components/QuickTemplateCreator';
+import QuickTagAssigner from './components/QuickTagAssigner';
+import BulkTagAssigner from './components/BulkTagAssigner';
+import { highlightSearchTerm, highlightAndTruncate } from './utils/searchHighlight';
 import QuickActionsMenuWrapper, { setShowToast as setQuickActionsToast } from './components/QuickActionsMenuWrapper';
 import ExportQueuePanel, { ExportJob } from './components/ExportQueuePanel';
 import SceneDependencyTracker from './components/SceneDependencyTracker';
 import { enhanceScenePrompt, suggestDirectorSettings, generateStoryConcept, suggestNextScene } from './clientGeminiService';
 import { saveProjectToDB, getProjectsFromDB, ProjectData, deleteProjectFromDB } from './db';
 import { apiService, checkApiAvailability } from './apiService';
-import { authService, tagsService, templatesService, charactersService, sharingService, locationsService, sceneTemplatesService, activityService, archiveProject } from './apiServices';
+import { authService, tagsService, templatesService, charactersService, sharingService, locationsService, sceneTemplatesService, activityService, archiveProject, favoritesService } from './apiServices';
 import { exportToMarkdown, exportToCSV, exportToPDF, exportToFountain, downloadFile, ExportData, exportEpisodeToPDF, EpisodeExportData, PDFStyle } from './utils/exportUtils';
 import { mediaService, episodesService, comicsService } from './apiServices';
 
@@ -93,6 +100,49 @@ const generateId = () => {
     var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
+};
+
+// Calculate health score for a project (same logic as ProjectHealthScore component)
+const calculateProjectHealthScore = (project: ProjectData): number => {
+  const { context, scenes } = project;
+  
+  // Scene Completion (40%)
+  const totalScenes = scenes.length;
+  const completedScenes = scenes.filter(s => s.status === 'completed').length;
+  const sceneCompletion = totalScenes > 0 ? (completedScenes / totalScenes) * 100 : 0;
+
+  // Director Settings Completeness (20%)
+  const settingsCount = scenes.filter(s => {
+    const ds = s.directorSettings;
+    return ds && ds.lens && ds.angle && ds.lighting && ds.movement;
+  }).length;
+  const settingsScore = totalScenes > 0 ? (settingsCount / totalScenes) * 100 : 0;
+
+  // Character Development (15%)
+  const hasCharacters = context.characters && context.characters.trim().length > 0;
+  const scenesWithDialogue = scenes.filter(s => s.directorSettings?.dialogue).length;
+  const characterDevelopment = (hasCharacters ? 50 : 0) + (totalScenes > 0 ? (scenesWithDialogue / totalScenes) * 50 : 0);
+
+  // Story Structure (15%)
+  const hasTitle = context.title && context.title.trim().length > 0;
+  const hasGenre = context.genre && context.genre.trim().length > 0;
+  const hasPlot = context.plotSummary && context.plotSummary.trim().length > 0;
+  const hasContext = context.initialContext && context.initialContext.trim().length > 0;
+  const structureScore = (hasTitle ? 25 : 0) + (hasGenre ? 25 : 0) + (hasPlot ? 25 : 0) + (hasContext ? 25 : 0);
+
+  // Export Readiness (10%)
+  const exportReadiness = (totalScenes > 0 ? 50 : 0) + 50; // Simplified: assume ready if scenes exist
+
+  // Calculate overall score
+  const overall = (
+    sceneCompletion * 0.40 +
+    settingsScore * 0.20 +
+    characterDevelopment * 0.15 +
+    structureScore * 0.15 +
+    exportReadiness * 0.10
+  );
+
+  return Math.round(overall);
 };
 
 const App: React.FC = () => {
@@ -147,11 +197,16 @@ const App: React.FC = () => {
 
   // Library View
   const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
-  const [librarySortBy, setLibrarySortBy] = useState<'date' | 'title' | 'genre'>('date');
+  const [librarySortBy, setLibrarySortBy] = useState<'date' | 'title' | 'genre' | 'scenes' | 'updated' | 'favorites' | 'health'>('date');
+  const [librarySortOrder, setLibrarySortOrder] = useState<'asc' | 'desc'>('desc');
   const [librarySearchTerm, setLibrarySearchTerm] = useState('');
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [libraryFilterGenre, setLibraryFilterGenre] = useState('');
   const [libraryFilterTags, setLibraryFilterTags] = useState<string[]>([]);
+  const [libraryFilterHasCover, setLibraryFilterHasCover] = useState<boolean | null>(null);
+  const [libraryFilterSceneCount, setLibraryFilterSceneCount] = useState<{ min?: number; max?: number } | null>(null);
+  const [libraryFilterFavorites, setLibraryFilterFavorites] = useState<boolean | null>(null);
+  const [libraryCardSize, setLibraryCardSize] = useState<'small' | 'medium' | 'large'>('medium');
 
   // Templates
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
@@ -269,11 +324,24 @@ const App: React.FC = () => {
   const [showStoryArcVisualizer, setShowStoryArcVisualizer] = useState(false);
   const [selectedProjectForSharing, setSelectedProjectForSharing] = useState<ProjectData | null>(null);
   const [projectQuickActions, setProjectQuickActions] = useState<{ project: ProjectData; position: { x: number; y: number } } | null>(null);
+  const [showCoverImageManager, setShowCoverImageManager] = useState(false);
+  const [coverImageProjectId, setCoverImageProjectId] = useState<string | null>(null);
+  const [coverImageProjectUrl, setCoverImageProjectUrl] = useState<string | null>(null);
   const [showSceneBookmarks, setShowSceneBookmarks] = useState(false);
   const [showExportQueue, setShowExportQueue] = useState(false);
   const [exportQueue, setExportQueue] = useState<ExportJob[]>([]);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
   const [showSceneDependencyTracker, setShowSceneDependencyTracker] = useState(false);
+  const [hoveredProjectForTooltip, setHoveredProjectForTooltip] = useState<{ project: ProjectData; position: { x: number; y: number } } | null>(null);
+  const [batchGeneratingCovers, setBatchGeneratingCovers] = useState(false);
+  const [showQuickTemplateCreator, setShowQuickTemplateCreator] = useState(false);
+  const [templateCreatorProject, setTemplateCreatorProject] = useState<ProjectData | null>(null);
+  const [showQuickTagAssigner, setShowQuickTagAssigner] = useState(false);
+  const [tagAssignerProject, setTagAssignerProject] = useState<ProjectData | null>(null);
+  const [favoritedProjects, setFavoritedProjects] = useState<Set<string>>(new Set());
+  const [libraryBatchMode, setLibraryBatchMode] = useState(false);
+  const [selectedLibraryProjectIds, setSelectedLibraryProjectIds] = useState<Set<string>>(new Set());
+  const [showBulkTagAssigner, setShowBulkTagAssigner] = useState(false);
 
   // Undo/Redo
   const [history, setHistory] = useState<ProjectData[]>([]);
@@ -359,10 +427,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (view === 'library' && isAuthenticated) {
       loadLibrary();
+      loadFavorites();
       
       const onFocus = () => {
         if (isAuthenticated) {
           loadLibrary();
+          loadFavorites();
         }
       };
       window.addEventListener('focus', onFocus);
@@ -590,8 +660,12 @@ const App: React.FC = () => {
       // Ctrl/Cmd + / - Show shortcuts help
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
-        alert(`Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`);
+        const shortcuts = view === 'library' 
+          ? `Library Shortcuts:\n\nCtrl+F - Advanced search\nCtrl+N - New project\nCtrl+/ - Show this help\nEsc - Close modals\n\nStudio Shortcuts:\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo`
+          : `Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`;
+        alert(shortcuts);
       }
+
 
       // Escape - Close modals
       if (e.key === 'Escape') {
@@ -610,6 +684,25 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [view, storyContext.id, showExportMenu]);
+
+  const loadFavorites = async () => {
+    try {
+      const favorites = await favoritesService.getAll();
+      const favoriteIds = new Set<string>();
+      if (Array.isArray(favorites)) {
+        favorites.forEach((f: any) => {
+          if (f.id || f.project_id) favoriteIds.add(f.id || f.project_id);
+        });
+      } else if (favorites && (favorites as any).favorites) {
+        ((favorites as any).favorites as any[]).forEach((f: any) => {
+          if (f.id || f.project_id) favoriteIds.add(f.id || f.project_id);
+        });
+      }
+      setFavoritedProjects(favoriteIds);
+    } catch (error) {
+      console.error('Failed to load favorites:', error);
+    }
+  };
 
   const loadLibrary = async () => {
     // Don't load if not authenticated
@@ -1608,7 +1701,7 @@ const App: React.FC = () => {
     const x = e.clientX;
     const y = e.clientY;
     if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-      setDragOverIndex(null);
+    setDragOverIndex(null);
     }
   };
 
@@ -1846,10 +1939,10 @@ const App: React.FC = () => {
       if (apiAvailable) {
         const response = await fetch(`${API_BASE_URL}/clips/batch`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
           body: JSON.stringify({
             clip_ids: Array.from(selectedSceneIds),
             operation: 'update_status',
@@ -2092,11 +2185,11 @@ const App: React.FC = () => {
       let optimizedSettings: DirectorSettings;
       try {
         optimizedSettings = await suggestDirectorSettings(
-          currentInput,
-          storyContext,
-          prevContext,
-          currentSettings
-        );
+        currentInput,
+        storyContext,
+        prevContext,
+        currentSettings
+      );
         
         // Validate that we got valid settings
         if (!optimizedSettings || typeof optimizedSettings !== 'object' || Object.keys(optimizedSettings).length === 0) {
@@ -2375,7 +2468,58 @@ const App: React.FC = () => {
 
           {/* Library Controls */}
           {projects.length > 0 && (
-            <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
+            <div className="mb-4 sm:mb-6 space-y-3">
+              {/* Batch Mode Toggle */}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    setLibraryBatchMode(!libraryBatchMode);
+                    if (libraryBatchMode) {
+                      setSelectedLibraryProjectIds(new Set());
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded text-xs border transition-colors ${
+                    libraryBatchMode
+                      ? 'bg-amber-600 border-amber-500 text-white'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                  }`}
+                >
+                  {libraryBatchMode ? (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 inline mr-1">
+                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                      </svg>
+                      Batch Mode ({selectedLibraryProjectIds.size} selected)
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 inline mr-1">
+                        <path d="M1 1.75A.75.75 0 011.75 1h1.628a1.75 1.75 0 011.734 2.006L6.58 3.5h9.92a1.75 1.75 0 011.734 2.006l-1.064 7.5a1.75 1.75 0 01-1.734 1.994H3.75a.75.75 0 010-1.5h12.226a.25.25 0 00.248-.216L16.5 5.5H5.5a.75.75 0 01-.734-.606L3.5 2.5H1.75A.75.75 0 011 1.75z" />
+                      </svg>
+                      Select Multiple
+                    </>
+                  )}
+                </button>
+
+                {libraryBatchMode && selectedLibraryProjectIds.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowBulkTagAssigner(true)}
+                      className="px-3 py-1.5 rounded text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-900/50 transition-colors"
+                    >
+                      Assign Tags ({selectedLibraryProjectIds.size})
+                    </button>
+                    <button
+                      onClick={() => setSelectedLibraryProjectIds(new Set())}
+                      className="px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
               {/* Search */}
               <div className="flex-1 w-full sm:max-w-md">
                 <input
@@ -2392,7 +2536,7 @@ const App: React.FC = () => {
                 <button
                   onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
                   className={`px-3 py-1.5 rounded text-xs border transition-colors ${
-                    showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0
+                    showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null
                       ? 'bg-amber-600 border-amber-500 text-white'
                       : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
                   }`}
@@ -2410,7 +2554,18 @@ const App: React.FC = () => {
                   <option value="date">Sort by Date</option>
                   <option value="title">Sort by Title</option>
                   <option value="genre">Sort by Genre</option>
+                  <option value="scenes">Sort by Scene Count</option>
+                  <option value="updated">Sort by Last Updated</option>
+                  <option value="health">Sort by Health Score</option>
+                  <option value="favorites">Sort by Favorites</option>
                 </select>
+                <button
+                  onClick={() => setLibrarySortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm hover:bg-zinc-800 transition-colors"
+                  title={`Sort ${librarySortOrder === 'asc' ? 'Ascending' : 'Descending'}`}
+                >
+                  {librarySortOrder === 'asc' ? '↑' : '↓'}
+                </button>
 
                 <div className="flex bg-zinc-900 border border-zinc-700 rounded-lg p-1">
                   <button
@@ -2587,17 +2742,155 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                  <div className="flex items-end">
+                  <div className="space-y-3">
+                    {/* Cover Image Filter */}
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Cover Image</label>
+                      <select
+                        value={libraryFilterHasCover === null ? 'all' : libraryFilterHasCover ? 'yes' : 'no'}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setLibraryFilterHasCover(value === 'all' ? null : value === 'yes');
+                        }}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm"
+                      >
+                        <option value="all">All Projects</option>
+                        <option value="yes">Has Cover</option>
+                        <option value="no">No Cover</option>
+                      </select>
+                    </div>
+
+                    {/* Scene Count Filter */}
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Scene Count</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          placeholder="Min"
+                          min="0"
+                          value={libraryFilterSceneCount?.min || ''}
+                          onChange={(e) => {
+                            const min = e.target.value ? parseInt(e.target.value) : undefined;
+                            setLibraryFilterSceneCount(prev => ({
+                              min,
+                              max: prev?.max
+                            }));
+                          }}
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Max"
+                          min="0"
+                          value={libraryFilterSceneCount?.max || ''}
+                          onChange={(e) => {
+                            const max = e.target.value ? parseInt(e.target.value) : undefined;
+                            setLibraryFilterSceneCount(prev => ({
+                              min: prev?.min,
+                              max
+                            }));
+                          }}
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Favorites Filter */}
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Favorites</label>
+                      <select
+                        value={libraryFilterFavorites === null ? 'all' : libraryFilterFavorites ? 'yes' : 'no'}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setLibraryFilterFavorites(value === 'all' ? null : value === 'yes');
+                        }}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm"
+                      >
+                        <option value="all">All Projects</option>
+                        <option value="yes">Favorites Only</option>
+                        <option value="no">Not Favorited</option>
+                      </select>
+                    </div>
+
                     <button
                       onClick={() => {
                         setLibraryFilterGenre('');
                         setLibraryFilterTags([]);
                         setLibrarySearchTerm('');
+                        setLibraryFilterHasCover(null);
+                        setLibraryFilterSceneCount(null);
+                        setLibraryFilterFavorites(null);
                       }}
                       className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
                     >
-                      Clear Filters
+                      Clear All Filters
                     </button>
+
+                    {/* Batch Generate Covers */}
+                    {filteredProjects.filter(p => !p.context.coverImageUrl).length > 0 && (
+                      <button
+                        onClick={async () => {
+                          const projectsWithoutCover = filteredProjects.filter(p => !p.context.coverImageUrl);
+                          if (projectsWithoutCover.length === 0) {
+                            showToast('All projects already have cover images', 'info');
+                            return;
+                          }
+                          
+                          if (!window.confirm(`Generate cover images for ${projectsWithoutCover.length} project(s)?`)) {
+                            return;
+                          }
+
+                          setBatchGeneratingCovers(true);
+                          let successCount = 0;
+                          let failCount = 0;
+
+                          for (const project of projectsWithoutCover) {
+                            try {
+                              const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${project.context.id}/generate-cover`, {
+                                method: 'POST',
+                                headers: {
+                                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                  'Content-Type': 'application/json'
+                                }
+                              });
+                              if (response.ok) {
+                                successCount++;
+                              } else {
+                                failCount++;
+                              }
+                            } catch (error) {
+                              failCount++;
+                            }
+                          }
+
+                          setBatchGeneratingCovers(false);
+                          const list = await apiService.getProjects();
+                          setProjects(list);
+                          
+                          if (successCount > 0) {
+                            showToast(`Generated ${successCount} cover image(s)${failCount > 0 ? `, ${failCount} failed` : ''}`, 'success');
+                          } else {
+                            showToast('Failed to generate cover images', 'error');
+                          }
+                        }}
+                        disabled={batchGeneratingCovers}
+                        className="w-full px-4 py-2 bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-900/50 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {batchGeneratingCovers ? (
+                          <>
+                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            ✨ Generate Covers ({filteredProjects.filter(p => !p.context.coverImageUrl).length})
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2632,17 +2925,61 @@ const App: React.FC = () => {
                 return true;
               });
 
+              // Additional filters
+              filteredProjects = filteredProjects.filter(p => {
+                // Cover image filter
+                if (libraryFilterHasCover !== null) {
+                  const hasCover = !!p.context.coverImageUrl;
+                  if (libraryFilterHasCover !== hasCover) return false;
+                }
+
+                // Scene count filter
+                if (libraryFilterSceneCount) {
+                  const sceneCount = p.scenes.length;
+                  if (libraryFilterSceneCount.min !== undefined && sceneCount < libraryFilterSceneCount.min) return false;
+                  if (libraryFilterSceneCount.max !== undefined && sceneCount > libraryFilterSceneCount.max) return false;
+                }
+
+                // Favorites filter
+                if (libraryFilterFavorites !== null) {
+                  const isFavorited = favoritedProjects.has(p.context.id);
+                  if (libraryFilterFavorites !== isFavorited) return false;
+                }
+
+                return true;
+              });
+
               // Sort projects
               filteredProjects = [...filteredProjects].sort((a, b) => {
+                let comparison = 0;
+                
                 switch (librarySortBy) {
                   case 'title':
-                    return (a.context.title || '').localeCompare(b.context.title || '');
+                    comparison = (a.context.title || '').localeCompare(b.context.title || '');
+                    break;
                   case 'genre':
-                    return (a.context.genre || '').localeCompare(b.context.genre || '');
+                    comparison = (a.context.genre || '').localeCompare(b.context.genre || '');
+                    break;
+                  case 'scenes':
+                    comparison = a.scenes.length - b.scenes.length;
+                    break;
+                  case 'health':
+                    comparison = calculateProjectHealthScore(a) - calculateProjectHealthScore(b);
+                    break;
+                  case 'favorites':
+                    const aFavorited = favoritedProjects.has(a.context.id) ? 1 : 0;
+                    const bFavorited = favoritedProjects.has(b.context.id) ? 1 : 0;
+                    comparison = bFavorited - aFavorited; // Favorites first
+                    break;
+                  case 'updated':
                   case 'date':
                   default:
-                    return b.context.lastUpdated - a.context.lastUpdated;
+                    comparison = a.context.lastUpdated - b.context.lastUpdated;
+                    break;
                 }
+
+                // Apply sort order
+                return librarySortOrder === 'asc' ? comparison : -comparison;
               });
 
               if (filteredProjects.length === 0) {
@@ -2653,61 +2990,196 @@ const App: React.FC = () => {
                 );
               }
 
-              return filteredProjects.map(p => (
+              return (
+                <>
+                  {filteredProjects.length > 0 && (
+                    <div className={`${libraryViewMode === 'grid' ? 'col-span-full' : 'w-full'} text-xs text-zinc-500 mb-2`}>
+                      Showing {filteredProjects.length} of {projects.length} project{projects.length !== 1 ? 's' : ''}
+                      {libraryBatchMode && selectedLibraryProjectIds.size > 0 && (
+                        <span className="ml-2 text-amber-400">
+                          • {selectedLibraryProjectIds.size} selected
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {filteredProjects.map(p => {
+                    const isSelected = selectedLibraryProjectIds.has(p.context.id);
+                    return (
                   <div 
                     key={p.context.id} 
-                    onClick={() => handleOpenProject(p)}
+                    onClick={() => {
+                      if (libraryBatchMode) {
+                        setSelectedLibraryProjectIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(p.context.id)) {
+                            next.delete(p.context.id);
+                          } else {
+                            next.add(p.context.id);
+                          }
+                          return next;
+                        });
+                      } else {
+                        handleOpenProject(p);
+                      }
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      setProjectQuickActions({
-                        project: p,
-                        position: { x: e.clientX, y: e.clientY }
-                      });
+                      if (!libraryBatchMode) {
+                        setProjectQuickActions({
+                          project: p,
+                          position: { x: e.clientX, y: e.clientY }
+                        });
+                      }
                     }}
-                    className={`bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all cursor-pointer relative group flex flex-col ${
-                      libraryViewMode === 'grid' ? 'min-h-[200px]' : 'flex-row min-h-[120px]'
-                    }`}
+                    className={`bg-zinc-900 border rounded-xl overflow-hidden transition-all relative group flex flex-col ${
+                      libraryBatchMode 
+                        ? 'cursor-pointer' 
+                        : 'cursor-pointer hover:border-zinc-600'
+                      } ${
+                        isSelected
+                          ? 'border-amber-500 ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900'
+                          : 'border-zinc-800'
+                      } ${
+                        libraryViewMode === 'grid' 
+                          ? libraryCardSize === 'small'
+                            ? 'min-h-[150px]'
+                            : libraryCardSize === 'large'
+                            ? 'min-h-[300px]'
+                            : 'min-h-[200px]'
+                          : 'flex-row min-h-[120px]'
+                      }`}
                   >
                     {libraryViewMode === 'grid' ? (
                       <>
                         {/* Cover Image */}
                         {p.context.coverImageUrl ? (
-                          <div className="w-full h-48 bg-zinc-950 overflow-hidden">
-                            <img
+                          <div className={`w-full bg-zinc-950 overflow-hidden ${
+                            libraryCardSize === 'small' ? 'h-24' : libraryCardSize === 'large' ? 'h-64' : 'h-48'
+                          }`}>
+                            <LazyImage
                               src={p.context.coverImageUrl.startsWith('http') 
                                 ? p.context.coverImageUrl 
                                 : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl.startsWith('/') ? '' : '/'}${p.context.coverImageUrl}`}
                               alt={p.context.title}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                console.error('Cover image failed to load:', p.context.coverImageUrl);
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                const parent = target.parentElement;
-                                if (parent) {
-                                  parent.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-4xl">🎬</div></div>';
-                                }
-                              }}
-                              onLoad={() => {
-                                console.log('Cover image loaded successfully:', p.context.coverImageUrl);
-                              }}
+                              className="w-full h-full"
+                              loading="lazy"
                             />
                           </div>
                         ) : (
                           <div className="h-2 bg-gradient-to-r from-amber-600 to-amber-800"></div>
                         )}
+                        
+                        {/* Selection Checkbox (Batch Mode) */}
+                        {libraryBatchMode && (
+                          <div className="absolute top-4 left-4 z-10">
+                            <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-all ${
+                              isSelected
+                                ? 'bg-amber-600 border-amber-500'
+                                : 'bg-zinc-900/80 border-zinc-600'
+                            }`}>
+                              {isSelected && (
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-white">
+                                  <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Favorite Button */}
+                        {!libraryBatchMode && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const isFavorited = favoritedProjects.has(p.context.id);
+                                if (isFavorited) {
+                                  await favoritesService.remove(p.context.id);
+                                  setFavoritedProjects(prev => {
+                                    const next = new Set(prev);
+                                    next.delete(p.context.id);
+                                    return next;
+                                  });
+                                  showToast('Removed from favorites', 'success');
+                                } else {
+                                  await favoritesService.add(p.context.id);
+                                  setFavoritedProjects(prev => new Set(prev).add(p.context.id));
+                                  showToast('Added to favorites', 'success');
+                                }
+                              } catch (error: any) {
+                                showToast('Failed to update favorite: ' + error.message, 'error');
+                              }
+                            }}
+                            className={`absolute ${libraryBatchMode ? 'top-4 right-4' : 'top-4 left-4'} p-1.5 rounded transition-all z-10 ${
+                              favoritedProjects.has(p.context.id)
+                                ? 'bg-amber-600/20 text-amber-400 opacity-100'
+                                : 'bg-zinc-900/80 text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-amber-400'
+                            }`}
+                            title={favoritedProjects.has(p.context.id) ? 'Remove from favorites' : 'Add to favorites'}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                              <path d="M9.653 16.915l-.005-.003-.019-.01a20.759 20.759 0 01-1.162-.682 22.045 22.045 0 01-2.582-1.9C4.045 12.733 2 10.352 2 7.5a4.5 4.5 0 018-2.828A4.5 4.5 0 0118 7.5c0 2.852-2.044 5.233-3.885 6.82a22.049 22.049 0 01-3.744 2.582l-.019.01-.005.003h-.002a.739.739 0 01-.69.001l-.002-.001z" />
+                            </svg>
+                          </button>
+                        )}
+
                         <div className="p-6 flex-1 flex flex-col">
-                          <h3 className="text-lg font-serif font-bold text-white mb-1 line-clamp-1">{p.context.title}</h3>
-                          <p className="text-xs text-amber-500 uppercase tracking-wider mb-4">{p.context.genre}</p>
-                          <p className="text-sm text-zinc-500 line-clamp-3 mb-4 flex-1">{p.context.plotSummary}</p>
+                          <h3 className="text-lg font-serif font-bold text-white mb-1 line-clamp-1">
+                            {librarySearchTerm ? highlightSearchTerm(p.context.title, librarySearchTerm) : p.context.title}
+                          </h3>
+                          <p className="text-xs text-amber-500 uppercase tracking-wider mb-4">
+                            {librarySearchTerm && p.context.genre ? highlightSearchTerm(p.context.genre, librarySearchTerm) : p.context.genre}
+                          </p>
+                          <p className="text-sm text-zinc-500 line-clamp-3 mb-4 flex-1">
+                            {librarySearchTerm && p.context.plotSummary ? highlightAndTruncate(p.context.plotSummary, librarySearchTerm, 150) : (p.context.plotSummary || '')}
+                          </p>
                           
                           <div className="flex items-center justify-between mt-auto pt-4 border-t border-zinc-800/50">
-                            <span className="text-[10px] text-zinc-600">
-                              {new Date(p.context.lastUpdated).toLocaleDateString()}
-                            </span>
-                            <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">
-                              {p.scenes.length} Scenes
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-zinc-600">
+                                {new Date(p.context.lastUpdated).toLocaleDateString()}
+                              </span>
+                              {p.scenes.length > 0 && (
+                                <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">
+                                  {p.scenes.length} Scene{p.scenes.length !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                              {p.scenes.filter(s => s.status === 'completed').length > 0 && (
+                                <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-900/50">
+                                  {p.scenes.filter(s => s.status === 'completed').length} Done
+                                </span>
+                              )}
+                            </div>
+                            {!p.context.coverImageUrl && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${p.context.id}/generate-cover`, {
+                                      method: 'POST',
+                                      headers: {
+                                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                        'Content-Type': 'application/json'
+                                      }
+                                    });
+                                    if (response.ok) {
+                                      const list = await apiService.getProjects();
+                                      setProjects(list);
+                                      showToast('Cover image generated!', 'success');
+                                    } else {
+                                      const error = await response.json();
+                                      showToast(error.error || 'Failed to generate cover', 'error');
+                                    }
+                                  } catch (error: any) {
+                                    showToast('Failed to generate cover: ' + error.message, 'error');
+                                  }
+                                }}
+                                className="text-[10px] bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 px-2 py-0.5 rounded border border-purple-900/50 transition-colors"
+                                title="Generate cover from characters"
+                              >
+                                ✨ Cover
+                              </button>
+                            )}
                           </div>
                         </div>
                       </>
@@ -2716,24 +3188,13 @@ const App: React.FC = () => {
                         {/* Cover Image in List View */}
                         {p.context.coverImageUrl ? (
                           <div className="w-32 h-24 bg-zinc-950 overflow-hidden flex-shrink-0">
-                            <img
+                            <LazyImage
                               src={p.context.coverImageUrl.startsWith('http') 
                                 ? p.context.coverImageUrl 
                                 : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl.startsWith('/') ? '' : '/'}${p.context.coverImageUrl}`}
                               alt={p.context.title}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                console.error('Cover image failed to load:', p.context.coverImageUrl);
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                const parent = target.parentElement;
-                                if (parent) {
-                                  parent.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-2xl">🎬</div></div>';
-                                }
-                              }}
-                              onLoad={() => {
-                                console.log('Cover image loaded successfully:', p.context.coverImageUrl);
-                              }}
+                              className="w-full h-full"
+                              loading="lazy"
                             />
                           </div>
                         ) : (
@@ -2742,19 +3203,131 @@ const App: React.FC = () => {
                         <div className="p-4 flex-1 flex flex-col">
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex-1">
-                              <h3 className="text-lg font-serif font-bold text-white mb-1">{p.context.title}</h3>
-                              <p className="text-xs text-amber-500 uppercase tracking-wider">{p.context.genre}</p>
+                              <h3 className="text-lg font-serif font-bold text-white mb-1">
+                                {librarySearchTerm ? highlightSearchTerm(p.context.title, librarySearchTerm) : p.context.title}
+                              </h3>
+                              <p className="text-xs text-amber-500 uppercase tracking-wider">
+                                {librarySearchTerm && p.context.genre ? highlightSearchTerm(p.context.genre, librarySearchTerm) : p.context.genre}
+                              </p>
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-zinc-500">
-                              <span>{new Date(p.context.lastUpdated).toLocaleDateString()}</span>
-                              <span className="bg-zinc-800 px-2 py-0.5 rounded">{p.scenes.length} Scenes</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-zinc-500">{new Date(p.context.lastUpdated).toLocaleDateString()}</span>
+                              {p.scenes.length > 0 && (
+                                <span className="text-xs bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">
+                                  {p.scenes.length} Scene{p.scenes.length !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                              {p.scenes.filter(s => s.status === 'completed').length > 0 && (
+                                <span className="text-xs bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-900/50">
+                                  {p.scenes.filter(s => s.status === 'completed').length} Done
+                                </span>
+                              )}
+                              {!p.context.coverImageUrl && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${p.context.id}/generate-cover`, {
+                                        method: 'POST',
+                                        headers: {
+                                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                          'Content-Type': 'application/json'
+                                        }
+                                      });
+                                      if (response.ok) {
+                                        const list = await apiService.getProjects();
+                                        setProjects(list);
+                                        showToast('Cover image generated!', 'success');
+                                      } else {
+                                        const error = await response.json();
+                                        showToast(error.error || 'Failed to generate cover', 'error');
+                                      }
+                                    } catch (error: any) {
+                                      showToast('Failed to generate cover: ' + error.message, 'error');
+                                    }
+                                  }}
+                                  className="text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 px-2 py-0.5 rounded border border-purple-900/50 transition-colors"
+                                  title="Generate cover from characters"
+                                >
+                                  ✨ Cover
+                                </button>
+                              )}
                             </div>
                           </div>
-                          <p className="text-sm text-zinc-500 line-clamp-2">{p.context.plotSummary}</p>
+                          <p className="text-sm text-zinc-500 line-clamp-2">
+                            {librarySearchTerm && p.context.plotSummary ? highlightAndTruncate(p.context.plotSummary, librarySearchTerm, 200) : (p.context.plotSummary || '')}
+                          </p>
                         </div>
                       </>
                     )}
+                    {/* Favorite Button */}
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          const isFavorited = favoritedProjects.has(p.context.id);
+                          if (isFavorited) {
+                            await favoritesService.remove(p.context.id);
+                            setFavoritedProjects(prev => {
+                              const next = new Set(prev);
+                              next.delete(p.context.id);
+                              return next;
+                            });
+                            showToast('Removed from favorites', 'success');
+                          } else {
+                            await favoritesService.add(p.context.id);
+                            setFavoritedProjects(prev => new Set(prev).add(p.context.id));
+                            showToast('Added to favorites', 'success');
+                          }
+                        } catch (error: any) {
+                          showToast('Failed to update favorite: ' + error.message, 'error');
+                        }
+                      }}
+                      className={`absolute top-4 left-4 p-1.5 rounded transition-all ${
+                        favoritedProjects.has(p.context.id)
+                          ? 'bg-amber-600/20 text-amber-400 opacity-100'
+                          : 'bg-zinc-900/80 text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-amber-400'
+                      }`}
+                      title={favoritedProjects.has(p.context.id) ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path d="M9.653 16.915l-.005-.003-.019-.01a20.759 20.759 0 01-1.162-.682 22.045 22.045 0 01-2.582-1.9C4.045 12.733 2 10.352 2 7.5a4.5 4.5 0 018-2.828A4.5 4.5 0 0118 7.5c0 2.852-2.044 5.233-3.885 6.82a22.049 22.049 0 01-3.744 2.582l-.019.01-.005.003h-.002a.739.739 0 01-.69.001l-.002-.001z" />
+                      </svg>
+                    </button>
+
                     <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {!p.context.coverImageUrl && (
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${p.context.id}/generate-cover`, {
+                                method: 'POST',
+                                headers: {
+                                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                  'Content-Type': 'application/json'
+                                }
+                              });
+                              if (response.ok) {
+                                const list = await apiService.getProjects();
+                                setProjects(list);
+                                showToast('Cover image generated!', 'success');
+                              } else {
+                                const error = await response.json();
+                                showToast(error.error || 'Failed to generate cover', 'error');
+                              }
+                            } catch (error: any) {
+                              showToast('Failed to generate cover: ' + error.message, 'error');
+                            }
+                          }}
+                          className="p-1.5 bg-purple-900/30 hover:bg-purple-900/50 rounded text-purple-400 hover:text-purple-300 border border-purple-900/50"
+                          title="Generate cover from characters"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
                       <button
                         onClick={(e) => handleDuplicateProject(e, p)}
                         className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"
@@ -2979,19 +3552,19 @@ const App: React.FC = () => {
       <header className="h-auto min-h-16 border-b border-zinc-800 bg-zinc-900/50 flex flex-col sm:flex-row items-start sm:items-center px-3 sm:px-6 py-2 sm:py-0 justify-between flex-shrink-0 backdrop-blur-md z-20">
         <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto justify-between sm:justify-start mb-2 sm:mb-0">
           <div className="flex items-center gap-2 sm:gap-4">
-            <button onClick={handleExitToLibrary} className="p-2 text-zinc-400 hover:text-white" title="Back to Library">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-              </svg>
-            </button>
+          <button onClick={handleExitToLibrary} className="p-2 text-zinc-400 hover:text-white" title="Back to Library">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+          </button>
             <div className="font-serif text-lg sm:text-xl font-bold tracking-widest text-amber-500">CINEFLOW</div>
             <div className="h-4 w-px bg-zinc-700 mx-1 sm:mx-2 hidden sm:block"></div>
             <div className="text-xs sm:text-sm text-zinc-300 hidden lg:flex items-center gap-2">
-              <span className="text-zinc-500 mr-2">PROJECT:</span>
+            <span className="text-zinc-500 mr-2">PROJECT:</span>
               <span className="truncate max-w-[200px]">{storyContext.title}</span>
-              {storyContext.title && <CopyButton text={storyContext.title} size="sm" />}
-            </div>
+            {storyContext.title && <CopyButton text={storyContext.title} size="sm" />}
           </div>
+        </div>
           <div className="text-xs text-zinc-400 sm:hidden truncate max-w-[150px]">{storyContext.title}</div>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap w-full sm:w-auto justify-end">
@@ -3254,19 +3827,37 @@ const App: React.FC = () => {
             </button>
           )}
 
+          {/* Project Settings / Cover Image Button */}
+          {view === 'studio' && storyContext.id && (
+            <button
+              onClick={() => {
+                setCoverImageProjectId(storyContext.id);
+                setCoverImageProjectUrl(storyContext.coverImageUrl || null);
+                setShowCoverImageManager(true);
+              }}
+              className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
+              title="Project Settings - Cover Image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
+                <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909.47.47a.75.75 0 11-1.06 1.06L6.53 8.091a.75.75 0 00-1.06 0l-2.97 2.97zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline">Cover</span>
+            </button>
+          )}
+
           {/* Analytics Button */}
           {view === 'studio' && storyContext.id && (
             <div className="relative group">
-              <button
+            <button
                 onClick={() => setShowAdvancedAnalytics(true)}
                 className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
                 title="Advanced Analytics Dashboard"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
-                  <path d="M10 2a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V2.75A.75.75 0 0110 2zM5.404 4.343a.75.75 0 010 1.06 6.5 6.5 0 109.192 0 .75.75 0 111.06-1.06 8 8 0 11-11.313 0 .75.75 0 011.06 0zM8 8a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 8zm3.25.75a.75.75 0 00-1.5 0v5.5a.75.75 0 001.5 0v-5.5z" />
-                </svg>
+                <path d="M10 2a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V2.75A.75.75 0 0110 2zM5.404 4.343a.75.75 0 010 1.06 6.5 6.5 0 109.192 0 .75.75 0 111.06-1.06 8 8 0 11-11.313 0 .75.75 0 011.06 0zM8 8a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 8zm3.25.75a.75.75 0 00-1.5 0v5.5a.75.75 0 001.5 0v-5.5z" />
+              </svg>
                 <span className="hidden sm:inline">Analytics</span>
-              </button>
+            </button>
               {/* Advanced Analytics Dropdown */}
               <div className="absolute right-0 mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                 <button
@@ -4257,6 +4848,41 @@ const App: React.FC = () => {
               }, 500);
             } catch (error: any) {
               showToast('Failed to export project', 'error');
+            }
+          }}
+          onManageCover={(project) => {
+            setCoverImageProjectId(project.context.id);
+            setCoverImageProjectUrl(project.context.coverImageUrl || null);
+            setShowCoverImageManager(true);
+          }}
+        />
+      )}
+
+      {/* Cover Image Manager */}
+      {/* Project Stats Tooltip */}
+      {hoveredProjectForTooltip && view === 'library' && (
+        <ProjectStatsTooltip
+          project={hoveredProjectForTooltip.project}
+          position={hoveredProjectForTooltip.position}
+        />
+      )}
+
+      {showCoverImageManager && coverImageProjectId && (
+        <CoverImageManager
+          projectId={coverImageProjectId}
+          currentCoverUrl={coverImageProjectUrl}
+          onClose={() => {
+            setShowCoverImageManager(false);
+            setCoverImageProjectId(null);
+            setCoverImageProjectUrl(null);
+          }}
+          onUpdate={async () => {
+            // Reload projects to show updated cover
+            try {
+              const list = await apiService.getProjects();
+              setProjects(list);
+            } catch (error) {
+              console.error('Failed to reload projects:', error);
             }
           }}
         />

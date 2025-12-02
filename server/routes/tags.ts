@@ -136,6 +136,28 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
   }
 });
 
+// GET /api/tags/project/:projectId - Get tags for a project
+router.get('/project/:projectId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const projectId = req.params.projectId;
+    const pool = getPool();
+
+    const [tags] = await pool.query(
+      `SELECT t.id, t.name, t.color 
+       FROM tags t
+       INNER JOIN project_tags pt ON t.id = pt.tag_id
+       WHERE pt.project_id = ?
+       ORDER BY t.name ASC`,
+      [projectId]
+    ) as [any[], any];
+
+    res.json({ tags: Array.isArray(tags) ? tags : [] });
+  } catch (error) {
+    console.error('Error fetching project tags:', error);
+    res.status(500).json({ error: 'Failed to fetch project tags' });
+  }
+});
+
 // POST /api/tags/:tagId/projects/:projectId - Add tag to project
 router.post('/:tagId/projects/:projectId', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
