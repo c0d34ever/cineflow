@@ -2589,6 +2589,7 @@ const App: React.FC = () => {
                   </button>
                 </div>
               </div>
+              </div>
             </div>
           )}
 
@@ -3372,8 +3373,8 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                ));
-            })()}
+                  );
+                })}
           </div>
         </main>
       </div>
