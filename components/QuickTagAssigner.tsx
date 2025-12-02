@@ -26,7 +26,7 @@ const QuickTagAssigner: React.FC<QuickTagAssignerProps> = ({ project, onClose, o
       const tags = await tagsService.getAll();
       const projectTagsResponse = await fetch(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api'}/tags/project/${project.context.id}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
       const projectTagsData = projectTagsResponse.ok ? await projectTagsResponse.json() : { tags: [] };
@@ -59,7 +59,7 @@ const QuickTagAssigner: React.FC<QuickTagAssignerProps> = ({ project, onClose, o
       // Get current project tags
       const currentTags = await fetch(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api'}/projects/${project.context.id}/tags`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       }).then(r => r.ok ? r.json() : { tags: [] });
 

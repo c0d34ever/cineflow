@@ -2850,7 +2850,7 @@ const App: React.FC = () => {
                               const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${project.context.id}/generate-cover`, {
                                 method: 'POST',
                                 headers: {
-                                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                  'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                                   'Content-Type': 'application/json'
                                 }
                               });
@@ -3159,7 +3159,7 @@ const App: React.FC = () => {
                                     const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${p.context.id}/generate-cover`, {
                                       method: 'POST',
                                       headers: {
-                                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                                         'Content-Type': 'application/json'
                                       }
                                     });
@@ -3231,7 +3231,7 @@ const App: React.FC = () => {
                                       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${p.context.id}/generate-cover`, {
                                         method: 'POST',
                                         headers: {
-                                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                                           'Content-Type': 'application/json'
                                         }
                                       });
@@ -3305,7 +3305,7 @@ const App: React.FC = () => {
                               const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/projects/${p.context.id}/generate-cover`, {
                                 method: 'POST',
                                 headers: {
-                                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                  'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                                   'Content-Type': 'application/json'
                                 }
                               });

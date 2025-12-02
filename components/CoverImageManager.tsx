@@ -51,7 +51,7 @@ const CoverImageManager: React.FC<CoverImageManagerProps> = ({
       const response = await fetch(`${API_BASE_URL}/projects/${projectId}/cover-image`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         },
         body: formData
       });
@@ -92,7 +92,7 @@ const CoverImageManager: React.FC<CoverImageManagerProps> = ({
       const response = await fetch(`${API_BASE_URL}/projects/${projectId}/generate-cover`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
           'Content-Type': 'application/json'
         }
       });
@@ -137,7 +137,7 @@ const CoverImageManager: React.FC<CoverImageManagerProps> = ({
       const response = await fetch(`${API_BASE_URL}/projects/${projectId}/cover-image`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
 

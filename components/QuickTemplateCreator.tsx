@@ -24,7 +24,7 @@ const QuickTemplateCreator: React.FC<QuickTemplateCreatorProps> = ({ project, on
       const response = await fetch(`${API_BASE_URL}/templates`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
