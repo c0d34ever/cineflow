@@ -7,6 +7,7 @@ import { getPool } from '../db/index.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import sharp from 'sharp';
 import { uploadToImageKit, deleteFromImageKit, isImageKitAvailable } from '../services/imagekitService.js';
+import { removeBackground, removeBackgroundFromBuffer, isBackgroundRemovalAvailable } from '../services/backgroundRemoverService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,6 +59,25 @@ const upload = multer({
   storage,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
+    }
+  }
+});
+
+// Configure multer for multiple file uploads
+const uploadMultiple = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit per file
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -536,6 +556,194 @@ router.post('/:id/associate', authenticateToken, async (req: AuthRequest, res: R
   } catch (error: any) {
     console.error('Error associating media:', error);
     res.status(500).json({ error: 'Failed to associate media' });
+  }
+});
+
+// Remove background from image
+router.post('/remove-background', authenticateToken, upload.single('image'), async (req: AuthRequest, res: Response) => {
+  ensureDirectories();
+  
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    if (!isBackgroundRemovalAvailable()) {
+      return res.status(503).json({ error: 'Background removal service not available.' });
+    }
+
+    const result = await removeBackground(req.file.path);
+    
+    if (!result) {
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+      return res.status(500).json({ error: 'Failed to remove background' });
+    }
+
+    // Upload processed image to ImageKit if available
+    let imagekitUrl: string | null = null;
+    let imagekitThumbnailUrl: string | null = null;
+    let imagekitFileId: string | null = null;
+
+    if (isImageKitAvailable()) {
+      try {
+        const imagekitResult = await uploadToImageKit(result.processedPath, 'nobg-' + req.file.originalname, '/cineflow/processed');
+        if (imagekitResult) {
+          imagekitUrl = imagekitResult.url;
+          imagekitThumbnailUrl = imagekitResult.thumbnailUrl || null;
+          imagekitFileId = imagekitResult.fileId;
+        }
+      } catch (error: any) {
+        console.warn('ImageKit upload failed for processed image:', error.message);
+      }
+    }
+
+    // Generate thumbnail
+    const thumbnailName = `thumb-${path.basename(result.processedPath)}`;
+    const thumbnailPath = path.join(thumbnailsDir, thumbnailName);
+    await generateThumbnail(result.processedPath, thumbnailPath);
+
+    res.json({
+      success: true,
+      processedPath: `/uploads/${path.basename(result.processedPath)}`,
+      thumbnailPath: `/uploads/thumbnails/${thumbnailName}`,
+      imagekit_url: imagekitUrl,
+      imagekit_thumbnail_url: imagekitThumbnailUrl,
+      imagekit_file_id: imagekitFileId,
+    });
+  } catch (error: any) {
+    console.error('Background removal error:', error);
+    res.status(500).json({ error: error.message || 'Failed to remove background' });
+  }
+});
+
+// Bulk upload images
+router.post('/bulk-upload', authenticateToken, uploadMultiple.array('images', 20), async (req: AuthRequest, res: Response) => {
+  ensureDirectories();
+  
+  try {
+    if (!req.files || (Array.isArray(req.files) && req.files.length === 0)) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const files = Array.isArray(req.files) ? req.files : [req.files];
+    const project_id = req.body.project_id;
+    const scene_id = req.body.scene_id;
+    const remove_bg = req.body.remove_bg === 'true' || req.body.remove_bg === true;
+    const userId = req.user!.id;
+
+    if (!project_id) {
+      // Clean up uploaded files
+      files.forEach(file => {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (e) {}
+      });
+      return res.status(400).json({ error: 'project_id is required' });
+    }
+
+    const results = [];
+    const pool = getPool();
+
+    for (const file of files) {
+      try {
+        let processedPath = file.path;
+        let processedBuffer: Buffer | undefined;
+
+        // Remove background if requested
+        if (remove_bg && isBackgroundRemovalAvailable()) {
+          const bgResult = await removeBackground(file.path);
+          if (bgResult) {
+            processedPath = bgResult.processedPath;
+            processedBuffer = bgResult.buffer;
+            // Clean up original
+            try {
+              fs.unlinkSync(file.path);
+            } catch (e) {}
+          }
+        }
+
+        // Get image dimensions
+        const dimensions = await getImageDimensions(processedPath);
+
+        // Try ImageKit upload
+        let imagekitUrl: string | null = null;
+        let imagekitThumbnailUrl: string | null = null;
+        let imagekitFileId: string | null = null;
+        let filePath: string;
+        let thumbnailPath: string;
+
+        if (isImageKitAvailable()) {
+          try {
+            const folder = scene_id ? `/cineflow/projects/${project_id}/scenes/${scene_id}` : `/cineflow/projects/${project_id}`;
+            const imagekitResult = await uploadToImageKit(processedPath, file.originalname, folder);
+            
+            if (imagekitResult) {
+              imagekitUrl = imagekitResult.url;
+              imagekitThumbnailUrl = imagekitResult.thumbnailUrl || null;
+              imagekitFileId = imagekitResult.fileId;
+            }
+          } catch (error: any) {
+            console.warn('ImageKit upload failed:', error.message);
+          }
+        }
+
+        // Generate thumbnail
+        const thumbnailName = `thumb-${path.basename(processedPath)}`;
+        const thumbnailPathFull = path.join(thumbnailsDir, thumbnailName);
+        await generateThumbnail(processedPath, thumbnailPathFull);
+        filePath = `/uploads/${path.basename(processedPath)}`;
+        thumbnailPath = `/uploads/thumbnails/${thumbnailName}`;
+
+        // Save to database
+        const [result] = await pool.query(
+          `INSERT INTO media (project_id, scene_id, user_id, file_path, thumbnail_path, imagekit_url, imagekit_thumbnail_url, imagekit_file_id, width, height, alt_text, description, is_primary)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            project_id,
+            scene_id || null,
+            userId,
+            filePath,
+            thumbnailPath,
+            imagekitUrl,
+            imagekitThumbnailUrl,
+            imagekitFileId,
+            dimensions.width,
+            dimensions.height,
+            req.body.alt_text || null,
+            req.body.description || null,
+            req.body.is_primary === 'true' || req.body.is_primary === true ? 1 : 0,
+          ]
+        ) as [any, any];
+
+        results.push({
+          id: (result as any).insertId,
+          file_path: filePath,
+          thumbnail_path: thumbnailPath,
+          imagekit_url: imagekitUrl,
+          imagekit_thumbnail_url: imagekitThumbnailUrl,
+          width: dimensions.width,
+          height: dimensions.height,
+          original_name: file.originalname,
+        });
+      } catch (error: any) {
+        console.error(`Error processing file ${file.originalname}:`, error);
+        results.push({
+          error: error.message,
+          original_name: file.originalname,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      uploaded: results.filter(r => !r.error).length,
+      failed: results.filter(r => r.error).length,
+      results,
+    });
+  } catch (error: any) {
+    console.error('Bulk upload error:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload images' });
   }
 });
 

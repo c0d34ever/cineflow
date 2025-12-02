@@ -31,8 +31,11 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [removingBg, setRemovingBg] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -62,7 +65,7 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
     loadMedia();
   }, [loadMedia]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, removeBg: boolean = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -73,8 +76,17 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
 
     try {
       setUploading(true);
-      // Prevent modal from closing during upload
-      await mediaService.uploadImage(projectId, file, sceneId);
+      if (removeBg) setRemovingBg(true);
+      
+      if (removeBg) {
+        // Remove background first, then upload
+        const result = await mediaService.removeBackground(file);
+        const processedFile = new File([result], 'nobg.png', { type: 'image/png' });
+        await mediaService.uploadImage(projectId, processedFile, sceneId);
+      } else {
+        await mediaService.uploadImage(projectId, file, sceneId);
+      }
+      
       // Reload media after successful upload
       await loadMedia();
       if (fileInputRef.current) {
@@ -85,6 +97,37 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
       alert('Failed to upload image: ' + error.message);
     } finally {
       setUploading(false);
+      setRemovingBg(false);
+    }
+  };
+
+  const handleBulkUpload = async (files: FileList | null, removeBg: boolean = false) => {
+    if (!files || files.length === 0) return;
+
+    setBulkUploading(true);
+    if (removeBg) setRemovingBg(true);
+    
+    try {
+      const fileArray = Array.from(files);
+      const results = await mediaService.bulkUpload(projectId, fileArray, sceneId, removeBg);
+
+      if (results.success) {
+        const uploaded = results.uploaded || 0;
+        const failed = results.failed || 0;
+        alert(`Successfully uploaded ${uploaded} image(s)${failed > 0 ? `, ${failed} failed` : ''}`);
+        await loadMedia();
+      } else {
+        alert('Bulk upload failed');
+      }
+    } catch (error: any) {
+      console.error('Bulk upload failed:', error);
+      alert('Failed to upload images: ' + error.message);
+    } finally {
+      setBulkUploading(false);
+      setRemovingBg(false);
+      if (bulkFileInputRef.current) {
+        bulkFileInputRef.current.value = '';
+      }
     }
   };
 
@@ -160,16 +203,53 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  onChange={handleFileSelect}
+                  onChange={(e) => handleFileSelect(e, false)}
                   className="hidden"
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm disabled:opacity-50"
-                >
-                  {uploading ? 'Uploading...' : 'Upload Image'}
-                </button>
+                <input
+                  ref={bulkFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => handleBulkUpload(e.target.files, false)}
+                  className="hidden"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading || bulkUploading}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-sm disabled:opacity-50 text-white"
+                  >
+                    {uploading ? 'Uploading...' : 'Upload'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newInput = document.createElement('input');
+                      newInput.type = 'file';
+                      newInput.accept = 'image/*';
+                      newInput.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (file) {
+                          handleFileSelect({ target: { files: [file] } } as any, true);
+                        }
+                      };
+                      newInput.click();
+                    }}
+                    disabled={uploading || bulkUploading || removingBg}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 rounded text-sm disabled:opacity-50 text-white"
+                    title="Upload image with background removed"
+                  >
+                    {removingBg ? 'Removing...' : 'Upload & Remove BG'}
+                  </button>
+                  <button
+                    onClick={() => bulkFileInputRef.current?.click()}
+                    disabled={uploading || bulkUploading}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm disabled:opacity-50 text-white"
+                    title="Upload multiple images at once"
+                  >
+                    {bulkUploading ? 'Uploading...' : 'Bulk'}
+                  </button>
+                </div>
               </>
             )}
             <button

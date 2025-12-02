@@ -470,6 +470,66 @@ export const mediaService = {
       body: JSON.stringify({ scene_id: sceneId }),
     });
   },
+
+  removeBackground: (file: File): Promise<any> => {
+    const token = localStorage.getItem('auth_token');
+    const formData = new FormData();
+    formData.append('image', file);
+
+    return fetch(`${API_BASE_URL}/media/remove-background`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    }).then(async (response) => {
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          throw new Error('Authentication required');
+        }
+        const error = await response.json().catch(() => ({ error: 'Failed to remove background' }));
+        throw new Error(error.error || 'Failed to remove background');
+      }
+      return response.json();
+    });
+  },
+
+  bulkUpload: (projectId: string, files: File[], sceneId?: string, removeBg?: boolean, altText?: string, description?: string, isPrimary?: boolean): Promise<any> => {
+    const token = localStorage.getItem('auth_token');
+    const formData = new FormData();
+    
+    files.forEach(file => {
+      formData.append('images', file);
+    });
+    
+    formData.append('project_id', projectId);
+    if (sceneId) formData.append('scene_id', sceneId);
+    if (removeBg) formData.append('remove_bg', 'true');
+    if (altText) formData.append('alt_text', altText);
+    if (description) formData.append('description', description);
+    if (isPrimary !== undefined) formData.append('is_primary', isPrimary.toString());
+
+    return fetch(`${API_BASE_URL}/media/bulk-upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    }).then(async (response) => {
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          throw new Error('Authentication required');
+        }
+        const error = await response.json().catch(() => ({ error: 'Failed to upload images' }));
+        throw new Error(error.error || 'Failed to upload images');
+      }
+      return response.json();
+    });
+  },
 };
 
 // Admin Services (use ADMIN_API_URL)

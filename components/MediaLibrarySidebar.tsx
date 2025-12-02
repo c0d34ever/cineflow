@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { mediaService } from '../apiServices';
-import { getThumbnailUrl, getFullImageUrl } from '../utils/imageUtils';
+import { getThumbnailUrl, getFullImageUrl, getHighQualityImageUrl } from '../utils/imageUtils';
 
 interface MediaLibrarySidebarProps {
   projectId: string;
@@ -34,8 +34,11 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [removingBg, setRemovingBg] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const isInteractingRef = useRef(false);
@@ -102,6 +105,41 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
     } finally {
       setUploading(false);
       // Allow closes again after a short delay
+      setTimeout(() => {
+        isInteractingRef.current = false;
+      }, 500);
+    }
+  };
+
+  const handleBulkUpload = async (files: FileList | null, removeBg: boolean = false) => {
+    if (!files || files.length === 0) return;
+
+    isInteractingRef.current = true;
+
+    try {
+      setBulkUploading(true);
+      if (removeBg) setRemovingBg(true);
+      
+      const fileArray = Array.from(files);
+      const results = await mediaService.bulkUpload(projectId, fileArray, sceneId, removeBg);
+
+      if (results.success) {
+        const uploaded = results.uploaded || 0;
+        const failed = results.failed || 0;
+        alert(`Successfully uploaded ${uploaded} image(s)${failed > 0 ? `, ${failed} failed` : ''}`);
+        await loadMedia();
+      } else {
+        alert('Bulk upload failed');
+      }
+    } catch (error: any) {
+      console.error('Bulk upload failed:', error);
+      alert('Failed to upload images: ' + error.message);
+    } finally {
+      setBulkUploading(false);
+      setRemovingBg(false);
+      if (bulkFileInputRef.current) {
+        bulkFileInputRef.current.value = '';
+      }
       setTimeout(() => {
         isInteractingRef.current = false;
       }, 500);
@@ -225,13 +263,57 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-sm disabled:opacity-50 text-white"
-                >
-                  {uploading ? 'Uploading...' : 'Upload'}
-                </button>
+                <input
+                  ref={bulkFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => handleBulkUpload(e.target.files, false)}
+                  className="hidden"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading || bulkUploading}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-sm disabled:opacity-50 text-white"
+                  >
+                    {uploading ? 'Uploading...' : 'Upload'}
+                  </button>
+                  <button
+                    onClick={() => bulkFileInputRef.current?.click()}
+                    disabled={uploading || bulkUploading}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm disabled:opacity-50 text-white"
+                    title="Upload multiple images at once"
+                  >
+                    {bulkUploading ? 'Uploading...' : 'Bulk'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const file = fileInputRef.current?.files?.[0];
+                      if (file) {
+                        try {
+                          setRemovingBg(true);
+                          const result = await mediaService.removeBackground(file);
+                          // After background removal, upload the processed image
+                          const processedFile = new File([result], 'nobg.png', { type: 'image/png' });
+                          await mediaService.uploadImage(projectId, processedFile, sceneId);
+                          await loadMedia();
+                        } catch (error: any) {
+                          alert('Failed to remove background: ' + error.message);
+                        } finally {
+                          setRemovingBg(false);
+                        }
+                      } else {
+                        alert('Please select an image first');
+                      }
+                    }}
+                    disabled={uploading || bulkUploading || removingBg}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 rounded text-sm disabled:opacity-50 text-white"
+                    title="Remove background from image"
+                  >
+                    {removingBg ? 'Removing...' : 'Remove BG'}
+                  </button>
+                </div>
               </>
             )}
             <button
@@ -279,15 +361,16 @@ const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
                 >
                   <div className="relative aspect-square bg-zinc-900">
                     <img
-                      src={getThumbnailUrl(item)}
+                      src={getHighQualityImageUrl(item)}
                       alt={item.alt_text || item.file_name}
                       className="w-full h-full object-cover"
                       loading="lazy"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        const fullUrl = getFullImageUrl(item);
-                        if (fullUrl && target.src !== fullUrl) {
-                          target.src = fullUrl;
+                        // Try thumbnail as fallback
+                        const thumbnailUrl = getThumbnailUrl(item);
+                        if (thumbnailUrl && target.src !== thumbnailUrl) {
+                          target.src = thumbnailUrl;
                         }
                       }}
                     />
