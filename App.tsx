@@ -3003,7 +3003,7 @@ const App: React.FC = () => {
                       )}
                     </div>
                   )}
-                  {filteredProjects.map(p => {
+                  {filteredProjects.map((p) => {
                     const isSelected = selectedLibraryProjectIds.has(p.context.id);
                     return (
                   <div 
@@ -3375,6 +3375,8 @@ const App: React.FC = () => {
                   </div>
                   );
                 })}
+                </>
+              )}
           </div>
         </main>
       </div>
