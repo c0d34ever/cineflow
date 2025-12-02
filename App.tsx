@@ -196,17 +196,49 @@ const App: React.FC = () => {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
 
   // Library View
-  const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
-  const [librarySortBy, setLibrarySortBy] = useState<'date' | 'title' | 'genre' | 'scenes' | 'updated' | 'favorites' | 'health'>('date');
-  const [librarySortOrder, setLibrarySortOrder] = useState<'asc' | 'desc'>('desc');
+  // Library view preferences with persistence
+  const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>(() => {
+    const saved = localStorage.getItem('library_view_mode');
+    return (saved as 'grid' | 'list') || 'grid';
+  });
+  const [librarySortBy, setLibrarySortBy] = useState<'date' | 'title' | 'genre' | 'scenes' | 'updated' | 'favorites' | 'health'>(() => {
+    const saved = localStorage.getItem('library_sort_by');
+    return (saved as any) || 'date';
+  });
+  const [librarySortOrder, setLibrarySortOrder] = useState<'asc' | 'desc'>(() => {
+    const saved = localStorage.getItem('library_sort_order');
+    return (saved as 'asc' | 'desc') || 'desc';
+  });
   const [librarySearchTerm, setLibrarySearchTerm] = useState('');
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(() => {
+    const saved = localStorage.getItem('library_show_advanced_search');
+    return saved === 'true';
+  });
   const [libraryFilterGenre, setLibraryFilterGenre] = useState('');
   const [libraryFilterTags, setLibraryFilterTags] = useState<string[]>([]);
   const [libraryFilterHasCover, setLibraryFilterHasCover] = useState<boolean | null>(null);
   const [libraryFilterSceneCount, setLibraryFilterSceneCount] = useState<{ min?: number; max?: number } | null>(null);
   const [libraryFilterFavorites, setLibraryFilterFavorites] = useState<boolean | null>(null);
-  const [libraryCardSize, setLibraryCardSize] = useState<'small' | 'medium' | 'large'>('medium');
+  const [libraryCardSize, setLibraryCardSize] = useState<'small' | 'medium' | 'large'>(() => {
+    const saved = localStorage.getItem('library_card_size');
+    return (saved as 'small' | 'medium' | 'large') || 'medium';
+  });
+  
+  // Quick filter presets
+  const [filterPresets, setFilterPresets] = useState<Array<{
+    id: string;
+    name: string;
+    filters: {
+      genre?: string;
+      tags?: string[];
+      hasCover?: boolean | null;
+      sceneCount?: { min?: number; max?: number } | null;
+      favorites?: boolean | null;
+    };
+  }>>(() => {
+    const saved = localStorage.getItem('library_filter_presets');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   // Templates
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
@@ -342,6 +374,7 @@ const App: React.FC = () => {
   const [libraryBatchMode, setLibraryBatchMode] = useState(false);
   const [selectedLibraryProjectIds, setSelectedLibraryProjectIds] = useState<Set<string>>(new Set());
   const [showBulkTagAssigner, setShowBulkTagAssigner] = useState(false);
+  const [showFilterPresetsDropdown, setShowFilterPresetsDropdown] = useState(false);
 
   // Undo/Redo
   const [history, setHistory] = useState<ProjectData[]>([]);
@@ -2541,19 +2574,69 @@ const App: React.FC = () => {
 
               {/* Sort & View Toggle */}
               <div className="flex gap-2 items-center flex-wrap">
-                <button
-                  onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                  className={`px-3 py-1.5 rounded text-xs border transition-colors ${
-                    showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null
-                      ? 'bg-amber-600 border-amber-500 text-white'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
-                  }`}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 inline mr-1">
-                    <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
-                  </svg>
-                  Advanced
-                </button>
+                <div className="relative filter-presets-container">
+                  <button
+                    onClick={() => {
+                      setShowAdvancedSearch(!showAdvancedSearch);
+                      if (filterPresets.length > 0) {
+                        setShowFilterPresetsDropdown(!showFilterPresetsDropdown);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded text-xs border transition-colors ${
+                      showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null
+                        ? 'bg-amber-600 border-amber-500 text-white'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 inline mr-1">
+                      <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                    </svg>
+                    Advanced
+                    {filterPresets.length > 0 && (
+                      <span className="ml-1 text-xs opacity-75">({filterPresets.length})</span>
+                    )}
+                  </button>
+                  {filterPresets.length > 0 && showFilterPresetsDropdown && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg z-50 min-w-[200px] max-h-[300px] overflow-y-auto"
+                    >
+                      <div className="p-2 text-xs text-zinc-400 border-b border-zinc-800 sticky top-0 bg-zinc-900">Quick Filters</div>
+                      {filterPresets.map(preset => (
+                        <button
+                          key={preset.id}
+                          onClick={() => {
+                            setLibraryFilterGenre(preset.filters.genre || '');
+                            setLibraryFilterTags(preset.filters.tags || []);
+                            setLibraryFilterHasCover(preset.filters.hasCover ?? null);
+                            setLibraryFilterSceneCount(preset.filters.sceneCount ?? null);
+                            setLibraryFilterFavorites(preset.filters.favorites ?? null);
+                            setShowAdvancedSearch(true);
+                            setShowFilterPresetsDropdown(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 flex items-center justify-between group"
+                        >
+                          <span>{preset.name}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete preset "${preset.name}"?`)) {
+                                setFilterPresets(prev => prev.filter(p => p.id !== preset.id));
+                                if (filterPresets.length === 1) {
+                                  setShowFilterPresetsDropdown(false);
+                                }
+                              }
+                            }}
+                            className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                              <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443a.75.75 0 01-.298.604L6 4.75v10.5A2.75 2.75 0 008.75 18h2.5A2.75 2.75 0 0014 15.25V4.75l-.452-.197A.75.75 0 0113.25 4.193V3.75A2.75 2.75 0 0010.5 1h-1.75zM9 3.25a.25.25 0 01.25-.25h1.5a.25.25 0 01.25.25v.5a.25.25 0 01-.25.25h-1.5A.25.25 0 019 3.75v-.5zM7.5 7.25a.75.75 0 00-1.5 0v7.5a.75.75 0 001.5 0v-7.5zm3 0a.75.75 0 00-1.5 0v7.5a.75.75 0 001.5 0v-7.5z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <select
                   value={librarySortBy}
                   onChange={(e) => setLibrarySortBy(e.target.value as any)}
@@ -2821,19 +2904,44 @@ const App: React.FC = () => {
                       </select>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setLibraryFilterGenre('');
-                        setLibraryFilterTags([]);
-                        setLibrarySearchTerm('');
-                        setLibraryFilterHasCover(null);
-                        setLibraryFilterSceneCount(null);
-                        setLibraryFilterFavorites(null);
-                      }}
-                      className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
-                    >
-                      Clear All Filters
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => {
+                          setLibraryFilterGenre('');
+                          setLibraryFilterTags([]);
+                          setLibrarySearchTerm('');
+                          setLibraryFilterHasCover(null);
+                          setLibraryFilterSceneCount(null);
+                          setLibraryFilterFavorites(null);
+                        }}
+                        className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
+                      >
+                        Clear All Filters
+                      </button>
+                      <button
+                        onClick={() => {
+                          const presetName = window.prompt('Enter preset name:');
+                          if (presetName && presetName.trim()) {
+                            const newPreset = {
+                              id: Date.now().toString(),
+                              name: presetName.trim(),
+                              filters: {
+                                genre: libraryFilterGenre || undefined,
+                                tags: libraryFilterTags.length > 0 ? libraryFilterTags : undefined,
+                                hasCover: libraryFilterHasCover,
+                                sceneCount: libraryFilterSceneCount,
+                                favorites: libraryFilterFavorites,
+                              }
+                            };
+                            setFilterPresets(prev => [...prev, newPreset]);
+                            showToast('Filter preset saved!', 'success');
+                          }
+                        }}
+                        className="w-full px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-600/50 rounded text-sm text-amber-400"
+                      >
+                        💾 Save Current Filters
+                      </button>
+                    </div>
 
                     {/* Batch Generate Covers */}
                     {filteredProjects.filter(p => !p.context.coverImageUrl).length > 0 && (
@@ -3002,13 +3110,20 @@ const App: React.FC = () => {
               return (
                 <>
                   {filteredProjects.length > 0 && (
-                    <div className={`${libraryViewMode === 'grid' ? 'col-span-full' : 'w-full'} text-xs text-zinc-500 mb-2`}>
-                      Showing {filteredProjects.length} of {projects.length} project{projects.length !== 1 ? 's' : ''}
-                      {libraryBatchMode && selectedLibraryProjectIds.size > 0 && (
-                        <span className="ml-2 text-amber-400">
-                          • {selectedLibraryProjectIds.size} selected
-                        </span>
-                      )}
+                    <div className={`${libraryViewMode === 'grid' ? 'col-span-full' : 'w-full'} flex items-center justify-between mb-2`}>
+                      <div className="text-xs text-zinc-500">
+                        <span className="font-medium text-zinc-300">{filteredProjects.length}</span> of <span className="font-medium text-zinc-300">{projects.length}</span> project{projects.length !== 1 ? 's' : ''}
+                        {libraryBatchMode && selectedLibraryProjectIds.size > 0 && (
+                          <span className="ml-2 text-amber-400">
+                            • <span className="font-medium">{selectedLibraryProjectIds.size}</span> selected
+                          </span>
+                        )}
+                        {(libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null) && (
+                          <span className="ml-2 text-zinc-600">
+                            • Filtered
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
                   {filteredProjects.map((p) => {
