@@ -62,7 +62,7 @@ const CoverImageSelector: React.FC<CoverImageSelectorProps> = ({
   };
 
   const handleUseDefault = () => {
-    onSelect(null); // null means use default (first scene's primary image)
+    onSelect(null); // null means use project cover image (or first scene's primary image as fallback)
     onClose();
   };
 
@@ -87,7 +87,7 @@ const CoverImageSelector: React.FC<CoverImageSelectorProps> = ({
           ) : media.length === 0 ? (
             <div className="text-center py-8 text-zinc-400">
               <p>No images available in this project.</p>
-              <p className="text-sm mt-2">The comic will use the first scene's primary image as the cover.</p>
+              <p className="text-sm mt-2">The comic will use the project cover image (or first scene's primary image if no cover is set).</p>
             </div>
           ) : (
             <>
@@ -100,7 +100,7 @@ const CoverImageSelector: React.FC<CoverImageSelectorProps> = ({
                       : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
                   }`}
                 >
-                  Use Default (First Scene Image)
+                  Use Project Cover
                 </button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

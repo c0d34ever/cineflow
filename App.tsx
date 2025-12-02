@@ -1265,11 +1265,19 @@ const App: React.FC = () => {
           );
           const pdfStyle: PDFStyle = (styleChoice === '2') ? 'raw' : 'comic';
           
-          // If comic style, show cover image selector
+          // If comic style, use project cover image automatically (or show selector if user wants to choose)
           if (pdfStyle === 'comic') {
-            setShowCoverImageSelector(true);
-            // The actual export will happen after cover image is selected
-            return; // Exit early, export will continue in handleCoverImageSelect
+            // Check if project has a cover image - if so, use it automatically
+            if (storyContext.coverImageUrl) {
+              // Use project cover image (pass null to use projectContext.coverImageUrl in backend)
+              await exportToPDF(data, pdfStyle, undefined, null);
+            } else {
+              // No project cover, show selector to choose from media
+              setShowCoverImageSelector(true);
+              // The actual export will happen after cover image is selected
+              return; // Exit early, export will continue in handleCoverImageSelect
+            }
+            break;
           }
           
           await exportToPDF(data, pdfStyle);

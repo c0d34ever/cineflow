@@ -1803,8 +1803,10 @@ async function generateComicHTML(
   html = html.replace(/NARRATION:\s*/gi, '');
   html = html.replace(/\n{3,}/g, '\n\n');
 
-  // Get cover image - use selected coverImageId if provided, otherwise use first scene's primary image
+  // Get cover image - priority: 1) selected coverImageId, 2) project coverImageUrl, 3) first scene's primary image
   let coverImageUrl = '';
+  
+  // Priority 1: Use selected coverImageId if provided
   if (coverImageId) {
     // Fetch the specific cover image by ID
     try {
@@ -1832,7 +1834,17 @@ async function generateComicHTML(
     }
   }
   
-  // Fallback to first scene's primary image if no cover image selected or found
+  // Priority 2: Use project's cover image if available and no coverImageId was selected
+  if (!coverImageUrl && projectContext.coverImageUrl) {
+    coverImageUrl = projectContext.coverImageUrl;
+    // If it's a local path, construct full URL
+    if (coverImageUrl && !coverImageUrl.startsWith('http')) {
+      const filePath = coverImageUrl.startsWith('/') ? coverImageUrl : `/${coverImageUrl}`;
+      coverImageUrl = `${baseUrl}${filePath}`;
+    }
+  }
+  
+  // Priority 3: Fallback to first scene's primary image if no cover image found
   if (!coverImageUrl && scenes.length > 0) {
     const firstScene = scenes[0];
     const firstSceneMedia = sceneImagesMap.get(firstScene.id);
