@@ -41,4 +41,5 @@ export interface StoryContext {
   plotSummary: string;
   characters: string;
   initialContext?: string; // Optional: Description of the last clip to resume from
+  coverImageUrl?: string; // Project cover image URL (user-uploaded or auto-generated character composite)
 }

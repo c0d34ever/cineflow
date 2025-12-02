@@ -192,13 +192,50 @@ async function createBackgroundMask(
   const stdDev = Math.sqrt(variance / allSamples.length);
   const adaptiveThreshold = Math.max(30, Math.min(60, stdDev * 1.5));
 
-  // Step 4: Create initial mask with adaptive thresholding
+  // Step 4: Multi-pass mask generation with improved techniques
+  
+  // Pass 1: Create initial mask with adaptive thresholding and edge detection
+  const edgeMap = new Array(width * height).fill(0);
+  
+  // Detect edges using Sobel-like operator
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * channels;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      
+      // Calculate gradient magnitude
+      const gx = Math.abs(
+        (data[((y - 1) * width + (x - 1)) * channels] + 
+         2 * data[((y - 1) * width + x) * channels] +
+         data[((y - 1) * width + (x + 1)) * channels]) -
+        (data[((y + 1) * width + (x - 1)) * channels] +
+         2 * data[((y + 1) * width + x) * channels] +
+         data[((y + 1) * width + (x + 1)) * channels])
+      );
+      
+      const gy = Math.abs(
+        (data[((y - 1) * width + (x - 1)) * channels] +
+         2 * data[(y * width + (x - 1)) * channels] +
+         data[((y + 1) * width + (x - 1)) * channels]) -
+        (data[((y - 1) * width + (x + 1)) * channels] +
+         2 * data[(y * width + (x + 1)) * channels] +
+         data[((y + 1) * width + (x + 1)) * channels])
+      );
+      
+      edgeMap[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+    }
+  }
+  
+  // Pass 2: Create mask with edge-aware processing
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * channels;
       const r = data[idx];
       const g = data[idx + 1];
       const b = data[idx + 2];
+      const edgeStrength = edgeMap[y * width + x] || 0;
 
       // Calculate color distance (using perceptual color difference)
       const dr = r - bgColor[0];
@@ -207,12 +244,28 @@ async function createBackgroundMask(
       // Weighted distance (human eye is more sensitive to green)
       const distance = Math.sqrt(dr * dr * 2 + dg * dg * 4 + db * db * 3) / 3;
 
-      // Adaptive threshold based on position
+      // Adaptive threshold based on position and edge strength
       const isEdge = x < edgeThreshold || x >= width - edgeThreshold ||
                      y < edgeThreshold || y >= height - edgeThreshold;
-      const threshold = isEdge ? adaptiveThreshold * 1.3 : adaptiveThreshold;
       
-      if (distance < threshold) {
+      // Lower threshold near edges (more likely to be background)
+      // Higher threshold near strong edges (more likely to be foreground)
+      let threshold = adaptiveThreshold;
+      if (isEdge) {
+        threshold = adaptiveThreshold * 1.4; // More lenient at image edges
+      } else if (edgeStrength > 50) {
+        threshold = adaptiveThreshold * 0.7; // Stricter near strong edges (foreground)
+      }
+      
+      // Also consider luminance difference
+      const bgLum = (bgColor[0] * 0.299 + bgColor[1] * 0.587 + bgColor[2] * 0.114);
+      const pixelLum = (r * 0.299 + g * 0.587 + b * 0.114);
+      const lumDiff = Math.abs(pixelLum - bgLum);
+      
+      // Combine color distance and luminance difference
+      const combinedDistance = (distance * 0.7) + (lumDiff * 0.3);
+      
+      if (combinedDistance < threshold) {
         mask[y * width + x] = true;
       }
     }

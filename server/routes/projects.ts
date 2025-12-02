@@ -2,6 +2,13 @@ import express, { Response } from 'express';
 import { getPool } from '../db/index.js';
 import { StoryContext, Scene, DirectorSettings } from '../../types.js';
 import { AuthRequest, authenticateToken } from '../middleware/auth.js';
+import { generateCharacterComposite } from '../services/characterCompositeService.js';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import { uploadToImageKit, isImageKitAvailable } from '../services/imagekitService.js';
+import sharp from 'sharp';
 
 const router = express.Router();
 
@@ -15,6 +22,9 @@ interface ProjectRow {
   characters: string;
   initial_context: string;
   last_updated: number;
+  cover_image_id?: string | null;
+  cover_image_url?: string | null;
+  cover_imagekit_url?: string | null;
 }
 
 interface SceneRow {
@@ -85,6 +95,30 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           [project.id]
         ) as [DirectorSettingsRow[], any];
 
+        // Get cover image (user-uploaded or generate character composite)
+        let coverImageUrl: string | null = null;
+        let coverImagekitUrl: string | null = null;
+        
+        if (project.cover_imagekit_url) {
+          coverImagekitUrl = project.cover_imagekit_url;
+        } else if (project.cover_image_url) {
+          coverImageUrl = project.cover_image_url;
+        } else {
+          // Generate character composite if no cover exists
+          const composite = await generateCharacterComposite(project.id);
+          if (composite) {
+            coverImagekitUrl = composite.imagekitUrl || undefined;
+            coverImageUrl = composite.localPath;
+            // Save generated cover to database
+            await pool.query(
+              `UPDATE projects 
+               SET cover_image_url = ?, cover_imagekit_url = ?
+               WHERE id = ?`,
+              [composite.localPath, composite.imagekitUrl || null, project.id]
+            );
+          }
+        }
+
         const storyContext: StoryContext = {
           id: project.id,
           title: project.title,
@@ -93,6 +127,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           characters: project.characters || '',
           initialContext: project.initial_context || '',
           lastUpdated: project.last_updated,
+          coverImageUrl: coverImagekitUrl || coverImageUrl || undefined,
         };
 
         const scenesData: Scene[] = await Promise.all(
@@ -360,7 +395,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         );
       }
 
-      // Upsert project
+      // Upsert project (preserve cover_image fields if they exist)
       await connection.query(
         `INSERT INTO projects (id, user_id, title, genre, plot_summary, characters, initial_context, last_updated)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -370,7 +405,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
            plot_summary = VALUES(plot_summary),
            characters = VALUES(characters),
            initial_context = VALUES(initial_context),
-           last_updated = VALUES(last_updated)`,
+           last_updated = VALUES(last_updated),
+           cover_image_id = COALESCE(cover_image_id, NULL),
+           cover_image_url = COALESCE(cover_image_url, NULL),
+           cover_imagekit_url = COALESCE(cover_imagekit_url, NULL)`,
         [
           context.id,
           userId,
@@ -830,6 +868,193 @@ router.delete('/:id/versions/:versionId', authenticateToken, async (req: AuthReq
   } catch (error: any) {
     console.error('Error deleting version:', error);
     res.status(500).json({ error: 'Failed to delete version' });
+  }
+});
+
+// Configure multer for cover image upload
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, '../../uploads');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `cover-${uniqueSuffix}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (mimetype && extname) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// POST /api/projects/:id/cover-image - Set project cover image
+router.post('/:id/cover-image', authenticateToken, upload.single('image'), async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const pool = getPool();
+
+    // Verify project belongs to user
+    const [projects] = await pool.query(
+      'SELECT id FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      [projectId, userId]
+    ) as [any[], any];
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+
+    // Upload to ImageKit if available
+    let imagekitUrl: string | null = null;
+    let imagekitThumbnailUrl: string | null = null;
+
+    if (isImageKitAvailable()) {
+      try {
+        const result = await uploadToImageKit(req.file.path, req.file.originalname, `/cineflow/projects/${projectId}/covers`);
+        if (result) {
+          imagekitUrl = result.url;
+          imagekitThumbnailUrl = result.thumbnailUrl || null;
+        }
+      } catch (error: any) {
+        console.warn('ImageKit upload failed:', error.message);
+      }
+    }
+
+    // Update project with cover image
+    const filePath = `/uploads/${req.file.filename}`;
+    await pool.query(
+      `UPDATE projects 
+       SET cover_image_url = ?, cover_imagekit_url = ?, cover_image_id = NULL
+       WHERE id = ?`,
+      [filePath, imagekitUrl, projectId]
+    );
+
+    res.json({
+      success: true,
+      cover_image_url: filePath,
+      cover_imagekit_url: imagekitUrl,
+      cover_imagekit_thumbnail_url: imagekitThumbnailUrl,
+    });
+  } catch (error: any) {
+    console.error('Error setting cover image:', error);
+    if (req.file) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {}
+    }
+    res.status(500).json({ error: 'Failed to set cover image' });
+  }
+});
+
+// POST /api/projects/:id/generate-cover - Generate character composite cover
+router.post('/:id/generate-cover', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const pool = getPool();
+
+    // Verify project belongs to user
+    const [projects] = await pool.query(
+      'SELECT id FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      [projectId, userId]
+    ) as [any[], any];
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Generate character composite
+    const result = await generateCharacterComposite(projectId);
+    
+    if (!result) {
+      return res.status(400).json({ error: 'No characters with images found in this project' });
+    }
+
+    // Update project with generated cover
+    await pool.query(
+      `UPDATE projects 
+       SET cover_image_url = ?, cover_imagekit_url = ?, cover_image_id = NULL
+       WHERE id = ?`,
+      [result.localPath, result.imagekitUrl || null, projectId]
+    );
+
+    res.json({
+      success: true,
+      cover_image_url: result.localPath,
+      cover_imagekit_url: result.imagekitUrl,
+      cover_imagekit_thumbnail_url: result.imagekitThumbnailUrl,
+    });
+  } catch (error: any) {
+    console.error('Error generating cover:', error);
+    res.status(500).json({ error: 'Failed to generate cover image' });
+  }
+});
+
+// DELETE /api/projects/:id/cover-image - Remove cover image (use auto-generated)
+router.delete('/:id/cover-image', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const pool = getPool();
+
+    // Verify project belongs to user
+    const [projects] = await pool.query(
+      'SELECT id, cover_image_url FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      [projectId, userId]
+    ) as [any[], any];
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Delete local file if exists
+    const project = projects[0];
+    if (project.cover_image_url) {
+      try {
+        const filePath = path.join(__dirname, '../../', project.cover_image_url.substring(1));
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore file deletion errors
+      }
+    }
+
+    // Clear cover image (will use auto-generated character composite)
+    await pool.query(
+      `UPDATE projects 
+       SET cover_image_url = NULL, cover_imagekit_url = NULL, cover_image_id = NULL
+       WHERE id = ?`,
+      [projectId]
+    );
+
+    res.json({ success: true, message: 'Cover image removed. Will use auto-generated character composite.' });
+  } catch (error: any) {
+    console.error('Error removing cover image:', error);
+    res.status(500).json({ error: 'Failed to remove cover image' });
   }
 });
 

@@ -2670,7 +2670,25 @@ const App: React.FC = () => {
                   >
                     {libraryViewMode === 'grid' ? (
                       <>
-                        <div className="h-2 bg-gradient-to-r from-amber-600 to-amber-800"></div>
+                        {/* Cover Image */}
+                        {p.context.coverImageUrl ? (
+                          <div className="w-full h-48 bg-zinc-950 overflow-hidden">
+                            <img
+                              src={p.context.coverImageUrl.startsWith('http') 
+                                ? p.context.coverImageUrl 
+                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl}`}
+                              alt={p.context.title}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.parentElement!.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-4xl">🎬</div></div>';
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-2 bg-gradient-to-r from-amber-600 to-amber-800"></div>
+                        )}
                         <div className="p-6 flex-1 flex flex-col">
                           <h3 className="text-lg font-serif font-bold text-white mb-1 line-clamp-1">{p.context.title}</h3>
                           <p className="text-xs text-amber-500 uppercase tracking-wider mb-4">{p.context.genre}</p>
@@ -2688,7 +2706,25 @@ const App: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <div className="w-2 bg-gradient-to-b from-amber-600 to-amber-800"></div>
+                        {/* Cover Image in List View */}
+                        {p.context.coverImageUrl ? (
+                          <div className="w-32 h-24 bg-zinc-950 overflow-hidden flex-shrink-0">
+                            <img
+                              src={p.context.coverImageUrl.startsWith('http') 
+                                ? p.context.coverImageUrl 
+                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl}`}
+                              alt={p.context.title}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.parentElement!.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-2xl">🎬</div></div>';
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-2 bg-gradient-to-b from-amber-600 to-amber-800"></div>
+                        )}
                         <div className="p-4 flex-1 flex flex-col">
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex-1">
