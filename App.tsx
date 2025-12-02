@@ -2676,13 +2676,20 @@ const App: React.FC = () => {
                             <img
                               src={p.context.coverImageUrl.startsWith('http') 
                                 ? p.context.coverImageUrl 
-                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl}`}
+                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl.startsWith('/') ? '' : '/'}${p.context.coverImageUrl}`}
                               alt={p.context.title}
                               className="w-full h-full object-cover"
                               onError={(e) => {
+                                console.error('Cover image failed to load:', p.context.coverImageUrl);
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
-                                target.parentElement!.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-4xl">🎬</div></div>';
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  parent.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-4xl">🎬</div></div>';
+                                }
+                              }}
+                              onLoad={() => {
+                                console.log('Cover image loaded successfully:', p.context.coverImageUrl);
                               }}
                             />
                           </div>
@@ -2712,13 +2719,20 @@ const App: React.FC = () => {
                             <img
                               src={p.context.coverImageUrl.startsWith('http') 
                                 ? p.context.coverImageUrl 
-                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl}`}
+                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${p.context.coverImageUrl.startsWith('/') ? '' : '/'}${p.context.coverImageUrl}`}
                               alt={p.context.title}
                               className="w-full h-full object-cover"
                               onError={(e) => {
+                                console.error('Cover image failed to load:', p.context.coverImageUrl);
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
-                                target.parentElement!.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-2xl">🎬</div></div>';
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  parent.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-amber-900/20 to-zinc-900 flex items-center justify-center"><div class="text-amber-500 text-2xl">🎬</div></div>';
+                                }
+                              }}
+                              onLoad={() => {
+                                console.log('Cover image loaded successfully:', p.context.coverImageUrl);
                               }}
                             />
                           </div>

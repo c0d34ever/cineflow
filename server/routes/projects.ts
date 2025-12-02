@@ -61,8 +61,13 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const pool = getPool();
     // Include projects with user_id matching current user OR projects with NULL user_id (legacy projects)
     // For NULL user_id projects, we'll assign them to the current user on first access
+    // Explicitly select cover_image columns (they might not exist if migration hasn't run)
     const [projectsResult] = await pool.query(
-      `SELECT * FROM projects 
+      `SELECT id, user_id, title, genre, plot_summary, characters, initial_context, last_updated,
+              COALESCE(cover_image_id, NULL) as cover_image_id,
+              COALESCE(cover_image_url, NULL) as cover_image_url,
+              COALESCE(cover_imagekit_url, NULL) as cover_imagekit_url
+       FROM projects 
        WHERE user_id = ? OR user_id IS NULL 
        ORDER BY last_updated DESC`,
       [userId]
@@ -99,24 +104,35 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         let coverImageUrl: string | null = null;
         let coverImagekitUrl: string | null = null;
         
-        if (project.cover_imagekit_url) {
-          coverImagekitUrl = project.cover_imagekit_url;
-        } else if (project.cover_image_url) {
-          coverImageUrl = project.cover_image_url;
-        } else {
-          // Generate character composite if no cover exists
-          const composite = await generateCharacterComposite(project.id);
-          if (composite) {
-            coverImagekitUrl = composite.imagekitUrl || undefined;
-            coverImageUrl = composite.localPath;
-            // Save generated cover to database
-            await pool.query(
-              `UPDATE projects 
-               SET cover_image_url = ?, cover_imagekit_url = ?
-               WHERE id = ?`,
-              [composite.localPath, composite.imagekitUrl || null, project.id]
-            );
+        try {
+          if (project.cover_imagekit_url) {
+            coverImagekitUrl = project.cover_imagekit_url;
+            console.log(`[Project ${project.id}] Using ImageKit cover: ${coverImagekitUrl}`);
+          } else if (project.cover_image_url) {
+            coverImageUrl = project.cover_image_url;
+            console.log(`[Project ${project.id}] Using local cover: ${coverImageUrl}`);
+          } else {
+            // Generate character composite if no cover exists
+            console.log(`[Project ${project.id}] No cover found, generating character composite...`);
+            const composite = await generateCharacterComposite(project.id);
+            if (composite) {
+              coverImagekitUrl = composite.imagekitUrl || undefined;
+              coverImageUrl = composite.localPath;
+              console.log(`[Project ${project.id}] Generated cover: ${coverImageUrl} (ImageKit: ${coverImagekitUrl || 'none'})`);
+              // Save generated cover to database
+              await pool.query(
+                `UPDATE projects 
+                 SET cover_image_url = ?, cover_imagekit_url = ?
+                 WHERE id = ?`,
+                [composite.localPath, composite.imagekitUrl || null, project.id]
+              );
+            } else {
+              console.log(`[Project ${project.id}] No characters with images found, no cover generated`);
+            }
           }
+        } catch (error: any) {
+          console.error(`[Project ${project.id}] Error getting cover image:`, error.message);
+          // Continue without cover image
         }
 
         const storyContext: StoryContext = {
@@ -232,8 +248,14 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     const userId = req.user!.id;
     const pool = getPool();
     // Include projects with user_id matching OR NULL user_id (legacy)
+    // Explicitly select cover_image columns (they might not exist if migration hasn't run)
     const [projectsResult] = await pool.query(
-      'SELECT * FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      `SELECT id, user_id, title, genre, plot_summary, characters, initial_context, last_updated,
+              COALESCE(cover_image_id, NULL) as cover_image_id,
+              COALESCE(cover_image_url, NULL) as cover_image_url,
+              COALESCE(cover_imagekit_url, NULL) as cover_imagekit_url
+       FROM projects 
+       WHERE id = ? AND (user_id = ? OR user_id IS NULL)`,
       [req.params.id, userId]
     ) as [any[], any];
 
@@ -262,6 +284,34 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [project.id]
     ) as [DirectorSettingsRow[], any];
 
+    // Get cover image (user-uploaded or generate character composite)
+    let coverImageUrl: string | null = null;
+    let coverImagekitUrl: string | null = null;
+    
+    try {
+      if (project.cover_imagekit_url) {
+        coverImagekitUrl = project.cover_imagekit_url;
+      } else if (project.cover_image_url) {
+        coverImageUrl = project.cover_image_url;
+      } else {
+        // Generate character composite if no cover exists
+        const composite = await generateCharacterComposite(project.id);
+        if (composite) {
+          coverImagekitUrl = composite.imagekitUrl || undefined;
+          coverImageUrl = composite.localPath;
+          // Save generated cover to database
+          await pool.query(
+            `UPDATE projects 
+             SET cover_image_url = ?, cover_imagekit_url = ?
+             WHERE id = ?`,
+            [composite.localPath, composite.imagekitUrl || null, project.id]
+          );
+        }
+      }
+    } catch (error: any) {
+      console.error(`[Project ${project.id}] Error getting cover image:`, error.message);
+    }
+
     const storyContext: StoryContext = {
       id: project.id,
       title: project.title,
@@ -270,6 +320,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       characters: project.characters || '',
       initialContext: project.initial_context || '',
       lastUpdated: project.last_updated,
+      coverImageUrl: coverImagekitUrl || coverImageUrl || undefined,
     };
 
     const scenesData: Scene[] = await Promise.all(

@@ -21,13 +21,19 @@ export async function generateCharacterComposite(projectId: string): Promise<{
   try {
     const pool = getPool();
     
-    // Get all characters with images
+    // Get all characters with images (check both image_url and imagekit_url)
     const [characters] = await pool.query(
-      'SELECT * FROM characters WHERE project_id = ? AND image_url IS NOT NULL AND image_url != "" ORDER BY name ASC',
+      `SELECT * FROM characters 
+       WHERE project_id = ? 
+       AND ((image_url IS NOT NULL AND image_url != '') OR (imagekit_url IS NOT NULL AND imagekit_url != ''))
+       ORDER BY name ASC`,
       [projectId]
     ) as [any[], any];
 
+    console.log(`[CharacterComposite] Found ${characters?.length || 0} characters with images for project ${projectId}`);
+
     if (!characters || characters.length === 0) {
+      console.log(`[CharacterComposite] No characters with images found for project ${projectId}`);
       return null; // No characters with images
     }
 
