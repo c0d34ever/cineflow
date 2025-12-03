@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { TechnicalStyle, DirectorSettings, Scene, StoryContext } from './types';
 import DirectorPanel from './components/DirectorPanel';
 import SceneCard from './components/SceneCard';
@@ -3761,10 +3762,17 @@ const App: React.FC = () => {
                   <button
                     onClick={async () => {
                       try {
+                        // Set loading state immediately with flushSync for instant render
+                        flushSync(() => {
+                          setShowSceneTemplates(true);
+                        });
                         const templates = await sceneTemplatesService.getAll();
-                        setSceneTemplates((templates as any)?.templates || []);
-                        setShowSceneTemplates(true);
+                        const templatesList = (templates as any)?.templates || [];
+                        setSceneTemplates(templatesList);
                       } catch (error) {
+                        flushSync(() => {
+                          setShowSceneTemplates(false);
+                        });
                         showToast('Failed to load scene templates', 'error');
                       }
                     }}
@@ -3917,7 +3925,13 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap w-full sm:w-auto justify-end">
           <button
-            onClick={() => setView('dashboard')}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              flushSync(() => {
+                setView('dashboard');
+              });
+            }}
             className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
             title="User Dashboard"
           >
@@ -3979,7 +3993,13 @@ const App: React.FC = () => {
           {/* Export Dropdown */}
           <div className="relative" ref={exportMenuRef}>
             <button 
-              onClick={() => setShowExportMenu(!showExportMenu)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => {
+                  setShowExportMenu(prev => !prev);
+                });
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Export"
             >
@@ -4150,7 +4170,13 @@ const App: React.FC = () => {
           {/* Characters Button */}
           {view === 'studio' && storyContext.id && (
             <button
-              onClick={() => setShowCharactersPanel(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => {
+                  setShowCharactersPanel(prev => !prev);
+                });
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Character Management"
             >
@@ -4164,7 +4190,13 @@ const App: React.FC = () => {
           {/* Locations Button */}
           {view === 'studio' && storyContext.id && (
             <button
-              onClick={() => setShowLocationsPanel(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => {
+                  setShowLocationsPanel(prev => !prev);
+                });
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Location Management"
             >
