@@ -63,7 +63,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     // For NULL user_id projects, we'll assign them to the current user on first access
     // Explicitly select cover_image columns (they might not exist if migration hasn't run)
     const [projectsResult] = await pool.query(
-      `SELECT id, user_id, title, genre, plot_summary, characters, initial_context, last_updated,
+      `SELECT id, user_id, title, genre, content_type, plot_summary, characters, initial_context, last_updated,
               COALESCE(cover_image_id, NULL) as cover_image_id,
               COALESCE(cover_image_url, NULL) as cover_image_url,
               COALESCE(cover_imagekit_url, NULL) as cover_imagekit_url
@@ -144,6 +144,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           initialContext: project.initial_context || '',
           lastUpdated: project.last_updated,
           coverImageUrl: coverImagekitUrl || coverImageUrl || undefined,
+          contentType: (project as any).content_type || undefined,
         };
 
         const scenesData: Scene[] = await Promise.all(
@@ -250,7 +251,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     // Include projects with user_id matching OR NULL user_id (legacy)
     // Explicitly select cover_image columns (they might not exist if migration hasn't run)
     const [projectsResult] = await pool.query(
-      `SELECT id, user_id, title, genre, plot_summary, characters, initial_context, last_updated,
+      `SELECT id, user_id, title, genre, content_type, plot_summary, characters, initial_context, last_updated,
               COALESCE(cover_image_id, NULL) as cover_image_id,
               COALESCE(cover_image_url, NULL) as cover_image_url,
               COALESCE(cover_imagekit_url, NULL) as cover_imagekit_url
@@ -320,8 +321,9 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       characters: project.characters || '',
       initialContext: project.initial_context || '',
       lastUpdated: project.last_updated,
-      coverImageUrl: coverImagekitUrl || coverImageUrl || undefined,
-    };
+          coverImageUrl: coverImagekitUrl || coverImageUrl || undefined,
+          contentType: (project as any).content_type || undefined,
+        };
 
     const scenesData: Scene[] = await Promise.all(
       scenes.map(async (scene) => {
@@ -448,11 +450,12 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
       // Upsert project (preserve cover_image fields if they exist)
       await connection.query(
-        `INSERT INTO projects (id, user_id, title, genre, plot_summary, characters, initial_context, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO projects (id, user_id, title, genre, content_type, plot_summary, characters, initial_context, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            title = VALUES(title),
            genre = VALUES(genre),
+           content_type = VALUES(content_type),
            plot_summary = VALUES(plot_summary),
            characters = VALUES(characters),
            initial_context = VALUES(initial_context),
@@ -465,6 +468,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           userId,
           context.title || '',
           context.genre || '',
+          context.contentType || 'film',
           context.plotSummary || '',
           context.characters || '',
           context.initialContext || '',
@@ -656,13 +660,14 @@ router.post('/:id/duplicate', authenticateToken, async (req: AuthRequest, res: R
 
       // Create new project
       await connection.query(
-        `INSERT INTO projects (id, user_id, title, genre, plot_summary, characters, initial_context, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (id, user_id, title, genre, content_type, plot_summary, characters, initial_context, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newProjectId,
           userId,
           newTitle || `${originalProject.title} (Copy)`,
           originalProject.genre || '',
+          (originalProject as any).content_type || 'film',
           originalProject.plot_summary || '',
           originalProject.characters || '',
           originalProject.initial_context || '',

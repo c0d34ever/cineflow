@@ -175,6 +175,133 @@ async function seedSystemTemplates(connection: any): Promise<void> {
         movement: 'Slow Creep',
         style: 'Cinematic',
         transition: 'Fade to Black'
+      }),
+    {
+      name: 'News Reporting',
+      description: 'Breaking news, interviews, and news segments',
+      genre: 'News',
+      plot_summary: 'A news reporting project covering current events, interviews, and breaking news segments with professional journalistic standards.',
+      characters: 'News Anchor, Reporter, Interviewee, Camera Operator, Producer',
+      initial_context: 'Newsroom or field location setting up for live/news report.',
+      director_settings: JSON.stringify({
+        lens: '24-70mm Zoom',
+        angle: 'Eye Level',
+        lighting: 'Professional News Lighting',
+        movement: 'Static/Tripod',
+        style: 'Documentary',
+        transition: 'Cut'
+      })
+    },
+    {
+      name: 'Cricket Match Coverage',
+      description: 'Cricket match highlights, analysis, and coverage',
+      genre: 'Sports',
+      plot_summary: 'Cricket match coverage including highlights, player interviews, match analysis, and key moments.',
+      characters: 'Commentator, Players, Coach, Analyst, Camera Crew',
+      initial_context: 'Cricket stadium establishing shot, match in progress.',
+      director_settings: JSON.stringify({
+        lens: '70-200mm Telephoto',
+        angle: 'Multiple Angles',
+        lighting: 'Natural Stadium Lighting',
+        movement: 'Pan/Track',
+        style: 'Documentary',
+        transition: 'Quick Cut'
+      })
+    },
+    {
+      name: 'Sports Content',
+      description: 'General sports coverage, highlights, and analysis',
+      genre: 'Sports',
+      plot_summary: 'Sports content including match highlights, player profiles, analysis, and behind-the-scenes coverage.',
+      characters: 'Athletes, Commentators, Coaches, Analysts, Production Team',
+      initial_context: 'Sports venue establishing shot, action in progress.',
+      director_settings: JSON.stringify({
+        lens: '70-200mm Telephoto',
+        angle: 'Dynamic Sports Angles',
+        lighting: 'Natural/Stadium Lighting',
+        movement: 'Handheld/Track',
+        style: 'Documentary',
+        transition: 'Quick Cut'
+      })
+    },
+    {
+      name: 'Documentary',
+      description: 'Documentary filmmaking and investigative journalism',
+      genre: 'Documentary',
+      plot_summary: 'A documentary exploring real-world topics, people, or events with journalistic integrity and storytelling.',
+      characters: 'Subject/Interviewee, Narrator, Documentary Crew',
+      initial_context: 'Establishing shot of documentary subject or location.',
+      director_settings: JSON.stringify({
+        lens: '35mm Prime',
+        angle: 'Eye Level',
+        lighting: 'Natural/Ambient',
+        movement: 'Slow Push/Pan',
+        style: 'Documentary',
+        transition: 'Dissolve'
+      })
+    },
+    {
+      name: 'Commercial / Advertisement',
+      description: 'TV commercials and promotional content',
+      genre: 'Commercial',
+      plot_summary: 'A commercial or advertisement promoting a product, service, or brand with engaging visuals and messaging.',
+      characters: 'Talent, Voiceover Artist, Production Team',
+      initial_context: 'Product or brand establishing shot.',
+      director_settings: JSON.stringify({
+        lens: '50mm Prime',
+        angle: 'Eye Level',
+        lighting: 'Professional Studio Lighting',
+        movement: 'Static/Slow Push',
+        style: 'Cinematic',
+        transition: 'Cut'
+      })
+    },
+    {
+      name: 'Music Video',
+      description: 'Music videos and performance content',
+      genre: 'Music Video',
+      plot_summary: 'A music video combining visual storytelling with musical performance and artistic expression.',
+      characters: 'Artist/Performer, Dancers, Band Members, Production Team',
+      initial_context: 'Performance space or artistic location establishing shot.',
+      director_settings: JSON.stringify({
+        lens: '24-70mm Zoom',
+        angle: 'Dynamic',
+        lighting: 'Creative/Artistic',
+        movement: 'Handheld/Dynamic',
+        style: 'Cinematic',
+        transition: 'Cut/Dissolve'
+      })
+    },
+    {
+      name: 'Web Series',
+      description: 'Online series and episodic content',
+      genre: 'Web Series',
+      plot_summary: 'An episodic web series with engaging characters and storylines designed for online streaming platforms.',
+      characters: 'Main Cast, Supporting Characters, Recurring Characters',
+      initial_context: 'Series opening establishing the world and tone.',
+      director_settings: JSON.stringify({
+        lens: '35mm Prime',
+        angle: 'Eye Level',
+        lighting: 'Natural/Soft',
+        movement: 'Static/Handheld',
+        style: 'Cinematic',
+        transition: 'Cut'
+      })
+    },
+    {
+      name: 'Podcast / Audio Content',
+      description: 'Podcast episodes and audio production',
+      genre: 'Podcast',
+      plot_summary: 'A podcast or audio content project with interviews, discussions, or narrative storytelling.',
+      characters: 'Host, Guest, Co-host, Producer',
+      initial_context: 'Podcast studio or recording location setup.',
+      director_settings: JSON.stringify({
+        lens: '50mm Prime',
+        angle: 'Eye Level',
+        lighting: 'Soft Studio Lighting',
+        movement: 'Static',
+        style: 'Documentary',
+        transition: 'Fade'
       })
     }
   ];

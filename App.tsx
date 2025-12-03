@@ -32,6 +32,8 @@ import ScenePreviewModal from './components/ScenePreviewModal';
 import StoryboardPlayback from './components/StoryboardPlayback';
 import AdvancedSearchPanel from './components/AdvancedSearchPanel';
 import ProjectTemplatesLibrary from './components/ProjectTemplatesLibrary';
+import ContentTypeSelector, { ContentType } from './components/ContentTypeSelector';
+import { getContentTypeInfo, getContentTypeBadgeClass, getContentTypeTerminology } from './utils/contentTypeUtils';
 import AIStoryAnalysisPanel from './components/AIStoryAnalysisPanel';
 import ShotListGenerator from './components/ShotListGenerator';
 import ShootingScheduleGenerator from './components/ShootingScheduleGenerator';
@@ -201,7 +203,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('library_view_mode');
     return (saved as 'grid' | 'list') || 'grid';
   });
-  const [librarySortBy, setLibrarySortBy] = useState<'date' | 'title' | 'genre' | 'scenes' | 'updated' | 'favorites' | 'health'>(() => {
+  const [librarySortBy, setLibrarySortBy] = useState<'date' | 'title' | 'genre' | 'scenes' | 'updated' | 'favorites' | 'health' | 'contentType'>(() => {
     const saved = localStorage.getItem('library_sort_by');
     return (saved as any) || 'date';
   });
@@ -219,6 +221,7 @@ const App: React.FC = () => {
   const [libraryFilterHasCover, setLibraryFilterHasCover] = useState<boolean | null>(null);
   const [libraryFilterSceneCount, setLibraryFilterSceneCount] = useState<{ min?: number; max?: number } | null>(null);
   const [libraryFilterFavorites, setLibraryFilterFavorites] = useState<boolean | null>(null);
+  const [libraryFilterContentType, setLibraryFilterContentType] = useState<string | null>(null);
   const [libraryCardSize, setLibraryCardSize] = useState<'small' | 'medium' | 'large'>(() => {
     const saved = localStorage.getItem('library_card_size');
     return (saved as 'small' | 'medium' | 'large') || 'medium';
@@ -244,6 +247,8 @@ const App: React.FC = () => {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  const [showContentTypeSelector, setShowContentTypeSelector] = useState(false);
+  const [selectedContentType, setSelectedContentType] = useState<ContentType | null>(null);
 
   // Characters
   const [showCharactersPanel, setShowCharactersPanel] = useState(false);
@@ -694,14 +699,54 @@ const App: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
         const shortcuts = view === 'library' 
-          ? `Library Shortcuts:\n\nCtrl+F - Advanced search\nCtrl+N - New project\nCtrl+/ - Show this help\nEsc - Close modals\n\nStudio Shortcuts:\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo`
+          ? `Library Shortcuts:\n\nCtrl+F - Advanced search\nCtrl+N - New project\nCtrl+A - Select all (in batch mode)\nCtrl+/ - Show this help\nEsc - Close modals\n\nStudio Shortcuts:\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo`
           : `Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`;
         alert(shortcuts);
       }
 
+      // Ctrl/Cmd + A - Select all (in batch mode)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a' && view === 'library' && libraryBatchMode) {
+        e.preventDefault();
+        // Select all filtered projects
+        const filteredIds = new Set(
+          projects
+            .filter(p => {
+              if (librarySearchTerm) {
+                const search = librarySearchTerm.toLowerCase();
+                const matchesSearch = (
+                  p.context.title.toLowerCase().includes(search) ||
+                  p.context.genre?.toLowerCase().includes(search) ||
+                  p.context.plotSummary?.toLowerCase().includes(search) ||
+                  p.context.characters?.toLowerCase().includes(search) ||
+                  p.scenes.some(s => s.rawIdea.toLowerCase().includes(search))
+                );
+                if (!matchesSearch) return false;
+              }
+              if (libraryFilterGenre && !p.context.genre?.toLowerCase().includes(libraryFilterGenre.toLowerCase())) return false;
+              if (libraryFilterHasCover !== null) {
+                const hasCover = !!p.context.coverImageUrl;
+                if (libraryFilterHasCover !== hasCover) return false;
+              }
+              if (libraryFilterSceneCount) {
+                const sceneCount = p.scenes.length;
+                if (libraryFilterSceneCount.min !== undefined && sceneCount < libraryFilterSceneCount.min) return false;
+                if (libraryFilterSceneCount.max !== undefined && sceneCount > libraryFilterSceneCount.max) return false;
+              }
+              if (libraryFilterFavorites !== null) {
+                const isFavorited = favoritedProjects.has(p.context.id);
+                if (libraryFilterFavorites !== isFavorited) return false;
+              }
+              return true;
+            })
+            .map(p => p.context.id)
+        );
+        setSelectedLibraryProjectIds(filteredIds);
+        return;
+      }
 
       // Escape - Close modals
       if (e.key === 'Escape') {
+        setShowFilterPresetsDropdown(false);
         setShowExportMenu(false);
         setShowTagsMenu(false);
         setShowCommentsPanel(false);
@@ -716,7 +761,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view, storyContext.id, showExportMenu]);
+  }, [view, storyContext.id, showExportMenu, libraryBatchMode, projects, librarySearchTerm, libraryFilterGenre, libraryFilterHasCover, libraryFilterSceneCount, libraryFilterFavorites, favoritedProjects]);
 
   const loadFavorites = async () => {
     try {
@@ -916,11 +961,20 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
-    // Immediately start a blank project without requiring templates to load
+    // Show content type selector first
+    setShowContentTypeSelector(true);
+  };
+
+  const handleContentTypeSelect = (contentType: ContentType) => {
+    setSelectedContentType(contentType);
+    setShowContentTypeSelector(false);
+    
+    // Create new project with selected content type
     const newContext: StoryContext = {
       ...DEFAULT_CONTEXT,
       id: generateId(),
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      contentType: contentType // Store content type
     };
 
     setStoryContext(newContext);
@@ -2542,20 +2596,112 @@ const App: React.FC = () => {
                   )}
                 </button>
 
-                {libraryBatchMode && selectedLibraryProjectIds.size > 0 && (
+                {libraryBatchMode && (
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowBulkTagAssigner(true)}
-                      className="px-3 py-1.5 rounded text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-900/50 transition-colors"
-                    >
-                      Assign Tags ({selectedLibraryProjectIds.size})
-                    </button>
-                    <button
-                      onClick={() => setSelectedLibraryProjectIds(new Set())}
-                      className="px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                    >
-                      Clear Selection
-                    </button>
+                    {selectedLibraryProjectIds.size > 0 ? (
+                      <>
+                        <button
+                          onClick={() => setShowBulkTagAssigner(true)}
+                          className="px-3 py-1.5 rounded text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-900/50 transition-colors"
+                        >
+                          Assign Tags ({selectedLibraryProjectIds.size})
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Select all filtered projects
+                            const filteredIds = new Set(
+                              projects
+                                .filter(p => {
+                                  // Apply same filters as the display logic
+                                  if (librarySearchTerm) {
+                                    const search = librarySearchTerm.toLowerCase();
+                                    const matchesSearch = (
+                                      p.context.title.toLowerCase().includes(search) ||
+                                      p.context.genre?.toLowerCase().includes(search) ||
+                                      p.context.plotSummary?.toLowerCase().includes(search) ||
+                                      p.context.characters?.toLowerCase().includes(search) ||
+                                      p.scenes.some(s => s.rawIdea.toLowerCase().includes(search))
+                                    );
+                                    if (!matchesSearch) return false;
+                                  }
+                                  if (libraryFilterGenre && !p.context.genre?.toLowerCase().includes(libraryFilterGenre.toLowerCase())) return false;
+                                  if (libraryFilterHasCover !== null) {
+                                    const hasCover = !!p.context.coverImageUrl;
+                                    if (libraryFilterHasCover !== hasCover) return false;
+                                  }
+                                  if (libraryFilterSceneCount) {
+                                    const sceneCount = p.scenes.length;
+                                    if (libraryFilterSceneCount.min !== undefined && sceneCount < libraryFilterSceneCount.min) return false;
+                                    if (libraryFilterSceneCount.max !== undefined && sceneCount > libraryFilterSceneCount.max) return false;
+                                  }
+                                  if (libraryFilterFavorites !== null) {
+                                    const isFavorited = favoritedProjects.has(p.context.id);
+                                    if (libraryFilterFavorites !== isFavorited) return false;
+                                  }
+                                  if (libraryFilterContentType) {
+                                    if (p.context.contentType !== libraryFilterContentType) return false;
+                                  }
+                                  return true;
+                                })
+                                .map(p => p.context.id)
+                            );
+                            setSelectedLibraryProjectIds(filteredIds);
+                          }}
+                          className="px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+                        >
+                          Select All Filtered
+                        </button>
+                        <button
+                          onClick={() => setSelectedLibraryProjectIds(new Set())}
+                          className="px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+                        >
+                          Clear Selection
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          // Select all filtered projects
+                          const filteredIds = new Set(
+                            projects
+                              .filter(p => {
+                                // Apply same filters as the display logic
+                                if (librarySearchTerm) {
+                                  const search = librarySearchTerm.toLowerCase();
+                                  const matchesSearch = (
+                                    p.context.title.toLowerCase().includes(search) ||
+                                    p.context.genre?.toLowerCase().includes(search) ||
+                                    p.context.plotSummary?.toLowerCase().includes(search) ||
+                                    p.context.characters?.toLowerCase().includes(search) ||
+                                    p.scenes.some(s => s.rawIdea.toLowerCase().includes(search))
+                                  );
+                                  if (!matchesSearch) return false;
+                                }
+                                if (libraryFilterGenre && !p.context.genre?.toLowerCase().includes(libraryFilterGenre.toLowerCase())) return false;
+                                if (libraryFilterHasCover !== null) {
+                                  const hasCover = !!p.context.coverImageUrl;
+                                  if (libraryFilterHasCover !== hasCover) return false;
+                                }
+                                if (libraryFilterSceneCount) {
+                                  const sceneCount = p.scenes.length;
+                                  if (libraryFilterSceneCount.min !== undefined && sceneCount < libraryFilterSceneCount.min) return false;
+                                  if (libraryFilterSceneCount.max !== undefined && sceneCount > libraryFilterSceneCount.max) return false;
+                                }
+                                if (libraryFilterFavorites !== null) {
+                                  const isFavorited = favoritedProjects.has(p.context.id);
+                                  if (libraryFilterFavorites !== isFavorited) return false;
+                                }
+                                return true;
+                              })
+                              .map(p => p.context.id)
+                          );
+                          setSelectedLibraryProjectIds(filteredIds);
+                        }}
+                        className="px-3 py-1.5 rounded text-xs bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/50 transition-colors"
+                      >
+                        Select All Filtered
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -2583,7 +2729,7 @@ const App: React.FC = () => {
                       }
                     }}
                     className={`px-3 py-1.5 rounded text-xs border transition-colors ${
-                      showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null
+                      showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null || libraryFilterContentType !== null
                         ? 'bg-amber-600 border-amber-500 text-white'
                         : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
                     }`}
@@ -2602,37 +2748,62 @@ const App: React.FC = () => {
                     >
                       <div className="p-2 text-xs text-zinc-400 border-b border-zinc-800 sticky top-0 bg-zinc-900">Quick Filters</div>
                       {filterPresets.map(preset => (
-                        <button
+                        <div
                           key={preset.id}
+                          className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 flex items-center justify-between group"
+                        >
+                          <button
                           onClick={() => {
                             setLibraryFilterGenre(preset.filters.genre || '');
                             setLibraryFilterTags(preset.filters.tags || []);
                             setLibraryFilterHasCover(preset.filters.hasCover ?? null);
                             setLibraryFilterSceneCount(preset.filters.sceneCount ?? null);
                             setLibraryFilterFavorites(preset.filters.favorites ?? null);
+                            setLibraryFilterContentType(preset.filters.contentType || null);
                             setShowAdvancedSearch(true);
                             setShowFilterPresetsDropdown(false);
                           }}
-                          className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 flex items-center justify-between group"
-                        >
-                          <span>{preset.name}</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm(`Delete preset "${preset.name}"?`)) {
-                                setFilterPresets(prev => prev.filter(p => p.id !== preset.id));
-                                if (filterPresets.length === 1) {
-                                  setShowFilterPresetsDropdown(false);
-                                }
-                              }
-                            }}
-                            className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="flex-1 text-left"
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                              <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443a.75.75 0 01-.298.604L6 4.75v10.5A2.75 2.75 0 008.75 18h2.5A2.75 2.75 0 0014 15.25V4.75l-.452-.197A.75.75 0 0113.25 4.193V3.75A2.75 2.75 0 0010.5 1h-1.75zM9 3.25a.25.25 0 01.25-.25h1.5a.25.25 0 01.25.25v.5a.25.25 0 01-.25.25h-1.5A.25.25 0 019 3.75v-.5zM7.5 7.25a.75.75 0 00-1.5 0v7.5a.75.75 0 001.5 0v-7.5zm3 0a.75.75 0 00-1.5 0v7.5a.75.75 0 001.5 0v-7.5z" clipRule="evenodd" />
-                            </svg>
+                            {preset.name}
                           </button>
-                        </button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newName = window.prompt(`Edit preset name:`, preset.name);
+                                if (newName && newName.trim() && newName.trim() !== preset.name) {
+                                  setFilterPresets(prev => prev.map(p => 
+                                    p.id === preset.id ? { ...p, name: newName.trim() } : p
+                                  ));
+                                }
+                              }}
+                              className="text-zinc-500 hover:text-amber-400 p-1"
+                              title="Edit preset name"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Delete preset "${preset.name}"?`)) {
+                                  setFilterPresets(prev => prev.filter(p => p.id !== preset.id));
+                                  if (filterPresets.length === 1) {
+                                    setShowFilterPresetsDropdown(false);
+                                  }
+                                }
+                              }}
+                              className="text-zinc-500 hover:text-red-400 p-1"
+                              title="Delete preset"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443a.75.75 0 01-.298.604L6 4.75v10.5A2.75 2.75 0 008.75 18h2.5A2.75 2.75 0 0014 15.25V4.75l-.452-.197A.75.75 0 0113.25 4.193V3.75A2.75 2.75 0 0010.5 1h-1.75zM9 3.25a.25.25 0 01.25-.25h1.5a.25.25 0 01.25.25v.5a.25.25 0 01-.25.25h-1.5A.25.25 0 019 3.75v-.5zM7.5 7.25a.75.75 0 00-1.5 0v7.5a.75.75 0 001.5 0v-7.5zm3 0a.75.75 0 00-1.5 0v7.5a.75.75 0 001.5 0v-7.5z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -2904,6 +3075,30 @@ const App: React.FC = () => {
                       </select>
                     </div>
 
+                    {/* Content Type Filter */}
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Content Type</label>
+                      <select
+                        value={libraryFilterContentType || 'all'}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setLibraryFilterContentType(value === 'all' ? null : value);
+                        }}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm"
+                      >
+                        <option value="all">All Types</option>
+                        <option value="film">🎬 Film / Storyboard</option>
+                        <option value="news">📰 News Reporting</option>
+                        <option value="sports">⚽ Sports Content</option>
+                        <option value="documentary">📹 Documentary</option>
+                        <option value="commercial">📺 Commercial / Ad</option>
+                        <option value="music-video">🎵 Music Video</option>
+                        <option value="web-series">📱 Web Series</option>
+                        <option value="podcast">🎙️ Podcast / Audio</option>
+                        <option value="other">✨ Other</option>
+                      </select>
+                    </div>
+
                     <div className="space-y-2">
                       <button
                         onClick={() => {
@@ -2913,6 +3108,7 @@ const App: React.FC = () => {
                           setLibraryFilterHasCover(null);
                           setLibraryFilterSceneCount(null);
                           setLibraryFilterFavorites(null);
+                          setLibraryFilterContentType(null);
                         }}
                         className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-sm"
                       >
@@ -2931,6 +3127,7 @@ const App: React.FC = () => {
                                 hasCover: libraryFilterHasCover,
                                 sceneCount: libraryFilterSceneCount,
                                 favorites: libraryFilterFavorites,
+                                contentType: libraryFilterContentType || undefined,
                               }
                             };
                             setFilterPresets(prev => [...prev, newPreset]);
@@ -3061,6 +3258,11 @@ const App: React.FC = () => {
                 if (libraryFilterFavorites !== null) {
                   const isFavorited = favoritedProjects.has(p.context.id);
                   if (libraryFilterFavorites !== isFavorited) return false;
+                }
+
+                // Content type filter
+                if (libraryFilterContentType) {
+                  if (p.context.contentType !== libraryFilterContentType) return false;
                 }
 
                 return true;
@@ -3248,9 +3450,17 @@ const App: React.FC = () => {
                         )}
 
                         <div className="p-6 flex-1 flex flex-col">
-                          <h3 className="text-lg font-serif font-bold text-white mb-1 line-clamp-1">
-                            {librarySearchTerm ? highlightSearchTerm(p.context.title, librarySearchTerm) : p.context.title}
-                          </h3>
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h3 className="text-lg font-serif font-bold text-white line-clamp-1 flex-1">
+                              {librarySearchTerm ? highlightSearchTerm(p.context.title, librarySearchTerm) : p.context.title}
+                            </h3>
+                            {p.context.contentType && (
+                              <span className={`text-xs px-2 py-0.5 rounded border flex items-center gap-1 flex-shrink-0 ${getContentTypeBadgeClass(p.context.contentType)}`}>
+                                <span>{getContentTypeInfo(p.context.contentType).icon}</span>
+                                <span className="hidden sm:inline">{getContentTypeInfo(p.context.contentType).name}</span>
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-amber-500 uppercase tracking-wider mb-4">
                             {librarySearchTerm && p.context.genre ? highlightSearchTerm(p.context.genre, librarySearchTerm) : p.context.genre}
                           </p>
@@ -3690,6 +3900,12 @@ const App: React.FC = () => {
             <span className="text-zinc-500 mr-2">PROJECT:</span>
               <span className="truncate max-w-[200px]">{storyContext.title}</span>
             {storyContext.title && <CopyButton text={storyContext.title} size="sm" />}
+            {storyContext.contentType && (
+              <span className={`text-xs px-2 py-0.5 rounded border flex items-center gap-1 ${getContentTypeBadgeClass(storyContext.contentType)}`}>
+                <span>{getContentTypeInfo(storyContext.contentType).icon}</span>
+                <span>{getContentTypeInfo(storyContext.contentType).name}</span>
+              </span>
+            )}
           </div>
         </div>
           <div className="text-xs text-zinc-400 sm:hidden truncate max-w-[150px]">{storyContext.title}</div>
@@ -5099,6 +5315,14 @@ const App: React.FC = () => {
               showToast(`Failed to export: ${error.message}`, 'error');
             }
           }}
+        />
+      )}
+
+      {/* Content Type Selector */}
+      {showContentTypeSelector && (
+        <ContentTypeSelector
+          onSelect={handleContentTypeSelect}
+          onClose={() => setShowContentTypeSelector(false)}
         />
       )}
 

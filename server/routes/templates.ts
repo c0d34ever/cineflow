@@ -117,13 +117,14 @@ router.post('/:id/create-project', authenticateToken, async (req: AuthRequest, r
     const now = Date.now();
 
     await pool.query(
-      `INSERT INTO projects (id, user_id, title, genre, plot_summary, characters, initial_context, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO projects (id, user_id, title, genre, content_type, plot_summary, characters, initial_context, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         projectId,
         userId,
         `${template.name} (Copy)`,
         template.genre || '',
+        'film', // Default to film for templates, can be customized
         template.plot_summary || '',
         template.characters || '',
         template.initial_context || '',
