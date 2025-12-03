@@ -106,6 +106,19 @@ const generateId = () => {
 };
 
 // Calculate health score for a project (same logic as ProjectHealthScore component)
+// Helper function to create onClick handlers with flushSync for immediate rendering
+const createImmediateHandler = (setter: () => void) => {
+  return (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    flushSync(() => {
+      setter();
+    });
+  };
+};
+
 const calculateProjectHealthScore = (project: ProjectData): number => {
   const { context, scenes } = project;
   
@@ -967,13 +980,18 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
-    // Show content type selector first
-    setShowContentTypeSelector(true);
+    // Show content type selector first with flushSync for immediate render
+    flushSync(() => {
+      setShowContentTypeSelector(true);
+    });
   };
 
   const handleContentTypeSelect = (contentType: ContentType) => {
-    setSelectedContentType(contentType);
-    setShowContentTypeSelector(false);
+    // Close selector immediately
+    flushSync(() => {
+      setSelectedContentType(contentType);
+      setShowContentTypeSelector(false);
+    });
     
     // Create new project with selected content type
     const newContext: StoryContext = {
@@ -983,11 +1001,14 @@ const App: React.FC = () => {
       contentType: contentType // Store content type
     };
 
-    setStoryContext(newContext);
-    setScenes([]);
-    setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
-    setSetupTab('new');
-    setView('setup');
+    // Update state immediately
+    flushSync(() => {
+      setStoryContext(newContext);
+      setScenes([]);
+      setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
+      setSetupTab('new');
+      setView('setup');
+    });
   };
 
   const handleTemplateSelect = (template: any) => {
@@ -2517,7 +2538,11 @@ const App: React.FC = () => {
                 </button>
               )}
               <button
-                onClick={() => setView('dashboard')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  flushSync(() => setView('dashboard'));
+                }}
                 className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
               >
                 Dashboard
@@ -2556,7 +2581,11 @@ const App: React.FC = () => {
               </button>
               {/* Settings Button */}
               <button
-                onClick={() => setShowSettingsPanel(true)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  flushSync(() => setShowSettingsPanel(true));
+                }}
                 className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
                 title="Settings"
               >
@@ -2607,7 +2636,11 @@ const App: React.FC = () => {
                     {selectedLibraryProjectIds.size > 0 ? (
                       <>
                         <button
-                          onClick={() => setShowBulkTagAssigner(true)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            flushSync(() => setShowBulkTagAssigner(true));
+                          }}
                           className="px-3 py-1.5 rounded text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-900/50 transition-colors"
                         >
                           Assign Tags ({selectedLibraryProjectIds.size})
@@ -2837,7 +2870,11 @@ const App: React.FC = () => {
 
                 <div className="flex bg-zinc-900 border border-zinc-700 rounded-lg p-1">
                   <button
-                    onClick={() => setLibraryViewMode('grid')}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      flushSync(() => setLibraryViewMode('grid'));
+                    }}
                     className={`p-2 rounded ${libraryViewMode === 'grid' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'}`}
                     title="Grid View"
                   >
@@ -2847,7 +2884,11 @@ const App: React.FC = () => {
                     </svg>
                   </button>
                   <button
-                    onClick={() => setLibraryViewMode('list')}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      flushSync(() => setLibraryViewMode('list'));
+                    }}
                     className={`p-2 rounded ${libraryViewMode === 'list' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'}`}
                     title="List View"
                   >
@@ -2867,7 +2908,11 @@ const App: React.FC = () => {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold">Advanced Search & Filters</h3>
                 <button
-                  onClick={() => setShowAdvancedSearch(false)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    flushSync(() => setShowAdvancedSearch(false));
+                  }}
                   className="text-zinc-400 hover:text-white"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -2930,7 +2975,11 @@ const App: React.FC = () => {
           <div className={libraryViewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-3'}>
             {/* New Project Card */}
             <button 
-              onClick={handleCreateNew}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCreateNew();
+              }}
               className="bg-zinc-900/50 border-2 border-dashed border-zinc-800 rounded-xl p-8 flex flex-col items-center justify-center min-h-[200px] hover:border-amber-500/50 hover:bg-zinc-900 transition-all group"
             >
                <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 group-hover:bg-amber-600 group-hover:text-white transition-colors mb-4">
@@ -2967,7 +3016,11 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold">Advanced Search & Filters</h3>
                   <button
-                    onClick={() => setShowAdvancedSearch(false)}
+                    onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    flushSync(() => setShowAdvancedSearch(false));
+                  }}
                     className="text-zinc-400 hover:text-white"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -4229,7 +4282,11 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <div className="relative group">
             <button
-                onClick={() => setShowAdvancedAnalytics(true)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  flushSync(() => setShowAdvancedAnalytics(true));
+                }}
                 className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
                 title="Advanced Analytics Dashboard"
               >
@@ -4285,7 +4342,11 @@ const App: React.FC = () => {
           {/* AI Story Analysis Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowAIStoryAnalysis(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowAIStoryAnalysis(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-700 text-white border border-purple-500 transition-colors flex items-center gap-1"
               title="AI Story Analysis"
             >
@@ -4299,7 +4360,11 @@ const App: React.FC = () => {
           {/* Shot List Generator Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowShotListGenerator(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowShotListGenerator(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 transition-colors flex items-center gap-1"
               title="Generate Shot List"
             >
@@ -4313,7 +4378,11 @@ const App: React.FC = () => {
           {/* Shooting Schedule Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowShootingSchedule(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowShootingSchedule(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white border border-green-500 transition-colors flex items-center gap-1"
               title="Generate Shooting Schedule"
             >
@@ -4327,7 +4396,11 @@ const App: React.FC = () => {
           {/* Budget Estimator Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowBudgetEstimator(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowBudgetEstimator(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
               title="Budget Estimator"
             >
@@ -4341,7 +4414,11 @@ const App: React.FC = () => {
           {/* Video Export Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowVideoExport(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowVideoExport(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-pink-600 hover:bg-pink-700 text-white border border-pink-500 transition-colors flex items-center gap-1"
               title="Export Video Slideshow"
             >
@@ -4355,7 +4432,11 @@ const App: React.FC = () => {
           {/* Scene Comparison Button */}
           {view === 'studio' && storyContext.id && scenes.length > 1 && (
             <button
-              onClick={() => setShowSceneComparison(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowSceneComparison(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
               title="Compare Scenes Side-by-Side"
             >
@@ -4369,7 +4450,11 @@ const App: React.FC = () => {
           {/* Character Relationship Graph Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowCharacterGraph(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowCharacterGraph(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-700 text-white border border-purple-500 transition-colors flex items-center gap-1"
               title="Character Relationship Graph"
             >
@@ -4383,7 +4468,11 @@ const App: React.FC = () => {
           {/* Version History Button */}
           {view === 'studio' && storyContext.id && (
             <button
-              onClick={() => setShowVersionHistory(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowVersionHistory(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-teal-600 hover:bg-teal-700 text-white border border-teal-500 transition-colors flex items-center gap-1"
               title="Version History & Rollback"
             >
@@ -4397,7 +4486,11 @@ const App: React.FC = () => {
           {/* Project Health Score Button */}
           {view === 'studio' && storyContext.id && (
             <button
-              onClick={() => setShowProjectHealth(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowProjectHealth(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 transition-colors flex items-center gap-1"
               title="Project Health Score"
             >
@@ -4411,7 +4504,11 @@ const App: React.FC = () => {
           {/* AI Scene Suggestions Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowAISceneSuggestions(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowAISceneSuggestions(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-700 text-white border border-cyan-500 transition-colors flex items-center gap-1"
               title="AI Scene Suggestions"
             >
@@ -4425,7 +4522,11 @@ const App: React.FC = () => {
           {/* Story Arc Visualizer Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowStoryArcVisualizer(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowStoryArcVisualizer(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
               title="Story Arc Visualizer"
             >
@@ -4439,7 +4540,11 @@ const App: React.FC = () => {
           {/* Scene Bookmarks Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowSceneBookmarks(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowSceneBookmarks(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-violet-600 hover:bg-violet-700 text-white border border-violet-500 transition-colors flex items-center gap-1"
               title="Scene Bookmarks"
             >
@@ -4453,7 +4558,11 @@ const App: React.FC = () => {
           {/* Scene Dependency Tracker Button */}
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
-              onClick={() => setShowSceneDependencyTracker(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowSceneDependencyTracker(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 transition-colors flex items-center gap-1"
               title="Scene Dependency Tracker"
             >
@@ -4467,7 +4576,11 @@ const App: React.FC = () => {
           {/* Export History Button */}
           {view === 'studio' && (
             <button
-              onClick={() => setShowExportHistoryPanel(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowExportHistoryPanel(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Export History"
             >
@@ -4481,7 +4594,11 @@ const App: React.FC = () => {
           {/* Export Queue Button */}
           {view === 'studio' && (
             <button
-              onClick={() => setShowExportQueue(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowExportQueue(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1 relative"
               title="Export Queue"
             >
@@ -4500,7 +4617,11 @@ const App: React.FC = () => {
           {/* Storyboard Playback Button */}
           {view === 'studio' && scenes.length > 0 && (
             <button
-              onClick={() => setShowStoryboardPlayback(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowStoryboardPlayback(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white border border-amber-500 transition-colors flex items-center gap-1"
               title="Playback Storyboard"
             >
@@ -4513,7 +4634,11 @@ const App: React.FC = () => {
 
           {/* Advanced Search Button */}
           <button
-            onClick={() => setShowAdvancedSearchPanel(true)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              flushSync(() => setShowAdvancedSearchPanel(true));
+            }}
             className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
             title="Advanced Search (Ctrl+F)"
           >
@@ -4526,7 +4651,11 @@ const App: React.FC = () => {
           {/* Comments Button */}
           {view === 'studio' && storyContext.id && (
             <button
-              onClick={() => setShowCommentsPanel(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                flushSync(() => setShowCommentsPanel(true));
+              }}
               className="text-xs px-2 sm:px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1"
               title="Project Comments (Ctrl+C)"
             >
@@ -4881,7 +5010,9 @@ const App: React.FC = () => {
           projectId={storyContext.id}
           storyContext={storyContext}
           scenes={scenes}
-          onClose={() => setShowCharactersPanel(false)}
+          onClose={() => {
+            flushSync(() => setShowCharactersPanel(false));
+          }}
         />
       )}
 
@@ -4891,7 +5022,9 @@ const App: React.FC = () => {
           projectId={storyContext.id}
           storyContext={storyContext}
           scenes={scenes}
-          onClose={() => setShowLocationsPanel(false)}
+          onClose={() => {
+            flushSync(() => setShowLocationsPanel(false));
+          }}
         />
       )}
 
@@ -4899,7 +5032,9 @@ const App: React.FC = () => {
       {showAnalyticsPanel && storyContext.id && (
         <AnalyticsPanel
           projectId={storyContext.id}
-          onClose={() => setShowAnalyticsPanel(false)}
+          onClose={() => {
+            flushSync(() => setShowAnalyticsPanel(false));
+          }}
         />
       )}
 
@@ -4909,7 +5044,9 @@ const App: React.FC = () => {
           projectId={storyContext.id}
           scenes={scenes}
           storyContext={storyContext}
-          onClose={() => setShowAdvancedAnalytics(false)}
+          onClose={() => {
+            flushSync(() => setShowAdvancedAnalytics(false));
+          }}
         />
       )}
 
@@ -4918,14 +5055,18 @@ const App: React.FC = () => {
         <ProjectStatisticsPanel
           projectId={storyContext.id}
           scenes={scenes}
-          onClose={() => setShowProjectStatisticsPanel(false)}
+          onClose={() => {
+            flushSync(() => setShowProjectStatisticsPanel(false));
+          }}
         />
       )}
 
       {/* Export History Panel */}
       {showExportHistoryPanel && (
         <ExportHistoryPanel
-          onClose={() => setShowExportHistoryPanel(false)}
+          onClose={() => {
+            flushSync(() => setShowExportHistoryPanel(false));
+          }}
         />
       )}
 
@@ -4933,7 +5074,9 @@ const App: React.FC = () => {
       {showExportQueue && (
         <ExportQueuePanel
           isOpen={showExportQueue}
-          onClose={() => setShowExportQueue(false)}
+          onClose={() => {
+            flushSync(() => setShowExportQueue(false));
+          }}
           onAddExport={addExportToQueue}
           jobs={exportQueue}
           onCancelJob={cancelExportJob}
@@ -4977,7 +5120,9 @@ const App: React.FC = () => {
           projectId={storyContext.id}
           storyContext={storyContext}
           scenes={scenes}
-          onClose={() => setShowAIStoryAnalysis(false)}
+          onClose={() => {
+            flushSync(() => setShowAIStoryAnalysis(false));
+          }}
           onCreateScene={async (sceneIdea: string, purpose?: string) => {
             // Set the scene idea in the input and trigger generation
             setCurrentInput(sceneIdea);
@@ -4998,7 +5143,9 @@ const App: React.FC = () => {
         <ShotListGenerator
           scenes={scenes}
           projectId={storyContext.id}
-          onClose={() => setShowShotListGenerator(false)}
+          onClose={() => {
+            flushSync(() => setShowShotListGenerator(false));
+          }}
         />
       )}
 
@@ -5008,7 +5155,9 @@ const App: React.FC = () => {
           scenes={scenes}
           projectId={storyContext.id}
           storyContext={storyContext}
-          onClose={() => setShowShootingSchedule(false)}
+          onClose={() => {
+            flushSync(() => setShowShootingSchedule(false));
+          }}
           onGenerateCallSheet={(day) => {
             setCallSheetDay(day);
             setShowShootingSchedule(false);
@@ -5036,7 +5185,9 @@ const App: React.FC = () => {
         <BudgetEstimator
           scenes={scenes}
           projectId={storyContext.id}
-          onClose={() => setShowBudgetEstimator(false)}
+          onClose={() => {
+            flushSync(() => setShowBudgetEstimator(false));
+          }}
         />
       )}
 
@@ -5045,7 +5196,9 @@ const App: React.FC = () => {
         <VideoSlideshowExport
           scenes={scenes}
           projectId={storyContext.id}
-          onClose={() => setShowVideoExport(false)}
+          onClose={() => {
+            flushSync(() => setShowVideoExport(false));
+          }}
         />
       )}
 
@@ -5054,7 +5207,9 @@ const App: React.FC = () => {
         <SceneComparisonView
           scenes={scenes}
           projectId={storyContext.id}
-          onClose={() => setShowSceneComparison(false)}
+          onClose={() => {
+            flushSync(() => setShowSceneComparison(false));
+          }}
         />
       )}
 
@@ -5064,7 +5219,9 @@ const App: React.FC = () => {
           scenes={scenes}
           projectId={storyContext.id}
           storyContext={storyContext}
-          onClose={() => setShowCharacterGraph(false)}
+          onClose={() => {
+            flushSync(() => setShowCharacterGraph(false));
+          }}
         />
       )}
 
@@ -5075,7 +5232,9 @@ const App: React.FC = () => {
           currentContext={storyContext}
           currentScenes={scenes}
           currentSettings={currentSettings}
-          onClose={() => setShowVersionHistory(false)}
+          onClose={() => {
+            flushSync(() => setShowVersionHistory(false));
+          }}
           onRestore={async (version) => {
             setStoryContext(version.context);
             setScenes(version.scenes || []);
@@ -5091,7 +5250,9 @@ const App: React.FC = () => {
           scenes={scenes}
           storyContext={storyContext}
           settings={currentSettings}
-          onClose={() => setShowProjectHealth(false)}
+          onClose={() => {
+            flushSync(() => setShowProjectHealth(false));
+          }}
         />
       )}
 
@@ -5160,7 +5321,9 @@ const App: React.FC = () => {
           scenes={scenes}
           storyContext={storyContext}
           projectId={storyContext.id}
-          onClose={() => setShowAISceneSuggestions(false)}
+          onClose={() => {
+            flushSync(() => setShowAISceneSuggestions(false));
+          }}
           onApplySuggestion={(suggestion) => {
             // Set the suggestion as the current input
             setCurrentInput(suggestion);
@@ -5181,7 +5344,9 @@ const App: React.FC = () => {
         <StoryArcVisualizer
           scenes={scenes}
           storyContext={storyContext}
-          onClose={() => setShowStoryArcVisualizer(false)}
+          onClose={() => {
+            flushSync(() => setShowStoryArcVisualizer(false));
+          }}
         />
       )}
 
@@ -5274,7 +5439,9 @@ const App: React.FC = () => {
           scenes={scenes}
           storyContext={storyContext}
           projectId={storyContext.id}
-          onClose={() => setShowSceneDependencyTracker(false)}
+          onClose={() => {
+            flushSync(() => setShowSceneDependencyTracker(false));
+          }}
         />
       )}
 
@@ -5283,7 +5450,9 @@ const App: React.FC = () => {
         <SceneBookmarksPanel
           projectId={storyContext.id}
           scenes={scenes}
-          onClose={() => setShowSceneBookmarks(false)}
+          onClose={() => {
+            flushSync(() => setShowSceneBookmarks(false));
+          }}
           onNavigateToScene={(sceneId) => {
             setShowSceneBookmarks(false);
             setTimeout(() => {
@@ -5303,7 +5472,9 @@ const App: React.FC = () => {
       {/* Export Presets Panel */}
       {showExportPresets && (
         <ExportPresetsPanel
-          onClose={() => setShowExportPresets(false)}
+          onClose={() => {
+            flushSync(() => setShowExportPresets(false));
+          }}
           onApply={async (preset) => {
             try {
               const exportData: any = {
@@ -5359,14 +5530,20 @@ const App: React.FC = () => {
       {showContentTypeSelector && (
         <ContentTypeSelector
           onSelect={handleContentTypeSelect}
-          onClose={() => setShowContentTypeSelector(false)}
+          onClose={() => {
+            flushSync(() => {
+              setShowContentTypeSelector(false);
+            });
+          }}
         />
       )}
 
       {/* Project Templates Library */}
       {showTemplatesLibrary && (
         <ProjectTemplatesLibrary
-          onClose={() => setShowTemplatesLibrary(false)}
+          onClose={() => {
+            flushSync(() => setShowTemplatesLibrary(false));
+          }}
           onSelectTemplate={async (template) => {
             try {
               const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -5442,7 +5619,9 @@ const App: React.FC = () => {
           projects={projects}
           scenes={scenes}
           currentProjectId={storyContext.id}
-          onClose={() => setShowAdvancedSearchPanel(false)}
+          onClose={() => {
+            flushSync(() => setShowAdvancedSearchPanel(false));
+          }}
           onSelectProject={async (projectId) => {
             try {
               const apiAvailable = await checkApiAvailability();
@@ -5528,7 +5707,9 @@ const App: React.FC = () => {
           templates={sceneTemplates}
           storyContext={storyContext}
           onSelect={handleSelectSceneTemplate}
-          onClose={() => setShowSceneTemplates(false)}
+          onClose={() => {
+            flushSync(() => setShowSceneTemplates(false));
+          }}
           onSaveCurrentAsTemplate={() => {
             setShowSceneTemplates(false);
             setShowSaveSceneTemplateModal(true);
@@ -5578,7 +5759,9 @@ const App: React.FC = () => {
       {showActivityPanel && (
         <div className="fixed inset-0 z-[100]">
           <ActivityPanel
-            onClose={() => setShowActivityPanel(false)}
+            onClose={() => {
+              flushSync(() => setShowActivityPanel(false));
+            }}
           />
         </div>
       )}
@@ -5587,7 +5770,9 @@ const App: React.FC = () => {
       {showNotificationCenter && (
         <NotificationCenter
           isOpen={showNotificationCenter}
-          onClose={() => setShowNotificationCenter(false)}
+          onClose={() => {
+            flushSync(() => setShowNotificationCenter(false));
+          }}
           notifications={notifications}
           unreadCount={unreadNotificationCount}
           onMarkAsRead={handleMarkNotificationRead}
@@ -5601,7 +5786,9 @@ const App: React.FC = () => {
       {showSettingsPanel && (
         <div className="fixed inset-0 z-[100]">
           <SettingsPanel
-            onClose={() => setShowSettingsPanel(false)}
+            onClose={() => {
+              flushSync(() => setShowSettingsPanel(false));
+            }}
             theme={theme}
             onThemeChange={setTheme}
           />
@@ -5743,7 +5930,9 @@ const App: React.FC = () => {
       {showCommentsPanel && storyContext.id && (
         <CommentsPanel
           projectId={storyContext.id}
-          onClose={() => setShowCommentsPanel(false)}
+          onClose={() => {
+            flushSync(() => setShowCommentsPanel(false));
+          }}
         />
       )}
 
