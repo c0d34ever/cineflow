@@ -73,6 +73,73 @@
   }
 }
 </script>
+  <!-- Guard against browser extension script conflicts -->
+  <script>
+    // Prevent duplicate declarations from browser extensions
+    (function() {
+      'use strict';
+      
+      // Create namespace guards to prevent duplicate declarations
+      if (typeof window.extensionGuards === 'undefined') {
+        window.extensionGuards = {};
+      }
+      
+      // Intercept and wrap potentially conflicting variable declarations
+      const originalDefineProperty = Object.defineProperty;
+      Object.defineProperty = function(obj, prop, descriptor) {
+        // Allow redefinition if it's from a browser extension
+        if (prop === 'afterBodyReady' || prop === 'afterBodyReadyScreenshader') {
+          try {
+            return originalDefineProperty.call(this, obj, prop, descriptor);
+          } catch (e) {
+            // Silently ignore duplicate property definitions from extensions
+            if (e.message && e.message.includes('already been declared')) {
+              console.warn('Suppressed duplicate declaration from browser extension:', prop);
+              return obj;
+            }
+            throw e;
+          }
+        }
+        return originalDefineProperty.call(this, obj, prop, descriptor);
+      };
+      
+      // Store original error handler
+      const originalError = window.onerror;
+      
+      // Override error handler to suppress known browser extension conflicts
+      window.onerror = function(msg, source, lineno, colno, error) {
+        // Suppress errors from browser extension scripts
+        if (source && (
+          source.includes('screen-shader.js') || 
+          source.includes('night-mode.js') ||
+          msg.includes('afterBodyReadyScreenshader') ||
+          msg.includes('afterBodyReady') ||
+          (msg && msg.toString().includes('already been declared'))
+        )) {
+          console.warn('Suppressed browser extension script conflict:', msg);
+          return true; // Suppress the error
+        }
+        
+        // Call original error handler for other errors
+        if (originalError) {
+          return originalError.call(this, msg, source, lineno, colno, error);
+        }
+        return false;
+      };
+      
+      // Also catch unhandled promise rejections that might be related
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event.reason && (
+          event.reason.toString().includes('afterBodyReadyScreenshader') ||
+          event.reason.toString().includes('afterBodyReady') ||
+          event.reason.toString().includes('already been declared')
+        )) {
+          console.warn('Suppressed browser extension promise rejection:', event.reason);
+          event.preventDefault();
+        }
+      });
+    })();
+  </script>
 </head>
   <body>
     <div id="root"></div>
