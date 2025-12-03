@@ -2539,7 +2539,7 @@ const App: React.FC = () => {
               )}
               <button
                 onClick={(e) => {
-                  e.preventDefault();
+  
                   e.stopPropagation();
                   flushSync(() => setView('dashboard'));
                 }}
@@ -2582,7 +2582,7 @@ const App: React.FC = () => {
               {/* Settings Button */}
               <button
                 onClick={(e) => {
-                  e.preventDefault();
+  
                   e.stopPropagation();
                   flushSync(() => setShowSettingsPanel(true));
                 }}
@@ -2637,7 +2637,7 @@ const App: React.FC = () => {
                       <>
                         <button
                           onClick={(e) => {
-                            e.preventDefault();
+            
                             e.stopPropagation();
                             flushSync(() => setShowBulkTagAssigner(true));
                           }}
@@ -2871,7 +2871,7 @@ const App: React.FC = () => {
                 <div className="flex bg-zinc-900 border border-zinc-700 rounded-lg p-1">
                   <button
                     onClick={(e) => {
-                      e.preventDefault();
+      
                       e.stopPropagation();
                       flushSync(() => setLibraryViewMode('grid'));
                     }}
@@ -2885,7 +2885,7 @@ const App: React.FC = () => {
                   </button>
                   <button
                     onClick={(e) => {
-                      e.preventDefault();
+      
                       e.stopPropagation();
                       flushSync(() => setLibraryViewMode('list'));
                     }}
@@ -2909,7 +2909,7 @@ const App: React.FC = () => {
                 <h3 className="font-bold">Advanced Search & Filters</h3>
                 <button
                   onClick={(e) => {
-                    e.preventDefault();
+    
                     e.stopPropagation();
                     flushSync(() => setShowAdvancedSearch(false));
                   }}
@@ -2976,7 +2976,7 @@ const App: React.FC = () => {
             {/* New Project Card */}
             <button 
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 handleCreateNew();
               }}
@@ -3017,7 +3017,7 @@ const App: React.FC = () => {
                   <h3 className="font-bold">Advanced Search & Filters</h3>
                   <button
                     onClick={(e) => {
-                    e.preventDefault();
+    
                     e.stopPropagation();
                     flushSync(() => setShowAdvancedSearch(false));
                   }}
@@ -3408,7 +3408,7 @@ const App: React.FC = () => {
                       }
                     }}
                     onContextMenu={(e) => {
-                      e.preventDefault();
+      
                       if (!libraryBatchMode) {
                         setProjectQuickActions({
                           project: p,
@@ -4047,7 +4047,7 @@ const App: React.FC = () => {
           <div className="relative" ref={exportMenuRef}>
             <button 
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => {
                   setShowExportMenu(prev => !prev);
@@ -4224,7 +4224,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => {
                   setShowCharactersPanel(prev => !prev);
@@ -4244,7 +4244,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => {
                   setShowLocationsPanel(prev => !prev);
@@ -4283,7 +4283,7 @@ const App: React.FC = () => {
             <div className="relative group">
             <button
                 onClick={(e) => {
-                  e.preventDefault();
+  
                   e.stopPropagation();
                   flushSync(() => setShowAdvancedAnalytics(true));
                 }}
@@ -4343,7 +4343,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowAIStoryAnalysis(true));
               }}
@@ -4361,7 +4361,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowShotListGenerator(true));
               }}
@@ -4379,7 +4379,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowShootingSchedule(true));
               }}
@@ -4397,7 +4397,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowBudgetEstimator(true));
               }}
@@ -4415,7 +4415,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowVideoExport(true));
               }}
@@ -4433,7 +4433,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 1 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowSceneComparison(true));
               }}
@@ -4451,7 +4451,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowCharacterGraph(true));
               }}
@@ -4469,7 +4469,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowVersionHistory(true));
               }}
@@ -4487,7 +4487,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowProjectHealth(true));
               }}
@@ -4505,7 +4505,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowAISceneSuggestions(true));
               }}
@@ -4523,7 +4523,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowStoryArcVisualizer(true));
               }}
@@ -4541,7 +4541,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowSceneBookmarks(true));
               }}
@@ -4559,7 +4559,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowSceneDependencyTracker(true));
               }}
@@ -4577,7 +4577,7 @@ const App: React.FC = () => {
           {view === 'studio' && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowExportHistoryPanel(true));
               }}
@@ -4595,7 +4595,7 @@ const App: React.FC = () => {
           {view === 'studio' && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowExportQueue(true));
               }}
@@ -4618,7 +4618,7 @@ const App: React.FC = () => {
           {view === 'studio' && scenes.length > 0 && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowStoryboardPlayback(true));
               }}
@@ -4652,7 +4652,7 @@ const App: React.FC = () => {
           {view === 'studio' && storyContext.id && (
             <button
               onClick={(e) => {
-                e.preventDefault();
+
                 e.stopPropagation();
                 flushSync(() => setShowCommentsPanel(true));
               }}
