@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { TechnicalStyle, DirectorSettings, Scene, StoryContext } from './types';
 import DirectorPanel from './components/DirectorPanel';
 import SceneCard from './components/SceneCard';
@@ -162,6 +162,11 @@ const App: React.FC = () => {
   const [storyContext, setStoryContext] = useState<StoryContext>(DEFAULT_CONTEXT);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [currentSettings, setCurrentSettings] = useState<DirectorSettings>(DEFAULT_DIRECTOR_SETTINGS);
+
+  // Memoize content type terminology to avoid recalculating on every render
+  const contentTypeTerminology = useMemo(() => {
+    return getContentTypeTerminology(storyContext.contentType);
+  }, [storyContext.contentType]);
 
   // --- UI State ---
   const [projects, setProjects] = useState<ProjectData[]>([]);
@@ -3769,7 +3774,7 @@ const App: React.FC = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 sm:w-4 sm:h-4">
                       <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
                     </svg>
-                    <span className="hidden sm:inline">Scene Templates</span>
+                    <span className="hidden sm:inline">{contentTypeTerminology.scene} Templates</span>
                     <span className="sm:hidden">Templates</span>
                   </button>
                 </div>
@@ -4657,7 +4662,7 @@ const App: React.FC = () => {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                   <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                     <span className="text-xs sm:text-sm font-bold text-amber-500">
-                      {selectedSceneIds.size} scene{selectedSceneIds.size > 1 ? 's' : ''} selected
+                      {selectedSceneIds.size} {contentTypeTerminology.scene.toLowerCase()}{selectedSceneIds.size > 1 ? 's' : ''} selected
                     </span>
                     <button
                       onClick={handleSelectAll}
@@ -4753,8 +4758,8 @@ const App: React.FC = () => {
                     <p className="font-serif text-xl mb-2 text-zinc-400">The Storyboard is Empty</p>
                     <p className="text-sm max-w-md text-center">
                       {storyContext.initialContext 
-                        ? "Ready to continue. The Director AI knows the context of your previous clip. Describe the next 8 seconds below." 
-                        : "Describe the opening 8-second clip below."}
+                        ? `Ready to continue. The Director AI knows the context of your previous ${contentTypeTerminology.scene.toLowerCase()}. Describe the next ${contentTypeTerminology.scene.toLowerCase()} below.` 
+                        : `Describe the opening ${contentTypeTerminology.scene.toLowerCase()} below.`}
                     </p>
                  </div>
               ) : (
@@ -4821,9 +4826,9 @@ const App: React.FC = () => {
                                 sequenceNumber: idx + 1
                               }));
                             });
-                            showToast('Scene deleted successfully', 'success');
+                            showToast(`${contentTypeTerminology.scene} deleted successfully`, 'success');
                           } catch (error: any) {
-                            showToast('Failed to delete scene', 'error');
+                            showToast(`Failed to delete ${contentTypeTerminology.scene.toLowerCase()}`, 'error');
                           }
                         }}
                       />
@@ -5094,9 +5099,9 @@ const App: React.FC = () => {
                 }));
               });
 
-              showToast('Scene deleted successfully', 'success');
+              showToast(`${contentTypeTerminology.scene} deleted successfully`, 'success');
             } catch (error: any) {
-              showToast('Failed to delete scene', 'error');
+              showToast(`Failed to delete ${contentTypeTerminology.scene.toLowerCase()}`, 'error');
             }
           }}
           onEdit={handleEditScene}
@@ -5603,10 +5608,10 @@ const App: React.FC = () => {
           },
           {
             id: 'new-scene',
-            label: 'New Scene',
-            description: 'Create a new scene',
+            label: `New ${contentTypeTerminology.scene}`,
+            description: `Create a new ${contentTypeTerminology.scene.toLowerCase()}`,
             icon: '➕',
-            keywords: ['new', 'scene', 'add'],
+            keywords: ['new', 'scene', 'add', contentTypeTerminology.scene.toLowerCase()],
             action: () => {
               if (view === 'studio') {
                 const input = document.querySelector('textarea[placeholder*="idea"]') as HTMLTextAreaElement;
