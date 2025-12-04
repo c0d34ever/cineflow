@@ -1361,6 +1361,18 @@ const App: React.FC = () => {
             onClose={() => setShowContentTypeSelector(false)}
           />
         )}
+        {showNotificationCenter && (
+          <NotificationCenter
+            isOpen={showNotificationCenter}
+            onClose={() => setShowNotificationCenter(false)}
+            notifications={notifications}
+            unreadCount={unreadNotificationCount}
+            onMarkAsRead={handleMarkNotificationRead}
+            onMarkAllAsRead={handleMarkAllNotificationsRead}
+            onDelete={handleDeleteNotification}
+            onRefresh={loadNotifications}
+          />
+        )}
         <LibraryView
         currentUser={currentUser}
         projects={projects}

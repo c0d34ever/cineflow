@@ -3,13 +3,11 @@ import { startTransition } from 'react';
 import { ProjectData } from '../db';
 import { useLibraryState } from '../hooks/useLibraryState';
 import { matchesFilters, getFilteredProjectIds, generateProjectCover, toggleProjectFavorite, batchGenerateCovers } from '../utils/libraryUtils';
-import { getImageUrl, createShowHandler, createHideHandler } from '../utils/uiUtils';
-import { formatDate } from '../utils/formatUtils';
+import { createShowHandler, createHideHandler } from '../utils/uiUtils';
 import { promptText, confirmAction } from '../utils/dialogUtils';
 import { getCompletedScenesCount, hasCompletedScenes, getProjectsWithoutCover, getProjectsWithoutCoverCount, updateArrayItemById, removeArrayItemById, addArrayItem, formatSceneCount } from '../utils/arrayUtils';
-import { cn, getSelectedClassName, getCheckboxClassName, getFavoriteButtonClassName, getCardHeightClass, getCoverImageHeightClass, getGridColumnsClass, getStatusBadgeClassName } from '../utils/styleUtils';
-import { getContentTypeInfo, getContentTypeBadgeClass } from '../utils/contentTypeUtils';
-import { highlightSearchTerm, highlightAndTruncate } from '../utils/searchHighlight';
+import { cn, getGridColumnsClass } from '../utils/styleUtils';
+import { getContentTypeInfo, getContentTypeBadgeClass, CONTENT_TYPE_INFO } from '../utils/contentTypeUtils';
 import { calculateProjectHealthScore } from '../utils/helpers';
 import ProjectCard from '../components/ProjectCard';
 import { apiService } from '../apiService';
@@ -616,15 +614,11 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm"
                   >
                     <option value="all">All Types</option>
-                    <option value="film">🎬 Film / Storyboard</option>
-                    <option value="news">📰 News Reporting</option>
-                    <option value="sports">⚽ Sports Content</option>
-                    <option value="documentary">📹 Documentary</option>
-                    <option value="commercial">📺 Commercial / Ad</option>
-                    <option value="music-video">🎵 Music Video</option>
-                    <option value="web-series">📱 Web Series</option>
-                    <option value="podcast">🎙️ Podcast / Audio</option>
-                    <option value="other">✨ Other</option>
+                    {Object.entries(CONTENT_TYPE_INFO).map(([type, info]) => (
+                      <option key={type} value={type}>
+                        {info.icon} {info.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -755,19 +749,71 @@ const LibraryView: React.FC<LibraryViewProps> = ({
             <>
               {filteredProjects.length > 0 && (
                 <div className={cn(libraryViewMode === 'grid' ? 'col-span-full' : 'w-full', 'flex items-center justify-between mb-2')}>
-                  <div className="text-xs text-zinc-500">
-                    <span className="font-medium text-zinc-300">{filteredProjects.length}</span> of <span className="font-medium text-zinc-300">{projects.length}</span> project{projects.length !== 1 ? 's' : ''}
-                    {libraryBatchMode && selectedLibraryProjectIds.size > 0 && (
-                      <span className="ml-2 text-amber-400">
-                        • <span className="font-medium">{selectedLibraryProjectIds.size}</span> selected
-                      </span>
+                  <div className="text-xs text-zinc-500 flex items-center gap-3 flex-wrap">
+                    <span>
+                      <span className="font-medium text-zinc-300">{filteredProjects.length}</span> of <span className="font-medium text-zinc-300">{projects.length}</span> project{projects.length !== 1 ? 's' : ''}
+                    </span>
+                    {filteredProjects.length > 0 && (
+                      <>
+                        <span className="text-zinc-600">•</span>
+                        <span>
+                          <span className="font-medium text-zinc-300">
+                            {filteredProjects.reduce((sum, p) => sum + p.scenes.length, 0)}
+                          </span> {formatSceneCount(filteredProjects.reduce((sum, p) => sum + p.scenes.length, 0))}
+                        </span>
+                        {filteredProjects.some(p => hasCompletedScenes(p)) && (
+                          <>
+                            <span className="text-zinc-600">•</span>
+                            <span>
+                              <span className="font-medium text-amber-400">
+                                {filteredProjects.reduce((sum, p) => sum + getCompletedScenesCount(p.scenes), 0)}
+                              </span> completed
+                            </span>
+                          </>
+                        )}
+                      </>
                     )}
-                    {(libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null) && (
-                      <span className="ml-2 text-zinc-600">
-                        • Filtered
-                      </span>
+                    {libraryBatchMode && selectedLibraryProjectIds.size > 0 && (
+                      <>
+                        <span className="text-zinc-600">•</span>
+                        <span className="text-amber-400">
+                          <span className="font-medium">{selectedLibraryProjectIds.size}</span> selected
+                        </span>
+                      </>
+                    )}
+                    {(libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null || libraryFilterContentType !== null) && (
+                      <>
+                        <span className="text-zinc-600">•</span>
+                        <span className="text-zinc-600">Filtered</span>
+                      </>
                     )}
                   </div>
+                  {/* Content Type Breakdown */}
+                  {filteredProjects.length > 0 && (() => {
+                    const contentTypeCounts = filteredProjects.reduce((acc, p) => {
+                      const type = p.context.contentType || 'other';
+                      acc[type] = (acc[type] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+                    const uniqueTypes = Object.keys(contentTypeCounts).length;
+                    return uniqueTypes > 1 ? (
+                      <div className="flex items-center gap-2 flex-wrap mt-2">
+                        {Object.entries(contentTypeCounts).map(([type, count]) => {
+                          const info = getContentTypeInfo(type);
+                          return (
+                            <span
+                              key={type}
+                              className={cn('text-xs px-2 py-0.5 rounded border flex items-center gap-1', getContentTypeBadgeClass(type))}
+                              title={`${info.name} projects`}
+                            >
+                              <span>{info.icon}</span>
+                              <span>{count}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               )}
               {filteredProjects.map((p) => {

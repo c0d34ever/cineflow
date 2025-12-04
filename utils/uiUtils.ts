@@ -51,7 +51,7 @@ export const createImmediateHandler = <T extends (...args: any[]) => void>(
 };
 
 /**
- * Create a handler that sets a boolean state to true with flushSync
+ * Create a handler that sets a boolean state to true
  */
 export const createShowHandler = (
   setShow: (show: boolean) => void
@@ -61,12 +61,12 @@ export const createShowHandler = (
       e.preventDefault();
       e.stopPropagation();
     }
-    flushSync(() => setShow(true));
+    setShow(true);
   };
 };
 
 /**
- * Create a handler that sets a boolean state to false with flushSync
+ * Create a handler that sets a boolean state to false
  */
 export const createHideHandler = (
   setShow: (show: boolean) => void
@@ -76,12 +76,12 @@ export const createHideHandler = (
       e.preventDefault();
       e.stopPropagation();
     }
-    flushSync(() => setShow(false));
+    setShow(false);
   };
 };
 
 /**
- * Create a handler that toggles a boolean state with flushSync
+ * Create a handler that toggles a boolean state
  */
 export const createToggleHandler = (
   setShow: (show: boolean | ((prev: boolean) => boolean)) => void
@@ -91,7 +91,7 @@ export const createToggleHandler = (
       e.preventDefault();
       e.stopPropagation();
     }
-    flushSync(() => setShow(prev => !prev));
+    setShow(prev => !prev);
   };
 };
 
