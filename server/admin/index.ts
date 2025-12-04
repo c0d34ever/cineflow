@@ -102,11 +102,33 @@ process.on('uncaughtException', (error: Error) => {
 // Initialize database and start server
 async function startServer() {
   try {
-    await createConnection();
-    await initDatabase();
-    console.log('✅ Database connected and initialized');
+    // Retry database connection with timeout handling
+    let retries = 3;
+    let lastError: any = null;
     
-    app.listen(PORT, () => {
+    while (retries > 0) {
+      try {
+        await createConnection();
+        await initDatabase();
+        console.log('✅ Database connected and initialized');
+        break;
+      } catch (error: any) {
+        lastError = error;
+        retries--;
+        if (retries > 0) {
+          console.log(`⚠️  Database connection attempt failed, retrying in 2 seconds... (${3 - retries}/3)`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
+    
+    if (retries === 0) {
+      console.error('❌ Failed to connect to database after 3 attempts:', lastError);
+      // Still start the server - it might recover later
+      console.log('⚠️  Starting admin server anyway - database connection may recover');
+    }
+    
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Admin API running on port ${PORT}`);
       console.log(`📊 Admin Dashboard: http://localhost:${PORT}/api/admin/info`);
     });
