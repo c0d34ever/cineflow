@@ -37,10 +37,37 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
 
   const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
 
-  // Use SSE for real-time media updates
-  const { media: sceneImages, isConnected: loadingImages } = useSceneMediaSSE({
+  // Use SSE for real-time media updates - only connect when component is mounted and visible
+  // Use lazyConnect to prevent auto-connecting until needed
+  const [shouldConnect, setShouldConnect] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  
+  // Use Intersection Observer to only connect when scene card is visible
+  useEffect(() => {
+    if (!projectId || !scene.id || !cardRef.current) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setShouldConnect(true);
+          } else {
+            // Optionally disconnect when not visible to save resources
+            // setShouldConnect(false);
+          }
+        });
+      },
+      { threshold: 0.1 } // Connect when 10% visible
+    );
+    
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [projectId, scene.id]);
+  
+  const { media: sceneImages, isConnected: loadingImages, connect, disconnect } = useSceneMediaSSE({
     sceneId: scene.id,
-    autoConnect: !!projectId && !!scene.id,
+    autoConnect: shouldConnect && !!projectId && !!scene.id,
+    lazyConnect: !shouldConnect,
     onMediaList: (media) => {
       console.log(`[SceneCard] Received media list for scene ${scene.id}:`, media.length, 'items');
     },
@@ -65,6 +92,7 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
 
   return (
     <div 
+      ref={cardRef}
       className={`bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col h-full shadow-lg transition-all relative ${
         batchMode ? 'hover:border-amber-500' : 'hover:scale-[1.01]'
       } ${isSelected ? 'border-amber-500 bg-amber-900/10' : ''}`}

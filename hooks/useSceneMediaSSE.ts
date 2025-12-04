@@ -27,7 +27,11 @@ export interface UseSceneMediaSSEOptions {
   onMediaUpdated?: (media: MediaItem) => void;
   onMediaDeleted?: (mediaId: string) => void;
   autoConnect?: boolean;
+  lazyConnect?: boolean; // Only connect when explicitly requested
 }
+
+// Global connection manager to prevent duplicate connections per scene
+const sceneConnections = new Map<string, { refCount: number; eventSource: EventSource }>();
 
 export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
   const {
@@ -36,7 +40,8 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
     onMediaAdded,
     onMediaUpdated,
     onMediaDeleted,
-    autoConnect = true
+    autoConnect = true,
+    lazyConnect = false
   } = options;
 
   const [isConnected, setIsConnected] = useState(false);
@@ -51,6 +56,19 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
       return;
     }
 
+    // Check if there's already a connection for this scene
+    const existingConnection = sceneConnections.get(sceneId);
+    if (existingConnection) {
+      // Increment reference count and reuse existing connection
+      existingConnection.refCount++;
+      eventSourceRef.current = existingConnection.eventSource;
+      setIsConnected(true);
+      console.log(`[useSceneMediaSSE] Reusing existing connection for scene ${sceneId} (refCount: ${existingConnection.refCount})`);
+      // Note: Event listeners are already set up on the shared connection
+      // We'll rely on the shared connection's event handlers
+      return;
+    }
+
     if (eventSourceRef.current) {
       console.warn('[useSceneMediaSSE] Already connected, closing existing connection');
       eventSourceRef.current.close();
@@ -60,7 +78,7 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
     // Pass token in query string (SSE doesn't support custom headers)
     const url = `${API_BASE_URL}/media/scene/${sceneId}/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
-    console.log('[useSceneMediaSSE] Connecting to SSE:', url);
+    console.log('[useSceneMediaSSE] Creating new SSE connection for scene:', sceneId);
     
     // Create EventSource with token in URL
     const eventSource = new EventSource(url);
@@ -140,18 +158,39 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
     };
 
     eventSourceRef.current = eventSource;
+    
+    // Store connection in global map
+    sceneConnections.set(sceneId, { refCount: 1, eventSource });
   }, [sceneId, onMediaList, onMediaAdded, onMediaUpdated, onMediaDeleted, API_BASE_URL]);
 
   const disconnect = useCallback(() => {
+    if (!sceneId) return;
+    
+    const existingConnection = sceneConnections.get(sceneId);
+    if (existingConnection) {
+      existingConnection.refCount--;
+      console.log(`[useSceneMediaSSE] Disconnecting from scene ${sceneId} (refCount: ${existingConnection.refCount})`);
+      
+      // Only close connection if no more references
+      if (existingConnection.refCount <= 0) {
+        console.log(`[useSceneMediaSSE] Closing SSE connection for scene ${sceneId} (no more references)`);
+        existingConnection.eventSource.close();
+        sceneConnections.delete(sceneId);
+      }
+    }
+    
     if (eventSourceRef.current) {
-      console.log('[useSceneMediaSSE] Disconnecting from SSE');
-      eventSourceRef.current.close();
       eventSourceRef.current = null;
       setIsConnected(false);
     }
-  }, []);
+  }, [sceneId]);
 
   useEffect(() => {
+    if (lazyConnect) {
+      // Don't auto-connect if lazy mode is enabled
+      return;
+    }
+    
     if (autoConnect && sceneId && !isConnected) {
       connect();
     } else if (!sceneId && isConnected) {
@@ -160,7 +199,7 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
     return () => {
       disconnect();
     };
-  }, [autoConnect, sceneId, isConnected, connect, disconnect]);
+  }, [autoConnect, lazyConnect, sceneId, isConnected, connect, disconnect]);
 
   return { isConnected, media, connect, disconnect };
 };
