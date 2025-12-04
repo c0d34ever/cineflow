@@ -31,7 +31,18 @@ export interface UseSceneMediaSSEOptions {
 }
 
 // Global connection manager to prevent duplicate connections per scene
-const sceneConnections = new Map<string, { refCount: number; eventSource: EventSource }>();
+interface ConnectionData {
+  refCount: number;
+  eventSource: EventSource;
+  callbacks: Set<{
+    onMediaList?: (media: MediaItem[]) => void;
+    onMediaAdded?: (media: MediaItem) => void;
+    onMediaUpdated?: (media: MediaItem) => void;
+    onMediaDeleted?: (mediaId: string) => void;
+    setMedia: (updater: (prev: MediaItem[]) => MediaItem[]) => void;
+  }>;
+}
+const sceneConnections = new Map<string, ConnectionData>();
 
 export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
   const {
@@ -63,9 +74,17 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
       existingConnection.refCount++;
       eventSourceRef.current = existingConnection.eventSource;
       setIsConnected(true);
+      
+      // Add this component's callbacks to the existing connection
+      existingConnection.callbacks.add({
+        onMediaList,
+        onMediaAdded,
+        onMediaUpdated,
+        onMediaDeleted,
+        setMedia
+      });
+      
       console.log(`[useSceneMediaSSE] Reusing existing connection for scene ${sceneId} (refCount: ${existingConnection.refCount})`);
-      // Note: Event listeners are already set up on the shared connection
-      // We'll rely on the shared connection's event handlers
       return;
     }
 
@@ -93,12 +112,33 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
       setIsConnected(true);
     });
 
+    // Store callbacks in the connection so all subscribers get updates
+    const connectionData: ConnectionData = { 
+      refCount: 1, 
+      eventSource, 
+      callbacks: new Set() 
+    };
+    
+    // Add this component's callbacks to the connection
+    connectionData.callbacks.add({
+      onMediaList,
+      onMediaAdded,
+      onMediaUpdated,
+      onMediaDeleted,
+      setMedia
+    });
+    
+    sceneConnections.set(sceneId, connectionData);
+
     eventSource.addEventListener('media_list', (e: any) => {
       try {
         const data = JSON.parse(e.data);
         const mediaList = Array.isArray(data.media) ? data.media : [];
-        setMedia(mediaList);
-        onMediaList?.(mediaList);
+        // Update all subscribers
+        connectionData.callbacks.forEach(cb => {
+          cb.setMedia(() => mediaList);
+          cb.onMediaList?.(mediaList);
+        });
       } catch (error) {
         console.error('[useSceneMediaSSE] Error parsing media_list:', error);
       }
@@ -108,18 +148,18 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
       try {
         const data = JSON.parse(e.data);
         const newMedia = data.media;
-        setMedia(prev => {
-          // Check if media already exists (avoid duplicates)
-          if (prev.some(m => m.id === newMedia.id)) {
-            return prev;
-          }
-          // Add new media and sort by display_order
-          const updated = [...prev, newMedia].sort((a, b) => 
-            (a.display_order || 0) - (b.display_order || 0)
-          );
-          return updated;
+        // Update all subscribers
+        connectionData.callbacks.forEach(cb => {
+          cb.setMedia(prev => {
+            if (prev.some(m => m.id === newMedia.id)) {
+              return prev;
+            }
+            return [...prev, newMedia].sort((a, b) => 
+              (a.display_order || 0) - (b.display_order || 0)
+            );
+          });
+          cb.onMediaAdded?.(newMedia);
         });
-        onMediaAdded?.(newMedia);
       } catch (error) {
         console.error('[useSceneMediaSSE] Error parsing media_added:', error);
       }
@@ -129,8 +169,11 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
       try {
         const data = JSON.parse(e.data);
         const updatedMedia = data.media;
-        setMedia(prev => prev.map(m => m.id === updatedMedia.id ? updatedMedia : m));
-        onMediaUpdated?.(updatedMedia);
+        // Update all subscribers
+        connectionData.callbacks.forEach(cb => {
+          cb.setMedia(prev => prev.map(m => m.id === updatedMedia.id ? updatedMedia : m));
+          cb.onMediaUpdated?.(updatedMedia);
+        });
       } catch (error) {
         console.error('[useSceneMediaSSE] Error parsing media_updated:', error);
       }
@@ -140,8 +183,11 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
       try {
         const data = JSON.parse(e.data);
         const mediaId = data.media_id;
-        setMedia(prev => prev.filter(m => m.id !== mediaId));
-        onMediaDeleted?.(mediaId);
+        // Update all subscribers
+        connectionData.callbacks.forEach(cb => {
+          cb.setMedia(prev => prev.filter(m => m.id !== mediaId));
+          cb.onMediaDeleted?.(mediaId);
+        });
       } catch (error) {
         console.error('[useSceneMediaSSE] Error parsing media_deleted:', error);
       }
@@ -158,16 +204,20 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
     };
 
     eventSourceRef.current = eventSource;
-    
-    // Store connection in global map
-    sceneConnections.set(sceneId, { refCount: 1, eventSource });
-  }, [sceneId, onMediaList, onMediaAdded, onMediaUpdated, onMediaDeleted, API_BASE_URL]);
+  }, [sceneId, API_BASE_URL]); // Removed callbacks from dependencies - they're stored in connectionData
 
   const disconnect = useCallback(() => {
     if (!sceneId) return;
     
     const existingConnection = sceneConnections.get(sceneId);
     if (existingConnection) {
+      // Remove this component's callbacks
+      existingConnection.callbacks.forEach(cb => {
+        if (cb.setMedia === setMedia) {
+          existingConnection.callbacks.delete(cb);
+        }
+      });
+      
       existingConnection.refCount--;
       console.log(`[useSceneMediaSSE] Disconnecting from scene ${sceneId} (refCount: ${existingConnection.refCount})`);
       
@@ -183,23 +233,67 @@ export const useSceneMediaSSE = (options: UseSceneMediaSSEOptions) => {
       eventSourceRef.current = null;
       setIsConnected(false);
     }
-  }, [sceneId]);
+  }, [sceneId, setMedia]);
+
+  // Track connection state with refs to avoid re-renders
+  const hasConnectedRef = useRef(false);
+  const currentSceneIdRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    const effectSceneId = sceneId; // Capture sceneId for this effect
+    
+    // Reset connection tracking if sceneId changes
+    if (currentSceneIdRef.current !== effectSceneId) {
+      // Disconnect from previous scene if it exists
+      if (currentSceneIdRef.current && hasConnectedRef.current) {
+        const prevSceneId = currentSceneIdRef.current;
+        const existingConnection = sceneConnections.get(prevSceneId);
+        if (existingConnection) {
+          existingConnection.refCount--;
+          console.log(`[useSceneMediaSSE] Scene changed, disconnecting from ${prevSceneId} (refCount: ${existingConnection.refCount})`);
+          if (existingConnection.refCount <= 0) {
+            existingConnection.eventSource.close();
+            sceneConnections.delete(prevSceneId);
+            console.log(`[useSceneMediaSSE] Closed connection for ${prevSceneId}`);
+          }
+        }
+        hasConnectedRef.current = false;
+      }
+      currentSceneIdRef.current = effectSceneId;
+    }
+
     if (lazyConnect) {
       // Don't auto-connect if lazy mode is enabled
-      return;
+      return () => {
+        isMountedRef.current = false;
+      };
     }
     
-    if (autoConnect && sceneId && !isConnected) {
+    if (autoConnect && effectSceneId && !hasConnectedRef.current && isMountedRef.current) {
+      console.log(`[useSceneMediaSSE] Effect: Connecting to scene ${effectSceneId}`);
       connect();
-    } else if (!sceneId && isConnected) {
+      hasConnectedRef.current = true;
+    } else if (!effectSceneId && hasConnectedRef.current) {
+      console.log(`[useSceneMediaSSE] Effect: Disconnecting (no sceneId)`);
       disconnect();
+      hasConnectedRef.current = false;
     }
+    
+    // Cleanup: only disconnect on unmount or sceneId change
     return () => {
-      disconnect();
+      isMountedRef.current = false;
+      // Only disconnect if sceneId matches AND we actually connected
+      // This prevents cleanup from running on every render
+      if (hasConnectedRef.current && currentSceneIdRef.current === effectSceneId) {
+        console.log(`[useSceneMediaSSE] Cleanup: Disconnecting from scene ${effectSceneId}`);
+        disconnect();
+        hasConnectedRef.current = false;
+      }
     };
-  }, [autoConnect, lazyConnect, sceneId, isConnected, connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoConnect, lazyConnect, sceneId]); // Intentionally omitting connect/disconnect to prevent re-runs
 
   return { isConnected, media, connect, disconnect };
 };

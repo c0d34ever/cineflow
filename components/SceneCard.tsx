@@ -41,19 +41,19 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
   // Use lazyConnect to prevent auto-connecting until needed
   const [shouldConnect, setShouldConnect] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const hasSetUpObserverRef = useRef(false);
   
   // Use Intersection Observer to only connect when scene card is visible
   useEffect(() => {
-    if (!projectId || !scene.id || !cardRef.current) return;
+    if (!projectId || !scene.id || !cardRef.current || hasSetUpObserverRef.current) return;
+    
+    hasSetUpObserverRef.current = true;
     
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
+          if (entry.isIntersecting && !shouldConnect) {
             setShouldConnect(true);
-          } else {
-            // Optionally disconnect when not visible to save resources
-            // setShouldConnect(false);
           }
         });
       },
@@ -61,10 +61,13 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
     );
     
     observer.observe(cardRef.current);
-    return () => observer.disconnect();
-  }, [projectId, scene.id]);
+    return () => {
+      observer.disconnect();
+      hasSetUpObserverRef.current = false;
+    };
+  }, [projectId, scene.id, shouldConnect]);
   
-  const { media: sceneImages, isConnected: loadingImages, connect, disconnect } = useSceneMediaSSE({
+  const { media: sceneImages, isConnected: loadingImages } = useSceneMediaSSE({
     sceneId: scene.id,
     autoConnect: shouldConnect && !!projectId && !!scene.id,
     lazyConnect: !shouldConnect,
