@@ -8,11 +8,26 @@ import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import sharp from 'sharp';
 import { uploadToImageKit, deleteFromImageKit, isImageKitAvailable } from '../services/imagekitService.js';
 import { removeBackground, removeBackgroundFromBuffer, isBackgroundRemovalAvailable } from '../services/backgroundRemoverService.js';
+import { sseService } from '../services/sseService.js';
+import jwt from 'jsonwebtoken';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+// Store scene media SSE connections: sceneId -> Set of connectionIds
+const sceneMediaConnections = new Map<string, Set<string>>();
+
+// Helper to notify all connections watching a scene
+function notifySceneMediaUpdate(sceneId: string, event: string, data: any) {
+  const connections = sceneMediaConnections.get(sceneId);
+  if (connections) {
+    connections.forEach(connectionId => {
+      sseService.send(connectionId, event, data);
+    });
+  }
+}
 
 // Ensure upload directories exist
 const uploadsDir = path.join(__dirname, '../../uploads');
@@ -270,7 +285,7 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
       }
     }
 
-    res.json({
+    const mediaResponse = {
       id: mediaId,
       project_id,
       scene_id: scene_id || null,
@@ -287,7 +302,17 @@ router.post('/upload', authenticateToken, upload.single('image'), async (req: Au
       description: description || null,
       is_primary: is_primary === 'true',
       display_order: displayOrder
-    });
+    };
+
+    // Notify SSE connections if this is for a scene
+    if (scene_id) {
+      notifySceneMediaUpdate(scene_id, 'media_added', {
+        scene_id,
+        media: mediaResponse
+      });
+    }
+
+    res.json(mediaResponse);
   } catch (error: any) {
     // Clean up uploaded file on error
     if (req.file && fs.existsSync(req.file.path)) {
@@ -342,7 +367,7 @@ router.get('/project/:projectId', authenticateToken, async (req: AuthRequest, re
   }
 });
 
-// Get media for scene
+// Get media for scene (regular API endpoint - still used for initial load)
 router.get('/scene/:sceneId', authenticateToken, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { sceneId } = req.params;
@@ -371,29 +396,126 @@ router.get('/scene/:sceneId', authenticateToken, async (req: AuthRequest, res: R
 
     console.log(`Found ${rows.length} media items for scene ${sceneId}`);
 
-    // Debug: Check for media in the same project but without scene_id
-    if (rows.length === 0) {
-      const [projectMedia] = await pool.query(
-        'SELECT id, scene_id, file_name, created_at FROM media WHERE project_id = ? ORDER BY created_at DESC LIMIT 5',
-        [sceneProjectId]
-      ) as [any[], any];
-      console.log(`Debug: Found ${projectMedia.length} recent media items in project ${sceneProjectId}:`, 
-        projectMedia.map(m => ({ id: m.id, scene_id: m.scene_id, file: m.file_name, created: m.created_at })));
-    }
-
-    // Also check for any media with this scene_id but different format (debugging)
-    if (rows.length === 0) {
-      const [allMedia] = await pool.query(
-        'SELECT id, scene_id, project_id, file_name FROM media WHERE project_id IN (SELECT project_id FROM scenes WHERE id = ?) LIMIT 10',
-        [sceneId]
-      ) as [any[], any];
-      console.log(`Debug: Found ${allMedia.length} media items in same project (first 10):`, allMedia.map(m => ({ id: m.id, scene_id: m.scene_id, file: m.file_name })));
-    }
-
     res.json({ media: rows });
   } catch (error: any) {
     console.error('Error fetching scene media:', error);
     res.status(500).json({ error: 'Failed to fetch scene media' });
+  }
+});
+
+// SSE endpoint for scene media updates
+// Note: EventSource doesn't support custom headers, so token is passed via query param
+router.get('/scene/:sceneId/stream', async (req: express.Request, res: Response) => {
+  // Extract token from query (EventSource doesn't support custom headers)
+  let token = (req.query.token as string) || req.headers.authorization?.replace('Bearer ', '');
+  
+  // Decode token if it's URL encoded
+  if (token) {
+    try {
+      token = decodeURIComponent(token);
+    } catch (e) {
+      // Token might not be encoded, continue with original
+    }
+  }
+  
+  if (!token) {
+    console.error('[Media SSE] No token provided');
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const { sceneId } = req.params;
+
+  // Verify token
+  try {
+    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const userId = decoded.userId;
+    
+    // Verify user still exists and is active
+    const pool = getPool();
+    const [usersResult] = await pool.query(
+      'SELECT id, username, email, role, is_active FROM users WHERE id = ?',
+      [userId]
+    ) as [any[], any];
+
+    const users = Array.isArray(usersResult) ? usersResult : [];
+    if (users.length === 0) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const user = users[0] as any;
+    if (!user.is_active) {
+      return res.status(403).json({ error: 'User account is inactive' });
+    }
+    
+    // Verify scene exists and user has access
+    const [sceneCheck] = await pool.query(
+      'SELECT id, project_id FROM scenes WHERE id = ?',
+      [sceneId]
+    ) as [any[], any];
+
+    if (sceneCheck.length === 0) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+    
+    const connectionId = `scene-media-${sceneId}-${userId}-${Date.now()}`;
+    
+    // Store connection for this scene
+    if (!sceneMediaConnections.has(sceneId)) {
+      sceneMediaConnections.set(sceneId, new Set());
+    }
+    sceneMediaConnections.get(sceneId)!.add(connectionId);
+    
+    // Create SSE connection
+    sseService.createConnection(connectionId, res);
+    
+    console.error(`[Media SSE] Connection established: ${connectionId} for scene ${sceneId}, user ${userId}`);
+    
+    // Send initial media list
+    try {
+      const [rows] = await pool.query(
+        'SELECT * FROM media WHERE scene_id = ? ORDER BY display_order ASC, created_at ASC',
+        [sceneId]
+      ) as [any[], any];
+
+      sseService.send(connectionId, 'media_list', {
+        scene_id: sceneId,
+        media: rows
+      });
+    } catch (error) {
+      console.error('Error sending initial media list:', error);
+    }
+    
+    // Keep connection alive with periodic ping
+    const pingInterval = setInterval(() => {
+      if (sseService.hasConnection(connectionId)) {
+        sseService.send(connectionId, 'ping', { timestamp: Date.now() });
+      } else {
+        clearInterval(pingInterval);
+      }
+    }, 30000); // Ping every 30 seconds
+    
+    // Clean up on disconnect
+    res.on('close', () => {
+      clearInterval(pingInterval);
+      const connections = sceneMediaConnections.get(sceneId);
+      if (connections) {
+        connections.delete(connectionId);
+        if (connections.size === 0) {
+          sceneMediaConnections.delete(sceneId);
+        }
+      }
+      sseService.closeConnection(connectionId);
+    });
+  } catch (error: any) {
+    console.error('[Media SSE] Authentication error:', error);
+    if (error.name === 'TokenExpiredError') {
+      return res.status(403).json({ error: 'Token expired', expiredAt: error.expiredAt });
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(403).json({ error: 'Invalid token', details: error.message });
+    }
+    return res.status(401).json({ error: 'Token verification failed', details: error.message });
   }
 });
 
@@ -473,6 +595,14 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response, ne
 
     const [updated] = await pool.query('SELECT * FROM media WHERE id = ?', [id]) as [any[], any];
 
+    // Notify SSE connections if this is for a scene
+    if (scene_id) {
+      notifySceneMediaUpdate(scene_id, 'media_updated', {
+        scene_id,
+        media: updated[0]
+      });
+    }
+
     res.json(updated[0]);
   } catch (error: any) {
     console.error('Error updating media:', error);
@@ -509,8 +639,23 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response,
       }
     }
 
+    // Get scene_id before deleting
+    const [mediaBeforeDelete] = await pool.query(
+      'SELECT scene_id FROM media WHERE id = ?',
+      [id]
+    ) as [any[], any];
+    const scene_id = mediaBeforeDelete[0]?.scene_id;
+
     // Delete from database
     await pool.query('DELETE FROM media WHERE id = ?', [id]);
+
+    // Notify SSE connections if this was for a scene
+    if (scene_id) {
+      notifySceneMediaUpdate(scene_id, 'media_deleted', {
+        scene_id,
+        media_id: id
+      });
+    }
 
     // Delete local files (if they exist)
     const filePath = path.join(__dirname, '../..', mediaItem.file_path);

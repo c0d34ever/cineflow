@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scene } from '../types';
-import { mediaService } from '../apiServices';
+import { useSceneMediaSSE } from '../hooks/useSceneMediaSSE';
 import MediaLibrarySidebar from './MediaLibrarySidebar';
 import SceneGallerySidebar from './SceneGallerySidebar';
 import CopyButton from './CopyButton';
@@ -30,48 +30,36 @@ interface MediaItem {
 }
 
 const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, onDelete, onPreview, batchMode = false, isSelected = false, onToggleSelection }) => {
-  const [sceneImages, setSceneImages] = useState<MediaItem[]>([]);
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
-  const [loadingImages, setLoadingImages] = useState(false);
   const [showQuickPreview, setShowQuickPreview] = useState(false);
   const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
 
   const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
 
-  const loadSceneImages = useCallback(async () => {
-    try {
-      setLoadingImages(true);
-      const media = await mediaService.getSceneMedia(scene.id);
-      // Ensure we have an array and filter out any null/undefined items
-      const validMedia = Array.isArray(media) ? media.filter(item => item && item.id) : [];
-      setSceneImages(validMedia);
-      if (validMedia.length > 0) {
-        console.log(`Loaded ${validMedia.length} images for scene ${scene.id}`, validMedia);
-      }
-    } catch (error: any) {
-      console.error('Failed to load scene images:', error);
-      // Don't show error to user - just log it and set empty array
-      setSceneImages([]);
-    } finally {
-      setLoadingImages(false);
+  // Use SSE for real-time media updates
+  const { media: sceneImages, isConnected: loadingImages } = useSceneMediaSSE({
+    sceneId: scene.id,
+    autoConnect: !!projectId && !!scene.id,
+    onMediaList: (media) => {
+      console.log(`[SceneCard] Received media list for scene ${scene.id}:`, media.length, 'items');
+    },
+    onMediaAdded: (media) => {
+      console.log(`[SceneCard] Media added to scene ${scene.id}:`, media.id);
+    },
+    onMediaUpdated: (media) => {
+      console.log(`[SceneCard] Media updated in scene ${scene.id}:`, media.id);
+    },
+    onMediaDeleted: (mediaId) => {
+      console.log(`[SceneCard] Media deleted from scene ${scene.id}:`, mediaId);
     }
-  }, [scene.id]);
-
-  useEffect(() => {
-    if (projectId && scene.id) {
-      loadSceneImages();
-    }
-  }, [projectId, scene.id, loadSceneImages]);
+  });
 
   // Memoize close handler to prevent re-renders
   const handleMediaLibraryClose = useCallback(() => {
     setShowMediaLibrary(false);
-    // Reload images after a short delay to ensure backend has processed
-    setTimeout(() => {
-      loadSceneImages();
-    }, 500);
-  }, [loadSceneImages]);
+    // Media will be updated automatically via SSE, no need to reload
+  }, []);
 
   const primaryImage = sceneImages.find(img => img.is_primary) || sceneImages[0];
 
@@ -390,13 +378,10 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, projectId, onNotesClick, o
           projectId={projectId}
           onClose={() => {
             setShowGallery(false);
-            // Reload images after closing gallery
-            setTimeout(() => {
-              loadSceneImages();
-            }, 300);
+            // Media will be updated automatically via SSE, no need to reload
           }}
           onUpdate={() => {
-            loadSceneImages();
+            // Media will be updated automatically via SSE, no need to reload
           }}
         />
       )}

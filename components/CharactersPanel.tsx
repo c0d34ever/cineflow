@@ -45,6 +45,10 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   const [showBgRemovalModal, setShowBgRemovalModal] = useState(false);
   const [bgRemovalFile, setBgRemovalFile] = useState<File | null>(null);
   const [extractionProgress, setExtractionProgress] = useState<{ progress: number; message: string } | null>(null);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
+  const [generatingImagePrompt, setGeneratingImagePrompt] = useState(false);
+  const [generatedImagePrompt, setGeneratedImagePrompt] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -399,8 +403,8 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
                           alert('Story context is required to generate prompts');
                           return;
                         }
-                        setGeneratingPrompt(true);
-                        setGeneratedPrompt(null);
+                        setGeneratingImagePrompt(true);
+                        setGeneratedImagePrompt(null);
                         try {
                           const prompt = await generateCharacterImagePrompt(
                             storyContext,
@@ -411,18 +415,18 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
                               personality: formData.personality || undefined
                             }
                           );
-                          setGeneratedPrompt(prompt);
+                          setGeneratedImagePrompt(prompt);
                         } catch (error: any) {
                           alert(`Failed to generate image prompt: ${error.message}`);
                         } finally {
-                          setGeneratingPrompt(false);
+                          setGeneratingImagePrompt(false);
                         }
                       }}
-                      disabled={generatingPrompt || !storyContext}
+                      disabled={generatingImagePrompt || !storyContext}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                       title="Generate prompt optimized for AI image generation (DALL-E, Stable Diffusion, Midjourney, etc.)"
                     >
-                      {generatingPrompt ? (
+                      {generatingImagePrompt ? (
                         <>
                           <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -502,6 +506,21 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
                       className="mt-2 ml-2 px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-xs"
                     >
                       Copy Prompt
+                    </button>
+                  </div>
+                )}
+                {generatedImagePrompt && (
+                  <div className="mb-3 p-3 bg-zinc-950 border border-zinc-700 rounded text-sm text-zinc-300 max-h-60 overflow-y-auto">
+                    <div className="whitespace-pre-wrap">{generatedImagePrompt}</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedImagePrompt);
+                        alert('Image prompt copied to clipboard!');
+                      }}
+                      className="mt-2 ml-2 px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-xs"
+                    >
+                      Copy Image Prompt
                     </button>
                   </div>
                 )}
