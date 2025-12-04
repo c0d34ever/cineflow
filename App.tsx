@@ -1354,7 +1354,14 @@ const App: React.FC = () => {
 
   if (view === 'library') {
     return (
-      <LibraryView
+      <>
+        {showContentTypeSelector && (
+          <ContentTypeSelector
+            onSelect={handleContentTypeSelect}
+            onClose={() => setShowContentTypeSelector(false)}
+          />
+        )}
+        <LibraryView
         currentUser={currentUser}
         projects={projects}
         favoritedProjects={favoritedProjects}
@@ -1384,7 +1391,8 @@ const App: React.FC = () => {
         setSelectedProjectForSharing={setSelectedProjectForSharing}
         setShowSharingModal={setShowSharingModal}
         setProjects={setProjects}
-      />
+        />
+      </>
     );
   }
 

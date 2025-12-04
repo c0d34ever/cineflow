@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { flushSync } from 'react-dom';
-import { ProjectData, StoryContext, DirectorSettings, Scene } from '../types';
+import { ProjectData } from '../db';
+import { StoryContext, DirectorSettings, Scene } from '../types';
 import { ContentType } from '../components/ContentTypeSelector';
 import { generateId } from '../utils/helpers';
 import { DEFAULT_CONTEXT, DEFAULT_DIRECTOR_SETTINGS } from '../utils/constants';
@@ -136,18 +136,14 @@ export const useProjectOperations = ({
   };
 
   const handleCreateNew = () => {
-    // Show content type selector first with flushSync for immediate render
-    flushSync(() => {
-      setShowContentTypeSelector(true);
-    });
+    // Show content type selector immediately
+    setShowContentTypeSelector(true);
   };
 
   const handleContentTypeSelect = (contentType: ContentType) => {
-    // Close selector immediately
-    flushSync(() => {
-      setSelectedContentType(contentType);
-      setShowContentTypeSelector(false);
-    });
+    // Close selector
+    setSelectedContentType(contentType);
+    setShowContentTypeSelector(false);
     
     // Create new project with selected content type
     const newContext: StoryContext = {
@@ -157,14 +153,12 @@ export const useProjectOperations = ({
       contentType: contentType // Store content type
     };
 
-    // Update state immediately
-    flushSync(() => {
-      setStoryContext(newContext);
-      setScenes([]);
-      setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
-      setSetupTab('new');
-      setView('setup');
-    });
+    // Update state and navigate to setup
+    setStoryContext(newContext);
+    setScenes([]);
+    setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
+    setSetupTab('new');
+    setView('setup');
   };
 
   const handleTemplateSelect = (template: any) => {
