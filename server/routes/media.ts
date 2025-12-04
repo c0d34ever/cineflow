@@ -367,43 +367,7 @@ router.get('/project/:projectId', authenticateToken, async (req: AuthRequest, re
   }
 });
 
-// Get media for scene (regular API endpoint - still used for initial load)
-router.get('/scene/:sceneId', authenticateToken, async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    const { sceneId } = req.params;
-    const pool = getPool();
-
-    console.log('Fetching media for scene:', sceneId);
-
-    // First, check if scene exists
-    const [sceneCheck] = await pool.query(
-      'SELECT id, project_id FROM scenes WHERE id = ?',
-      [sceneId]
-    ) as [any[], any];
-
-    if (sceneCheck.length === 0) {
-      console.log(`⚠️ Scene ${sceneId} does not exist in database`);
-      return res.json({ media: [] });
-    }
-
-    const sceneProjectId = sceneCheck[0].project_id;
-    console.log(`Scene ${sceneId} exists, belongs to project ${sceneProjectId}`);
-
-    const [rows] = await pool.query(
-      'SELECT * FROM media WHERE scene_id = ? ORDER BY display_order ASC, created_at ASC',
-      [sceneId]
-    ) as [any[], any];
-
-    console.log(`Found ${rows.length} media items for scene ${sceneId}`);
-
-    res.json({ media: rows });
-  } catch (error: any) {
-    console.error('Error fetching scene media:', error);
-    res.status(500).json({ error: 'Failed to fetch scene media' });
-  }
-});
-
-// SSE endpoint for scene media updates
+// SSE endpoint for scene media updates (MUST be before /scene/:sceneId to avoid route conflict)
 // Note: EventSource doesn't support custom headers, so token is passed via query param
 router.get('/scene/:sceneId/stream', async (req: express.Request, res: Response) => {
   // Extract token from query (EventSource doesn't support custom headers)
@@ -519,6 +483,43 @@ router.get('/scene/:sceneId/stream', async (req: express.Request, res: Response)
       return res.status(403).json({ error: 'Invalid token', details: error.message });
     }
     return res.status(401).json({ error: 'Token verification failed', details: error.message });
+  }
+});
+
+// Get media for scene (regular API endpoint - still used for initial load)
+// NOTE: This route must come AFTER /scene/:sceneId/stream to avoid route conflicts
+router.get('/scene/:sceneId', authenticateToken, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { sceneId } = req.params;
+    const pool = getPool();
+
+    console.log('Fetching media for scene:', sceneId);
+
+    // First, check if scene exists
+    const [sceneCheck] = await pool.query(
+      'SELECT id, project_id FROM scenes WHERE id = ?',
+      [sceneId]
+    ) as [any[], any];
+
+    if (sceneCheck.length === 0) {
+      console.log(`⚠️ Scene ${sceneId} does not exist in database`);
+      return res.json({ media: [] });
+    }
+
+    const sceneProjectId = sceneCheck[0].project_id;
+    console.log(`Scene ${sceneId} exists, belongs to project ${sceneProjectId}`);
+
+    const [rows] = await pool.query(
+      'SELECT * FROM media WHERE scene_id = ? ORDER BY display_order ASC, created_at ASC',
+      [sceneId]
+    ) as [any[], any];
+
+    console.log(`Found ${rows.length} media items for scene ${sceneId}`);
+
+    res.json({ media: rows });
+  } catch (error: any) {
+    console.error('Error fetching scene media:', error);
+    res.status(500).json({ error: 'Failed to fetch scene media' });
   }
 });
 

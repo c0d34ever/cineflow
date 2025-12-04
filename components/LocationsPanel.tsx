@@ -25,6 +25,7 @@ const LocationsPanel: React.FC<LocationsPanelProps> = ({ projectId, storyContext
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [extractionProgress, setExtractionProgress] = useState<{ progress: number; message: string } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
