@@ -101,7 +101,7 @@ const ProjectCard: React.FC<ProjectCardProps> = React.memo(({
           {project.context.coverImageUrl ? (
             <div className={cn('w-full bg-zinc-950 overflow-hidden', getCoverImageHeightClass(libraryCardSize))}>
               <LazyImage
-                src={getImageUrl(project.context.coverImageUrl)}
+                src={getImageUrl(project.context.coverImageUrl) || ''}
                 alt={project.context.title}
                 className="w-full h-full"
                 loading="lazy"
@@ -194,7 +194,7 @@ const ProjectCard: React.FC<ProjectCardProps> = React.memo(({
           {project.context.coverImageUrl ? (
             <div className="w-32 h-24 bg-zinc-950 overflow-hidden flex-shrink-0">
               <LazyImage
-                src={getImageUrl(project.context.coverImageUrl)}
+                src={getImageUrl(project.context.coverImageUrl) || ''}
                 alt={project.context.title}
                 className="w-full h-full"
                 loading="lazy"

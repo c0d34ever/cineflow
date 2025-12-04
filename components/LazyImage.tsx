@@ -98,7 +98,7 @@ const LazyImage: React.FC<LazyImageProps> = ({
       )}
 
       {/* Actual Image */}
-      {isInView && (cachedImageUrl || src) && (
+      {isInView && (cachedImageUrl || src) && (cachedImageUrl || src).trim() !== '' && (
         <img
           ref={imgRef}
           src={cachedImageUrl || src}

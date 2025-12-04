@@ -1373,6 +1373,15 @@ const App: React.FC = () => {
             onRefresh={loadNotifications}
           />
         )}
+        {showSettingsPanel && (
+          <div className="fixed inset-0 z-[100]">
+            <SettingsPanel
+              onClose={() => setShowSettingsPanel(false)}
+              theme={theme}
+              onThemeChange={setTheme}
+            />
+          </div>
+        )}
         <LibraryView
         currentUser={currentUser}
         projects={projects}
