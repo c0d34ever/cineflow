@@ -37,17 +37,43 @@ export const useProjectOperations = ({
   const [isAutoFilling, setIsAutoFilling] = useState(false);
 
   const handleOpenProject = async (project: ProjectData) => {
-    setStoryContext(project.context);
-    // Ensure scenes is always an array
-    const scenesArray = Array.isArray(project.scenes) ? project.scenes : (project.scenes ? [project.scenes] : []);
-    console.log('[handleOpenProject] Setting scenes:', {
+    console.log('[handleOpenProject] Opening project:', {
+      projectId: project.context.id,
       projectScenes: project.scenes,
+      scenesType: typeof project.scenes,
       isArray: Array.isArray(project.scenes),
-      scenesArrayLength: scenesArray.length,
+      scenesLength: project.scenes?.length || 0
+    });
+
+    // If scenes are missing or empty, try to fetch the full project from API
+    let projectData = project;
+    if (!project.scenes || !Array.isArray(project.scenes) || project.scenes.length === 0) {
+      console.log('[handleOpenProject] Scenes missing, fetching full project from API...');
+      try {
+        const apiAvailable = await checkApiAvailability();
+        if (apiAvailable) {
+          const fullProject = await apiService.getProject(project.context.id);
+          console.log('[handleOpenProject] Fetched full project:', {
+            scenesLength: fullProject.scenes?.length || 0,
+            isArray: Array.isArray(fullProject.scenes)
+          });
+          projectData = fullProject;
+        }
+      } catch (error) {
+        console.error('[handleOpenProject] Failed to fetch full project:', error);
+        // Continue with original project data
+      }
+    }
+
+    setStoryContext(projectData.context);
+    // Ensure scenes is always an array
+    const scenesArray = Array.isArray(projectData.scenes) ? projectData.scenes : (projectData.scenes ? [projectData.scenes] : []);
+    console.log('[handleOpenProject] Final scenes array:', {
+      length: scenesArray.length,
       firstScene: scenesArray[0]
     });
     setScenes(scenesArray);
-    setCurrentSettings(project.settings);
+    setCurrentSettings(projectData.settings);
     setView('studio');
     
     // Track view
