@@ -127,6 +127,19 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
     const filtered = projects.filter(p => matchesFilters(p, filterCriteria, favoritedProjects));
 
+    // Pre-calculate health scores if sorting by health to avoid recalculating in sort
+    if (librarySortBy === 'health') {
+      const withScores = filtered.map(p => ({
+        project: p,
+        healthScore: calculateProjectHealthScore(p)
+      }));
+      withScores.sort((a, b) => {
+        const comparison = a.healthScore - b.healthScore;
+        return librarySortOrder === 'asc' ? comparison : -comparison;
+      });
+      return withScores.map(item => item.project);
+    }
+
     // Sort projects
     return [...filtered].sort((a, b) => {
       let comparison = 0;
@@ -140,9 +153,6 @@ const LibraryView: React.FC<LibraryViewProps> = ({
           break;
         case 'scenes':
           comparison = a.scenes.length - b.scenes.length;
-          break;
-        case 'health':
-          comparison = calculateProjectHealthScore(a) - calculateProjectHealthScore(b);
           break;
         case 'favorites':
           const aFavorited = favoritedProjects.has(a.context.id) ? 1 : 0;
@@ -158,7 +168,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
       return librarySortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [projects, librarySearchTerm, libraryFilterGenre, libraryFilterHasCover, libraryFilterSceneCount, libraryFilterFavorites, libraryFilterContentType, librarySortBy, librarySortOrder, favoritedProjects]);
+  }, [projects, librarySearchTerm, libraryFilterGenre, libraryFilterTags, libraryFilterHasCover, libraryFilterSceneCount, libraryFilterFavorites, libraryFilterContentType, librarySortBy, librarySortOrder, favoritedProjects]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-3 sm:p-6 font-sans flex flex-col items-center">
@@ -182,7 +192,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
             <button
                 onClick={(e) => {
                 e.preventDefault();
-                startTransition(() => setView('dashboard'));
+                setView('dashboard');
               }}
               className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
             >
