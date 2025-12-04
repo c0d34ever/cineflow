@@ -52,9 +52,207 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Helper function to parse prompt and fill form fields
+  const parsePromptAndFillForm = useCallback((prompt: string) => {
+    const newFormData = { ...formData };
+    
+    // Split prompt into lines for line-by-line parsing
+    const lines = prompt.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    
+    // Extract Name - try multiple patterns (markdown and plain text)
+    const namePatterns = [
+      /\*\*Character Name\*\*[:\s]*\n?([^\n]+)/i,
+      /\*\*Name\*\*[:\s]*\n?([^\n]+)/i,
+      /^Name\s*\*?[:\s]*\n?([^\n]+)/im,
+      /Character Name[:\s]*\n?([^\n]+)/i
+    ];
+    for (const pattern of namePatterns) {
+      const match = prompt.match(pattern);
+      if (match && match[1]) {
+        const name = match[1].trim();
+        // Remove any trailing asterisks or special chars
+        newFormData.name = name.replace(/[\*\s]+$/, '').trim();
+        if (newFormData.name) break;
+      }
+    }
+    
+    // Also try line-by-line: if we see "Name" or "Name *" followed by a line with text
+    if (!newFormData.name) {
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].match(/^Name\s*\*?$/i) && lines[i + 1] && !lines[i + 1].match(/^(Role|Description|Appearance|Personality|Backstory)/i)) {
+          newFormData.name = lines[i + 1].trim();
+          break;
+        }
+      }
+    }
+    
+    // Extract Role - try multiple patterns
+    const rolePatterns = [
+      /\*\*Role in Story\*\*[:\s]*\n?([^\n]+)/i,
+      /\*\*Role\*\*[:\s]*\n?([^\n]+)/i,
+      /^Role[:\s]*\n?([^\n]+)/im
+    ];
+    for (const pattern of rolePatterns) {
+      const match = prompt.match(pattern);
+      if (match && match[1]) {
+        newFormData.role = match[1].trim();
+        break;
+      }
+    }
+    
+    // Line-by-line: if we see "Role" followed by a line with text
+    if (!newFormData.role) {
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].match(/^Role$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Description|Appearance|Personality|Backstory)/i)) {
+          newFormData.role = lines[i + 1].trim();
+          break;
+        }
+      }
+    }
+    
+    // Extract Description - try multiple patterns
+    const descriptionPatterns = [
+      /\*\*Description\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /^Description[:\s]*\n?([\s\S]+?)(?=^(?:Appearance|Personality|Backstory|Role|Name|\*\*)|$)/im
+    ];
+    for (const pattern of descriptionPatterns) {
+      const match = prompt.match(pattern);
+      if (match && match[1]) {
+        const desc = match[1].trim();
+        if (desc.length > 10) {
+          newFormData.description = desc;
+          break;
+        }
+      }
+    }
+    
+    // Line-by-line: if we see "Description" followed by text
+    if (!newFormData.description) {
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].match(/^Description$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Appearance|Personality|Backstory)/i)) {
+          // Get all following lines until next section
+          let descLines = [];
+          for (let j = i + 1; j < lines.length; j++) {
+            if (lines[j].match(/^(Appearance|Personality|Backstory|Role|Name)/i)) break;
+            descLines.push(lines[j]);
+          }
+          if (descLines.length > 0) {
+            newFormData.description = descLines.join(' ').trim();
+            break;
+          }
+        }
+      }
+    }
+    
+    // Extract Appearance
+    const appearancePatterns = [
+      /\*\*Physical Appearance\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /\*\*Appearance\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /^Appearance[:\s]*\n?([\s\S]+?)(?=^(?:Personality|Backstory|Role|Name|Description|\*\*)|$)/im
+    ];
+    for (const pattern of appearancePatterns) {
+      const match = prompt.match(pattern);
+      if (match && match[1]) {
+        newFormData.appearance = match[1].trim();
+        break;
+      }
+    }
+    
+    // Line-by-line: if we see "Appearance" followed by text
+    if (!newFormData.appearance) {
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].match(/^Appearance$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Description|Personality|Backstory)/i)) {
+          let appearanceLines = [];
+          for (let j = i + 1; j < lines.length; j++) {
+            if (lines[j].match(/^(Personality|Backstory|Role|Name|Description)/i)) break;
+            appearanceLines.push(lines[j]);
+          }
+          if (appearanceLines.length > 0) {
+            newFormData.appearance = appearanceLines.join(' ').trim();
+            break;
+          }
+        }
+      }
+    }
+    
+    // Extract Personality
+    const personalityPatterns = [
+      /\*\*Personality Traits\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /\*\*Personality\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /^Personality[:\s]*\n?([\s\S]+?)(?=^(?:Backstory|Role|Name|Description|Appearance|\*\*)|$)/im
+    ];
+    for (const pattern of personalityPatterns) {
+      const match = prompt.match(pattern);
+      if (match && match[1]) {
+        newFormData.personality = match[1].trim();
+        break;
+      }
+    }
+    
+    // Line-by-line: if we see "Personality" followed by text
+    if (!newFormData.personality) {
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].match(/^Personality$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Description|Appearance|Backstory)/i)) {
+          let personalityLines = [];
+          for (let j = i + 1; j < lines.length; j++) {
+            if (lines[j].match(/^(Backstory|Role|Name|Description|Appearance)/i)) break;
+            personalityLines.push(lines[j]);
+          }
+          if (personalityLines.length > 0) {
+            newFormData.personality = personalityLines.join(' ').trim();
+            break;
+          }
+        }
+      }
+    }
+    
+    // Extract Backstory
+    const backstoryPatterns = [
+      /\*\*Background\/Backstory\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /\*\*Backstory\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /\*\*Background\*\*[:\s]*\n?([\s\S]+?)(?=\*\*|$)/i,
+      /^Backstory[:\s]*\n?([\s\S]+?)(?=^(?:Role|Name|Description|Appearance|Personality|\*\*)|$)/im
+    ];
+    for (const pattern of backstoryPatterns) {
+      const match = prompt.match(pattern);
+      if (match && match[1]) {
+        newFormData.backstory = match[1].trim();
+        break;
+      }
+    }
+    
+    // Line-by-line: if we see "Backstory" followed by text
+    if (!newFormData.backstory) {
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].match(/^Backstory$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Description|Appearance|Personality)/i)) {
+          let backstoryLines = [];
+          for (let j = i + 1; j < lines.length; j++) {
+            if (lines[j].match(/^(Role|Name|Description|Appearance|Personality)/i)) break;
+            backstoryLines.push(lines[j]);
+          }
+          if (backstoryLines.length > 0) {
+            newFormData.backstory = backstoryLines.join(' ').trim();
+            break;
+          }
+        }
+      }
+    }
+    
+    // Update form data
+    setFormData(newFormData);
+    return newFormData;
+  }, [formData]);
+
   useEffect(() => {
     loadCharacters();
   }, [projectId]);
+  
+  // Auto-fill form when prompt is generated
+  useEffect(() => {
+    if (generatedPrompt) {
+      parsePromptAndFillForm(generatedPrompt);
+    }
+  }, [generatedPrompt, parsePromptAndFillForm]);
 
   const loadCharacters = async () => {
     setLoading(true);
