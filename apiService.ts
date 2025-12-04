@@ -5,23 +5,33 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 export const apiService = {
   // Get all projects
   async getProjects(): Promise<ProjectData[]> {
-    const token = localStorage.getItem('auth_token');
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    const response = await fetch(`${API_BASE_URL}/projects`, { headers });
-    if (!response.ok) {
-      if (response.status === 401) {
-        localStorage.removeItem('auth_token');
-        window.location.reload();
-        throw new Error('Authentication required');
+    try {
+      const token = localStorage.getItem('auth_token');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
-      throw new Error('Failed to fetch projects');
+      const response = await fetch(`${API_BASE_URL}/projects`, { headers });
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+          throw new Error('Authentication required');
+        }
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('Failed to fetch projects:', response.status, errorText);
+        throw new Error(`Failed to fetch projects: ${response.status} ${errorText}`);
+      }
+      return response.json();
+    } catch (error: any) {
+      console.error('Error in getProjects:', error);
+      if (error.message && error.message.includes('Failed to fetch')) {
+        throw new Error('Network error: Unable to connect to server. Please check your connection.');
+      }
+      throw error;
     }
-    return response.json();
   },
 
   // Get single project

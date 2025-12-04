@@ -21,7 +21,7 @@ export async function createConnection(): Promise<void> {
     queueLimit: 0,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
-    connectTimeout: 60000, // 60 seconds for initial connection
+    connectTimeout: 120000, // 120 seconds for initial connection (increased for remote DB)
   });
 
   // Test connection with retry logic

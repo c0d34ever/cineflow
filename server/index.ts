@@ -201,26 +201,64 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 // Initialize database and start server
 async function startServer() {
-  try {
-    await createConnection();
-    await initDatabase();
-    console.log('✅ Database connected and initialized');
-    
-    // Seed email settings from environment if available
+  let retries = 3;
+  let lastError: any = null;
+  
+  while (retries > 0) {
     try {
-      const { seedEmailSettings } = await import('./db/migrations/seedEmailSettings.js');
-      await seedEmailSettings();
+      await createConnection();
+      
+      // Try to initialize database with retry logic
+      let initRetries = 3;
+      let initError: any = null;
+      
+      while (initRetries > 0) {
+        try {
+          await initDatabase();
+          console.log('✅ Database connected and initialized');
+          break; // Success, exit retry loop
+        } catch (error: any) {
+          initError = error;
+          initRetries--;
+          if (initRetries > 0) {
+            console.log(`⚠️  Database initialization failed, retrying in 3 seconds... (${3 - initRetries}/3)`);
+            console.error('   Error:', error.message || error);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+      }
+      
+      if (initRetries === 0 && initError) {
+        console.error('❌ Database initialization failed after 3 attempts:', initError);
+        // Continue anyway - server can start and retry later
+        console.warn('⚠️  Starting server without database initialization. Some features may not work.');
+      }
+      
+      // Seed email settings from environment if available
+      try {
+        const { seedEmailSettings } = await import('./db/migrations/seedEmailSettings.js');
+        await seedEmailSettings();
+      } catch (error) {
+        console.warn('⚠️  Could not seed email settings (this is OK if migration 024 not run yet):', error);
+      }
+      
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+      });
+      return; // Success, exit function
     } catch (error) {
-      console.warn('⚠️  Could not seed email settings (this is OK if migration 024 not run yet):', error);
+      lastError = error;
+      retries--;
+      if (retries > 0) {
+        console.log(`⚠️  Server startup failed, retrying in 5 seconds... (${3 - retries}/3)`);
+        console.error('   Error:', error instanceof Error ? error.message : error);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
     }
-    
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
   }
+  
+  console.error('❌ Failed to start server after 3 attempts:', lastError);
+  process.exit(1);
 }
 
 startServer();

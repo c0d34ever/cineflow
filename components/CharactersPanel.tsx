@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { charactersService, mediaService } from '../apiServices';
 import { extractCharacters } from '../clientGeminiService';
 import { StoryContext, Scene } from '../types';
