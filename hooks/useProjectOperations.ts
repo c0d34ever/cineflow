@@ -98,45 +98,60 @@ export const useProjectOperations = ({
     }
   };
 
-  const handleDuplicateProject = async (e: React.MouseEvent, project: ProjectData) => {
+  const handleDuplicateProject = async (e: React.MouseEvent, project: ProjectData, options?: {
+    includeScenes?: boolean;
+    includeMedia?: boolean;
+    newTitle?: string;
+  }) => {
     e.stopPropagation();
     try {
-      const newId = generateId();
-      const duplicatedProject: ProjectData = {
-        context: {
-          ...project.context,
-          id: newId,
-          title: `${project.context.title} (Copy)`,
-          lastUpdated: Date.now()
-        },
-        scenes: project.scenes.map(scene => ({
-          ...scene,
-          id: generateId()
-        })),
-        settings: project.settings
-      };
-
       const apiAvailable = await checkApiAvailability();
       if (apiAvailable) {
-        await apiService.saveProject(duplicatedProject);
+        const result = await apiService.duplicateProject(project.context.id, {
+          includeScenes: options?.includeScenes ?? true,
+          includeMedia: options?.includeMedia ?? false,
+          newTitle: options?.newTitle || `${project.context.title} (Copy)`
+        });
+        
         // Log activity
         try {
           await activityService.logActivity({
-            project_id: newId,
+            project_id: result.id,
             activity_type: 'project_duplicated',
             activity_description: `Duplicated project: ${project.context.title}`
           });
         } catch (e) {
           // Silent fail
         }
+        
+        loadLibrary();
+        showToast('Project duplicated successfully!', 'success');
+        return result;
       } else {
+        // Fallback to old method if API not available
+        const newId = generateId();
+        const duplicatedProject: ProjectData = {
+          context: {
+            ...project.context,
+            id: newId,
+            title: options?.newTitle || `${project.context.title} (Copy)`,
+            lastUpdated: Date.now()
+          },
+          scenes: (options?.includeScenes !== false) ? project.scenes.map(scene => ({
+            ...scene,
+            id: generateId()
+          })) : [],
+          settings: project.settings
+        };
         await saveProjectToDB(duplicatedProject);
+        loadLibrary();
+        showToast('Project duplicated successfully!', 'success');
+        return { id: newId };
       }
-      loadLibrary();
-      showToast('Project duplicated successfully!', 'success');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to duplicate project:", error);
-      showToast('Failed to duplicate project', 'error');
+      showToast(error.message || 'Failed to duplicate project', 'error');
+      throw error;
     }
   };
 

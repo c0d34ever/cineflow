@@ -54,12 +54,18 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
 
   // Helper function to parse prompt and fill form fields
   const parsePromptAndFillForm = useCallback((prompt: string) => {
+    console.log('[parsePromptAndFillForm] Parsing prompt (first 500 chars):', prompt.substring(0, 500));
+    
     // Use functional update to get current formData
     setFormData(prevFormData => {
       const newFormData = { ...prevFormData };
     
-    // Split prompt into lines for line-by-line parsing
-    const lines = prompt.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    // Split prompt into lines - keep all lines including empty ones for proper structure
+    const allLines = prompt.split('\n');
+    const lines = allLines.map(l => l.trim());
+    
+    console.log('[parsePromptAndFillForm] Total lines:', lines.length);
+    console.log('[parsePromptAndFillForm] First 20 lines:', lines.slice(0, 20));
     
     // Extract Name - try multiple patterns (markdown and plain text)
     const namePatterns = [
@@ -86,13 +92,29 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     // Also try line-by-line: if we see "Name" or "Name *" followed by a line with text
     if (!newFormData.name || newFormData.name.length === 0) {
       for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Name\s*\*?$/i) && lines[i + 1] && !lines[i + 1].match(/^(Role|Description|Appearance|Personality|Backstory|1\.|2\.|3\.)/i)) {
-          const name = lines[i + 1].trim();
-          if (name.length > 0) {
-            newFormData.name = name;
-            console.log('[parsePromptAndFillForm] Found name (line-by-line):', newFormData.name);
-            break;
+        // Match "Name" or "Name *" (with optional asterisk and spaces) - must be exact match
+        const currentLine = lines[i];
+        if (currentLine && currentLine.match(/^Name\s*\*?\s*$/i)) {
+          console.log(`[parsePromptAndFillForm] Found "Name" label at line ${i}:`, currentLine);
+          // Get the next non-empty line that's not another field label
+          for (let j = i + 1; j < lines.length; j++) {
+            const nextLine = lines[j];
+            if (nextLine && nextLine.length > 0) {
+              // Check if it's another field label
+              if (nextLine.match(/^(Role|Description|Appearance|Personality|Backstory|AI Prompt|1\.|2\.|3\.|4\.|5\.)\s*$/i)) {
+                console.log(`[parsePromptAndFillForm] Next line is a field label, stopping at line ${j}`);
+                break;
+              }
+              // This is the value
+              const name = nextLine.trim();
+              if (name.length > 0) {
+                newFormData.name = name;
+                console.log(`[parsePromptAndFillForm] Found name (line-by-line) at line ${j}:`, newFormData.name);
+                break;
+              }
+            }
           }
+          if (newFormData.name && newFormData.name.length > 0) break;
         }
       }
     }
@@ -120,13 +142,28 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     // Line-by-line: if we see "Role" followed by a line with text
     if (!newFormData.role || newFormData.role.length === 0) {
       for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Role/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Description|Appearance|Personality|Backstory|1\.|2\.|3\.)/i)) {
-          const role = lines[i + 1].trim();
-          if (role.length > 0) {
-            newFormData.role = role;
-            console.log('[parsePromptAndFillForm] Found role (line-by-line):', newFormData.role);
-            break;
+        const currentLine = lines[i];
+        if (currentLine && currentLine.match(/^Role\s*$/i)) {
+          console.log(`[parsePromptAndFillForm] Found "Role" label at line ${i}:`, currentLine);
+          // Get the next non-empty line that's not another field label
+          for (let j = i + 1; j < lines.length; j++) {
+            const nextLine = lines[j];
+            if (nextLine && nextLine.length > 0) {
+              // Check if it's another field label
+              if (nextLine.match(/^(Name|Description|Appearance|Personality|Backstory|AI Prompt|1\.|2\.|3\.|4\.|5\.)\s*$/i)) {
+                console.log(`[parsePromptAndFillForm] Next line is a field label, stopping at line ${j}`);
+                break;
+              }
+              // This is the value
+              const role = nextLine.trim();
+              if (role.length > 0) {
+                newFormData.role = role;
+                console.log(`[parsePromptAndFillForm] Found role (line-by-line) at line ${j}:`, newFormData.role);
+                break;
+              }
+            }
           }
+          if (newFormData.role && newFormData.role.length > 0) break;
         }
       }
     }
@@ -148,17 +185,20 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     }
     
     // Line-by-line: if we see "Description" followed by text
-    if (!newFormData.description) {
-      for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Description$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Appearance|Personality|Backstory)/i)) {
+    if (!newFormData.description || newFormData.description.length === 0) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].match(/^Description\s*$/i)) {
           // Get all following lines until next section
           let descLines = [];
           for (let j = i + 1; j < lines.length; j++) {
-            if (lines[j].match(/^(Appearance|Personality|Backstory|Role|Name)/i)) break;
-            descLines.push(lines[j]);
+            if (lines[j].match(/^(Appearance|Personality|Backstory|Role|Name|AI Prompt)\s*$/i)) break;
+            if (lines[j] && lines[j].length > 0) {
+              descLines.push(lines[j]);
+            }
           }
           if (descLines.length > 0) {
             newFormData.description = descLines.join(' ').trim();
+            console.log('[parsePromptAndFillForm] Found description (line-by-line):', newFormData.description.substring(0, 50));
             break;
           }
         }
@@ -180,16 +220,19 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     }
     
     // Line-by-line: if we see "Appearance" followed by text
-    if (!newFormData.appearance) {
-      for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Appearance$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Description|Personality|Backstory)/i)) {
+    if (!newFormData.appearance || newFormData.appearance.length === 0) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].match(/^Appearance\s*$/i)) {
           let appearanceLines = [];
           for (let j = i + 1; j < lines.length; j++) {
-            if (lines[j].match(/^(Personality|Backstory|Role|Name|Description)/i)) break;
-            appearanceLines.push(lines[j]);
+            if (lines[j].match(/^(Personality|Backstory|Role|Name|Description|AI Prompt)\s*$/i)) break;
+            if (lines[j] && lines[j].length > 0 && !lines[j].match(/^Physical description/i)) {
+              appearanceLines.push(lines[j]);
+            }
           }
           if (appearanceLines.length > 0) {
             newFormData.appearance = appearanceLines.join(' ').trim();
+            console.log('[parsePromptAndFillForm] Found appearance (line-by-line):', newFormData.appearance.substring(0, 50));
             break;
           }
         }
@@ -211,16 +254,19 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     }
     
     // Line-by-line: if we see "Personality" followed by text
-    if (!newFormData.personality) {
-      for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Personality$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Description|Appearance|Backstory)/i)) {
+    if (!newFormData.personality || newFormData.personality.length === 0) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].match(/^Personality\s*$/i)) {
           let personalityLines = [];
           for (let j = i + 1; j < lines.length; j++) {
-            if (lines[j].match(/^(Backstory|Role|Name|Description|Appearance)/i)) break;
-            personalityLines.push(lines[j]);
+            if (lines[j].match(/^(Backstory|Role|Name|Description|Appearance|AI Prompt)\s*$/i)) break;
+            if (lines[j] && lines[j].length > 0) {
+              personalityLines.push(lines[j]);
+            }
           }
           if (personalityLines.length > 0) {
             newFormData.personality = personalityLines.join(' ').trim();
+            console.log('[parsePromptAndFillForm] Found personality (line-by-line):', newFormData.personality.substring(0, 50));
             break;
           }
         }
@@ -243,16 +289,19 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     }
     
     // Line-by-line: if we see "Backstory" followed by text
-    if (!newFormData.backstory) {
-      for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Backstory$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Role|Description|Appearance|Personality)/i)) {
+    if (!newFormData.backstory || newFormData.backstory.length === 0) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].match(/^Backstory\s*$/i)) {
           let backstoryLines = [];
           for (let j = i + 1; j < lines.length; j++) {
-            if (lines[j].match(/^(Role|Name|Description|Appearance|Personality)/i)) break;
-            backstoryLines.push(lines[j]);
+            if (lines[j].match(/^(Role|Name|Description|Appearance|Personality|AI Prompt)\s*$/i)) break;
+            if (lines[j] && lines[j].length > 0) {
+              backstoryLines.push(lines[j]);
+            }
           }
           if (backstoryLines.length > 0) {
             newFormData.backstory = backstoryLines.join(' ').trim();
+            console.log('[parsePromptAndFillForm] Found backstory (line-by-line):', newFormData.backstory.substring(0, 50));
             break;
           }
         }
@@ -260,14 +309,24 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     }
     
       // Log what we extracted for debugging
-      console.log('[parsePromptAndFillForm] Extracted data:', {
+      const extracted = {
         name: newFormData.name,
         role: newFormData.role,
         description: newFormData.description?.substring(0, 50),
         appearance: newFormData.appearance?.substring(0, 50),
         personality: newFormData.personality?.substring(0, 50),
         backstory: newFormData.backstory?.substring(0, 50)
+      };
+      console.log('[parsePromptAndFillForm] Extracted data:', extracted);
+      
+      // Verify we extracted something
+      const extractedFields = Object.keys(newFormData).filter(key => {
+        const newVal = newFormData[key as keyof typeof newFormData];
+        const oldVal = prevFormData[key as keyof typeof prevFormData];
+        return newVal && newVal !== oldVal && String(newVal).trim().length > 0;
       });
+      console.log('[parsePromptAndFillForm] Fields that changed:', extractedFields);
+      console.log('[parsePromptAndFillForm] Final formData:', newFormData);
       
       // Return updated form data
       return newFormData;
@@ -281,16 +340,21 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   // Auto-fill form when prompt is generated
   useEffect(() => {
     if (generatedPrompt) {
+      console.log('[CharactersPanel] Auto-filling form with generated prompt');
       // Auto-fill when prompt is generated (form will be shown if not already)
       if (!showAddForm) {
+        console.log('[CharactersPanel] Showing add form');
         setShowAddForm(true);
       }
-      // Small delay to ensure form is rendered
-      setTimeout(() => {
+      // Small delay to ensure form is rendered, then fill it
+      const timeoutId = setTimeout(() => {
+        console.log('[CharactersPanel] Calling parsePromptAndFillForm');
         parsePromptAndFillForm(generatedPrompt);
-      }, 100);
+      }, 150);
+      
+      return () => clearTimeout(timeoutId);
     }
-  }, [generatedPrompt, parsePromptAndFillForm]);
+  }, [generatedPrompt, parsePromptAndFillForm, showAddForm]);
 
   const loadCharacters = async () => {
     setLoading(true);

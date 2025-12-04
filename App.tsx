@@ -30,6 +30,7 @@ import ExportQueuePanel from './components/ExportQueuePanel';
 import ForgotPassword from './components/ForgotPassword';
 import LocationsPanel from './components/LocationsPanel';
 import NotificationCenter from './components/NotificationCenter';
+import ProjectDuplicateModal from './components/ProjectDuplicateModal';
 import ProjectHealthScore from './components/ProjectHealthScore';
 import ProjectQuickActionsMenu from './components/ProjectQuickActionsMenu';
 import ProjectStatisticsPanel from './components/ProjectStatisticsPanel';
@@ -199,6 +200,9 @@ const App: React.FC = () => {
 
   // SSE connection for save progress
   const [saveConnectionId, setSaveConnectionId] = useState<string | null>(null);
+  
+  // Project duplication modal state
+  const [duplicateModalProject, setDuplicateModalProject] = useState<ProjectData | null>(null);
 
   // Memoize content type terminology to avoid recalculating on every render
   const contentTypeTerminology = useMemo(() => {
@@ -598,12 +602,42 @@ const App: React.FC = () => {
         handleSceneReorder(e.key === 'ArrowUp' ? 'up' : 'down');
       }
 
+      // P - Quick preview first scene (studio only, no modifier keys)
+      if (e.key === 'p' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && view === 'studio' && !batchMode) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
+          e.preventDefault();
+          if (scenes.length > 0) {
+            setPreviewSceneIndex(0);
+            setShowScenePreviewModal(true);
+          }
+        }
+      }
+
+      // J/K - Navigate to next/previous scene in preview (studio only, no modifier keys)
+      if ((e.key === 'j' || e.key === 'k') && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && view === 'studio' && !batchMode && showScenePreviewModal) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
+          e.preventDefault();
+          if (scenes.length > 0) {
+            const currentIndex = previewSceneIndex >= 0 ? previewSceneIndex : 0;
+            if (e.key === 'j' && currentIndex < scenes.length - 1) {
+              // Next scene
+              setPreviewSceneIndex(currentIndex + 1);
+            } else if (e.key === 'k' && currentIndex > 0) {
+              // Previous scene
+              setPreviewSceneIndex(currentIndex - 1);
+            }
+          }
+        }
+      }
+
       // Ctrl/Cmd + / - Show shortcuts help
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
         const shortcuts = view === 'library' 
-          ? `Library Shortcuts:\n\nCtrl+F - Advanced search\nCtrl+N - New project\nCtrl+A - Select all (in batch mode)\nCtrl+/ - Show this help\nEsc - Close modals\n\nStudio Shortcuts:\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo`
-          : `Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nCtrl+/ - Show this help\nEsc - Close modals`;
+          ? `Library Shortcuts:\n\nCtrl+F - Advanced search\nCtrl+N - New project\nCtrl+A - Select all (in batch mode)\nCtrl+/ - Show this help\nEsc - Close modals\n\nStudio Shortcuts:\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nP - Preview first scene\nJ/K - Navigate next/previous scene\nCtrl+/ - Show this help\nEsc - Close modals`
+          : `Keyboard Shortcuts:\n\nCtrl+S - Save project\nCtrl+E - Export menu\nCtrl+N - Focus new scene input\nCtrl+C - Comments panel\nCtrl+F - Advanced search\nCtrl+↑/↓ - Move scene up/down\nCtrl+Z - Undo\nCtrl+Shift+Z / Ctrl+Y - Redo\nP - Preview first scene\nJ/K - Navigate next/previous scene\nCtrl+/ - Show this help\nEsc - Close modals`;
         alert(shortcuts);
       }
 
@@ -664,7 +698,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view, storyContext.id, showExportMenu, libraryBatchMode, projects, librarySearchTerm, libraryFilterGenre, libraryFilterHasCover, libraryFilterSceneCount, libraryFilterFavorites, favoritedProjects]);
+  }, [view, storyContext.id, showExportMenu, libraryBatchMode, projects, librarySearchTerm, libraryFilterGenre, libraryFilterHasCover, libraryFilterSceneCount, libraryFilterFavorites, favoritedProjects, scenes, batchMode, previewSceneIndex, showScenePreviewModal, setPreviewSceneIndex, setShowScenePreviewModal, setSelectedLibraryProjectIds]);
 
   // Data Loading
   const { loadLibrary, loadFavorites, loadNotifications } = useDataLoading({
@@ -1108,9 +1142,9 @@ const App: React.FC = () => {
       eventSource.onerror = (error) => {
         console.error('Notifications SSE error:', error);
         // Fallback to polling if SSE fails
-        const interval = setInterval(() => {
-          loadNotifications();
-        }, 30000);
+      const interval = setInterval(() => {
+        loadNotifications();
+      }, 30000);
         return () => {
           clearInterval(interval);
           eventSource.close();
@@ -1418,6 +1452,31 @@ const App: React.FC = () => {
     return <UserDashboard user={currentUser} onLogout={handleLogout} />;
   }
 
+  // Wrapper for handleDuplicateProject to show modal
+  const handleDuplicateProjectWithModal = (e: React.MouseEvent, project: ProjectData) => {
+    e.stopPropagation();
+    setDuplicateModalProject(project);
+  };
+
+  const handleDuplicateConfirm = async (options: {
+    includeScenes: boolean;
+    includeMedia: boolean;
+    newTitle: string;
+  }) => {
+    if (!duplicateModalProject) return;
+    
+    try {
+      await handleDuplicateProject(
+        { stopPropagation: () => {} } as React.MouseEvent,
+        duplicateModalProject,
+        options
+      );
+      setDuplicateModalProject(null);
+    } catch (error) {
+      // Error already handled in handleDuplicateProject
+    }
+  };
+
   if (view === 'library') {
     return (
       <>
@@ -1425,6 +1484,14 @@ const App: React.FC = () => {
           <ContentTypeSelector
             onSelect={handleContentTypeSelect}
             onClose={() => setShowContentTypeSelector(false)}
+          />
+        )}
+        {duplicateModalProject && (
+          <ProjectDuplicateModal
+            isOpen={!!duplicateModalProject}
+            onClose={() => setDuplicateModalProject(null)}
+            onConfirm={handleDuplicateConfirm}
+            projectTitle={duplicateModalProject.context.title}
           />
         )}
         {showNotificationCenter && (
@@ -1448,7 +1515,7 @@ const App: React.FC = () => {
             />
           </div>
         )}
-        <LibraryView
+      <LibraryView
         currentUser={currentUser}
         projects={projects}
         favoritedProjects={favoritedProjects}
@@ -1456,7 +1523,7 @@ const App: React.FC = () => {
         setView={setView}
         handleLogout={handleLogout}
         handleOpenProject={handleOpenProject}
-        handleDuplicateProject={handleDuplicateProject}
+        handleDuplicateProject={handleDuplicateProjectWithModal}
         handleArchiveProject={handleArchiveProject}
         handleDeleteProject={handleDeleteProject}
         handleCreateNew={handleCreateNew}
@@ -1478,7 +1545,7 @@ const App: React.FC = () => {
         setSelectedProjectForSharing={setSelectedProjectForSharing}
         setShowSharingModal={setShowSharingModal}
         setProjects={setProjects}
-        />
+      />
       </>
     );
   }
@@ -1727,17 +1794,17 @@ const App: React.FC = () => {
       setSaveConnectionId(null);
       setSaveStatus('saved');
       setLastSavedTime(new Date());
-      setTimeout(() => {
+              setTimeout(() => {
         setSaveStatus('idle');
-      }, 2000);
+                }, 2000);
     }}
     onError={(error) => {
       setSaveConnectionId(null);
       setSaveStatus('error');
       showToast(`Save failed: ${error}`, 'error');
-      setTimeout(() => {
+                setTimeout(() => {
         setSaveStatus('idle');
-      }, 2000);
+                }, 2000);
     }}
   />
   </>

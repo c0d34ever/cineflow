@@ -462,40 +462,128 @@ const StudioView: React.FC<StudioViewProps> = (props) => {
               </svg>
             </button>
             
-            {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-56 sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-[80vh] overflow-y-auto">
-                <button
-                  onClick={() => handleExport('json')}
-                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
-                >
-                  <span>📄</span> Export as JSON
-                </button>
-                <button
-                  onClick={() => handleExport('markdown')}
-                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
-                >
-                  <span>📝</span> Export as Markdown
-                </button>
-                <button
-                  onClick={() => handleExport('csv')}
-                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
-                >
-                  <span>📊</span> Export as CSV
-                </button>
-                <button
-                  onClick={() => handleExport('pdf')}
-                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
-                >
-                  <span>📄</span> Export as PDF
-                </button>
-                <button
-                  onClick={() => handleExport('fountain')}
-                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
-                >
-                  <span>🎬</span> Export as Fountain (Screenplay)
-                </button>
-                <div className="border-t border-zinc-700 my-1"></div>
-                <div className="px-4 py-2 text-xs text-zinc-500 uppercase font-semibold">Queue Export</div>
+            {showExportMenu && (() => {
+              // Load quick presets for quick access
+              let quickPresets: any[] = [];
+              try {
+                const stored = localStorage.getItem('export_presets');
+                if (stored) {
+                  const allPresets = JSON.parse(stored);
+                  // Get top 3 most recently used or first 3
+                  quickPresets = allPresets.slice(0, 3);
+                }
+              } catch (e) {
+                // Ignore
+              }
+
+              return (
+                <div className="absolute right-0 mt-2 w-56 sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-[80vh] overflow-y-auto">
+                  {quickPresets.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 text-xs text-amber-400 uppercase font-semibold border-b border-zinc-800">Quick Presets</div>
+                      {quickPresets.map((preset: any) => (
+                        <button
+                          key={preset.id}
+                          onClick={async () => {
+                            try {
+                              const exportData: any = {
+                                context: storyContext,
+                                scenes: scenes,
+                                settings: currentSettings,
+                              };
+
+                              if (!preset.includeSettings) {
+                                exportData.settings = undefined;
+                              }
+
+                              switch (preset.format) {
+                                case 'pdf':
+                                  const { exportToPDF } = await import('../utils/exportUtils');
+                                  await exportToPDF(exportData, preset.style || 'comic');
+                                  break;
+                                case 'csv':
+                                  const { exportToCSV } = await import('../utils/exportUtils');
+                                  const csvContent = exportToCSV(exportData);
+                                  const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+                                  const csvUrl = URL.createObjectURL(csvBlob);
+                                  const csvA = document.createElement('a');
+                                  csvA.href = csvUrl;
+                                  csvA.download = `${storyContext.title || 'project'}-${preset.name}.csv`;
+                                  csvA.click();
+                                  URL.revokeObjectURL(csvUrl);
+                                  break;
+                                case 'markdown':
+                                  const { exportToMarkdown } = await import('../utils/exportUtils');
+                                  const mdContent = exportToMarkdown(exportData);
+                                  const mdBlob = new Blob([mdContent], { type: 'text/markdown' });
+                                  const mdUrl = URL.createObjectURL(mdBlob);
+                                  const mdA = document.createElement('a');
+                                  mdA.href = mdUrl;
+                                  mdA.download = `${storyContext.title || 'project'}-${preset.name}.md`;
+                                  mdA.click();
+                                  URL.revokeObjectURL(mdUrl);
+                                  break;
+                                case 'fountain':
+                                  const { exportToFountain } = await import('../utils/exportUtils');
+                                  const fountainContent = exportToFountain(exportData);
+                                  const fountainBlob = new Blob([fountainContent], { type: 'text/plain' });
+                                  const fountainUrl = URL.createObjectURL(fountainBlob);
+                                  const fountainA = document.createElement('a');
+                                  fountainA.href = fountainUrl;
+                                  fountainA.download = `${storyContext.title || 'project'}-${preset.name}.fountain`;
+                                  fountainA.click();
+                                  URL.revokeObjectURL(fountainUrl);
+                                  break;
+                              }
+                              setShowExportMenu(false);
+                              showToast(`Exported using preset: ${preset.name}`, 'success');
+                            } catch (error: any) {
+                              showToast(`Export failed: ${error.message}`, 'error');
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-amber-300 hover:bg-zinc-800 hover:text-amber-200 flex items-center gap-2 border-l-2 border-amber-500"
+                          title={`Quick export: ${preset.name}`}
+                        >
+                          <span>⚡</span> {preset.name}
+                          <span className="ml-auto text-xs text-zinc-500 uppercase">{preset.format}</span>
+                        </button>
+                      ))}
+                      <div className="border-t border-zinc-700 my-1"></div>
+                    </>
+                  )}
+                  <div className="px-4 py-2 text-xs text-zinc-500 uppercase font-semibold">Standard Exports</div>
+                  <button
+                    onClick={() => handleExport('json')}
+                    className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                  >
+                    <span>📄</span> Export as JSON
+                  </button>
+                  <button
+                    onClick={() => handleExport('markdown')}
+                    className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                  >
+                    <span>📝</span> Export as Markdown
+                  </button>
+                  <button
+                    onClick={() => handleExport('csv')}
+                    className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                  >
+                    <span>📊</span> Export as CSV
+                  </button>
+                  <button
+                    onClick={() => handleExport('pdf')}
+                    className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                  >
+                    <span>📄</span> Export as PDF
+                  </button>
+                  <button
+                    onClick={() => handleExport('fountain')}
+                    className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-2"
+                  >
+                    <span>🎬</span> Export as Fountain (Screenplay)
+                  </button>
+                  <div className="border-t border-zinc-700 my-1"></div>
+                  <div className="px-4 py-2 text-xs text-zinc-500 uppercase font-semibold">Queue Export</div>
                 <button
                   onClick={() => {
                     if (!storyContext.id) {
@@ -613,7 +701,8 @@ const StudioView: React.FC<StudioViewProps> = (props) => {
                   <span>⚙️</span> Export Presets
                 </button>
               </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Characters Button */}
