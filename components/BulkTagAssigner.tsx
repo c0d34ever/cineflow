@@ -27,7 +27,8 @@ const BulkTagAssigner: React.FC<BulkTagAssignerProps> = ({ projects, selectedPro
   const loadTags = async () => {
     try {
       setLoading(true);
-      const tags = await tagsService.getAll();
+      // Use cached version to avoid duplicate requests
+      const tags = await tagsService.getAll(false);
       const allTags = Array.isArray(tags) ? tags : (tags as any)?.tags || [];
       setAvailableTags(allTags);
     } catch (error) {

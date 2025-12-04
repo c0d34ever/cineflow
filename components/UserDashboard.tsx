@@ -77,7 +77,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         setGeminiKeyMasked(data.key || '');
         setGeminiKey(data.hasKey ? 'set' : '');
       } else if (activeTab === 'tags') {
-        const data = await tagsService.getAll();
+        // Use cached version to avoid duplicate requests
+        const data = await tagsService.getAll(false);
         setTags(Array.isArray(data) ? data : (data.tags || []));
       }
     } catch (error) {

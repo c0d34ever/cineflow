@@ -23,7 +23,8 @@ const QuickTagAssigner: React.FC<QuickTagAssignerProps> = ({ project, onClose, o
   const loadTags = async () => {
     try {
       setLoading(true);
-      const tags = await tagsService.getAll();
+      // Use cached version to avoid duplicate requests
+      const tags = await tagsService.getAll(false);
       const projectTagsResponse = await fetch(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api'}/tags/project/${project.context.id}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('auth_token')}`

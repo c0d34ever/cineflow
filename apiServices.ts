@@ -60,18 +60,64 @@ export const apiKeysService = {
   regenerate: (id: number) => apiCall(`/api-keys/${id}/regenerate`, { method: 'POST' }),
 };
 
+// Tags cache to prevent duplicate requests
+let tagsCache: { data: any; timestamp: number } | null = null;
+const TAGS_CACHE_DURATION = 30000; // 30 seconds
+let tagsRequestPromise: Promise<any> | null = null; // Deduplicate concurrent requests
+
 // Tags Service
 export const tagsService = {
-  getAll: () => apiCall('/tags'),
-  create: (data: { name: string; color?: string }) =>
-    apiCall('/tags', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: number, data: { name?: string; color?: string }) =>
-    apiCall(`/tags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id: number) => apiCall(`/tags/${id}`, { method: 'DELETE' }),
+  getAll: async (forceRefresh = false): Promise<any> => {
+    // Return cached data if still valid and not forcing refresh
+    if (!forceRefresh && tagsCache && (Date.now() - tagsCache.timestamp) < TAGS_CACHE_DURATION) {
+      return tagsCache.data;
+    }
+    
+    // If there's already a request in flight, return that promise
+    if (tagsRequestPromise) {
+      return tagsRequestPromise;
+    }
+    
+    // Create new request
+    tagsRequestPromise = apiCall('/tags')
+      .then((data) => {
+        tagsCache = { data, timestamp: Date.now() };
+        tagsRequestPromise = null;
+        return data;
+      })
+      .catch((error) => {
+        tagsRequestPromise = null;
+        // Return cached data if available, even if stale
+        if (tagsCache) {
+          console.warn('Tags request failed, using cached data:', error);
+          return tagsCache.data;
+        }
+        throw error;
+      });
+    
+    return tagsRequestPromise;
+  },
+  create: (data: { name: string; color?: string }) => {
+    tagsCache = null; // Invalidate cache
+    return apiCall('/tags', { method: 'POST', body: JSON.stringify(data) });
+  },
+  update: (id: number, data: { name?: string; color?: string }) => {
+    tagsCache = null; // Invalidate cache
+    return apiCall(`/tags/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+  delete: (id: number) => {
+    tagsCache = null; // Invalidate cache
+    return apiCall(`/tags/${id}`, { method: 'DELETE' });
+  },
   addToProject: (tagId: number, projectId: string) =>
     apiCall(`/tags/${tagId}/projects/${projectId}`, { method: 'POST' }),
   removeFromProject: (tagId: number, projectId: string) =>
     apiCall(`/tags/${tagId}/projects/${projectId}`, { method: 'DELETE' }),
+  // Clear cache manually if needed
+  clearCache: () => {
+    tagsCache = null;
+    tagsRequestPromise = null;
+  },
 };
 
 // Favorites Service

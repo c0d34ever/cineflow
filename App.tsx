@@ -1045,9 +1045,11 @@ const App: React.FC = () => {
 
   // Export operations are now handled by useExportOperations hook (see above)
   
-  // Load tags when project is loaded
+  // Load tags when project is loaded (only once per project)
+  const lastLoadedProjectId = useRef<string | null>(null);
   useEffect(() => {
-    if (view === 'studio' && storyContext.id) {
+    if (view === 'studio' && storyContext.id && storyContext.id !== lastLoadedProjectId.current) {
+      lastLoadedProjectId.current = storyContext.id;
       loadTags();
       checkComicExists();
     }
@@ -1130,9 +1132,10 @@ const App: React.FC = () => {
     return () => window.removeEventListener('comicGenerated', handleComicGenerated);
   }, []);
 
-  const loadTags = async () => {
+  const loadTags = async (forceRefresh = false) => {
     try {
-      const response = await tagsService.getAll();
+      // Use cached version unless force refresh is requested
+      const response = await tagsService.getAll(forceRefresh);
       // Tags service returns { tags: [...] } or just the array
       const tags = (response as any)?.tags || (Array.isArray(response) ? response : []);
       setAvailableTags(Array.isArray(tags) ? tags : []);
@@ -1146,7 +1149,8 @@ const App: React.FC = () => {
     if (!storyContext.id) return;
     try {
       await tagsService.addToProject(tagId, storyContext.id);
-      await loadTags();
+      // Force refresh tags after adding
+      await loadTags(true);
       setShowTagsMenu(false);
     } catch (error: any) {
       alert('Error: ' + error.message);
@@ -1157,7 +1161,8 @@ const App: React.FC = () => {
     if (!storyContext.id) return;
     try {
       await tagsService.removeFromProject(tagId, storyContext.id);
-      await loadTags();
+      // Force refresh tags after removing
+      await loadTags(true);
     } catch (error: any) {
       alert('Error: ' + error.message);
     }
