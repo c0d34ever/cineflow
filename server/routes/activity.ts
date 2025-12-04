@@ -2,6 +2,7 @@ import express, { Response } from 'express';
 import { getPool } from '../db/index.js';
 import { AuthRequest, authenticateToken } from '../middleware/auth.js';
 import { sseService } from '../services/sseService.js';
+import jwt from 'jsonwebtoken';
 
 const router = express.Router();
 
