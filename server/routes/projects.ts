@@ -245,6 +245,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
 // GET /api/projects/:id - Get single project
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+  console.log(`[GET /api/projects/:id] ===== REQUEST RECEIVED =====`);
+  console.log(`[GET /api/projects/:id] Project ID: ${req.params.id}`);
+  console.log(`[GET /api/projects/:id] User ID: ${req.user!.id}`);
   try {
     const userId = req.user!.id;
     const pool = getPool();
@@ -363,6 +366,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         };
 
     console.log(`[GET /api/projects/:id] Processing ${scenes.length} scenes for project ${project.id}`);
+    
+    // If no scenes found, log a warning
+    if (scenes.length === 0) {
+      console.warn(`[GET /api/projects/:id] WARNING: No scenes found for project ${project.id}. This might indicate scenes were never saved or were deleted.`);
+    }
 
     const scenesData: Scene[] = await Promise.all(
       scenes.map(async (scene) => {
@@ -459,6 +467,9 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 
 // POST /api/projects - Create or update project
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
+  console.log(`[POST /api/projects] ===== SAVE REQUEST =====`);
+  console.log(`[POST /api/projects] Project ID: ${req.body?.context?.id}`);
+  console.log(`[POST /api/projects] Scenes count: ${req.body?.scenes?.length || 0}`);
   try {
     const userId = req.user!.id;
     const { context, scenes, settings } = req.body;
@@ -570,8 +581,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       }
 
       // Update or insert scenes (preserving existing scenes to keep media associations)
+      console.log(`[POST /api/projects] Saving ${scenes?.length || 0} scenes for project ${context.id}`);
       if (scenes && Array.isArray(scenes)) {
         for (const scene of scenes) {
+          console.log(`[POST /api/projects] Saving scene ${scene.id} with project_id ${context.id}`);
           // Get primary image thumbnail for this scene (check existing media first)
           let thumbnailUrl = scene.thumbnailUrl || null;
           if (!thumbnailUrl) {
