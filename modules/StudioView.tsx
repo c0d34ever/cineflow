@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { startTransition } from 'react';
 import { apiService, checkApiAvailability } from '../apiService';
+import { generateScenePrompt, generateSceneImagePrompt } from '../utils/promptGenerators';
 import ActivityPanel from '../components/ActivityPanel';
 import AdvancedAnalyticsDashboard from '../components/AdvancedAnalyticsDashboard';
 import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
@@ -335,6 +336,10 @@ const StudioView: React.FC<StudioViewProps> = (props) => {
     loadNotifications, setupTab, setSetupTab, setProjects,
     hoveredProjectForTooltip, view
   } = props;
+
+  // State for scene prompt generation
+  const [generatingScenePrompt, setGeneratingScenePrompt] = useState(false);
+  const [generatedScenePrompt, setGeneratedScenePrompt] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden">
@@ -2376,16 +2381,154 @@ const StudioView: React.FC<StudioViewProps> = (props) => {
             <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex-1 flex flex-col h-full min-h-[150px] sm:min-h-[200px] lg:min-h-0 relative group">
               
               {/* Auto-Draft Button (Top Right) */}
-              <button 
-                onClick={handleAutoDraft}
-                className="absolute top-2 right-2 sm:top-3 sm:right-3 text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-500 border border-amber-500/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full transition-all flex items-center gap-1 z-10 shadow-lg opacity-80 hover:opacity-100"
-                disabled={isProcessing || isAutoFilling}
-                title="Let the AI suggest the next scene idea based on the story"
-              >
-                 <span className="text-base sm:text-lg leading-none">✨</span>
-                 <span className="font-bold hidden sm:inline">Auto-Write Idea</span>
-                 <span className="font-bold sm:hidden">Auto</span>
-              </button>
+              <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex flex-col gap-2 z-10">
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      if (!storyContext) {
+                        showToast('Story context is required', 'warning');
+                        return;
+                      }
+                      setGeneratingScenePrompt(true);
+                      setGeneratedScenePrompt(null);
+                      try {
+                        const prompt = await generateScenePrompt(
+                          storyContext,
+                          scenes,
+                          {
+                            purpose: currentInput || undefined,
+                            action: currentInput || undefined
+                          }
+                        );
+                        setGeneratedScenePrompt(prompt);
+                      } catch (error: any) {
+                        showToast(`Failed to generate prompt: ${error.message}`, 'error');
+                      } finally {
+                        setGeneratingScenePrompt(false);
+                      }
+                    }}
+                    className="text-xs bg-purple-800 hover:bg-purple-700 text-purple-200 border border-purple-500/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full transition-all flex items-center gap-1 shadow-lg opacity-80 hover:opacity-100"
+                    disabled={isProcessing || isAutoFilling || generatingScenePrompt}
+                    title="Generate detailed text prompt for scene creation"
+                  >
+                    {generatingScenePrompt ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span className="hidden sm:inline">Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                          <path d="M15.98 1.804a1 1 0 00-1.96 0l-.84 4.42a1 1 0 01-.82.67l-4.83.49a1 1 0 00-.9 1.2l1.08 5.64a1 1 0 01-.72 1.15l-4.57 1.29a1 1 0 00-.7 1.23l.53 2.9a1 1 0 001.3 1.13l5.28-2.12a1 1 0 01.8 0l5.28 2.12a1 1 0 001.3-1.13l-.53-2.9a1 1 0 00-.7-1.23l-4.57-1.29a1 1 0 01-.72-1.15l1.08-5.64a1 1 0 00-.9-1.2l-4.83-.49a1 1 0 01-.82-.67l-.84-4.42z" />
+                        </svg>
+                        <span className="hidden sm:inline">Text Prompt</span>
+                        <span className="sm:hidden">Text</span>
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (!storyContext) {
+                        showToast('Story context is required', 'warning');
+                        return;
+                      }
+                      setGeneratingScenePrompt(true);
+                      setGeneratedScenePrompt(null);
+                      try {
+                        const prompt = await generateSceneImagePrompt(
+                          storyContext,
+                          scenes,
+                          {
+                            purpose: currentInput || undefined,
+                            location: undefined,
+                            characters: undefined,
+                            mood: undefined,
+                            action: currentInput || undefined
+                          }
+                        );
+                        setGeneratedScenePrompt(prompt);
+                      } catch (error: any) {
+                        showToast(`Failed to generate image prompt: ${error.message}`, 'error');
+                      } finally {
+                        setGeneratingScenePrompt(false);
+                      }
+                    }}
+                    className="text-xs bg-blue-800 hover:bg-blue-700 text-blue-200 border border-blue-500/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full transition-all flex items-center gap-1 shadow-lg opacity-80 hover:opacity-100"
+                    disabled={isProcessing || isAutoFilling || generatingScenePrompt}
+                    title="Generate prompt optimized for AI image generation (DALL-E, Stable Diffusion, Midjourney, etc.)"
+                  >
+                    {generatingScenePrompt ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span className="hidden sm:inline">Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                          <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909a.75.75 0 01-1.06 0l-1.78-1.78a.75.75 0 00-1.06 0l-2.22 2.22zm12-2.62a.75.75 0 00-1.06 0l-1.91 1.91a.75.75 0 01-1.06 0l-1.78-1.78a.75.75 0 00-1.06 0L4.5 8.94v-.19a.75.75 0 01.75-.75h1.5a.75.75 0 01.75.75v.19l2.22-2.22a.75.75 0 011.06 0l1.78 1.78a.75.75 0 001.06 0l1.91-1.91a.75.75 0 011.06 0z" clipRule="evenodd" />
+                        </svg>
+                        <span className="hidden sm:inline">Image Prompt</span>
+                        <span className="sm:hidden">Image</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <button 
+                  onClick={handleAutoDraft}
+                  className="text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-500 border border-amber-500/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full transition-all flex items-center gap-1 shadow-lg opacity-80 hover:opacity-100"
+                  disabled={isProcessing || isAutoFilling}
+                  title="Let the AI suggest the next scene idea based on the story"
+                >
+                   <span className="text-base sm:text-lg leading-none">✨</span>
+                   <span className="font-bold hidden sm:inline">Auto-Write Idea</span>
+                   <span className="font-bold sm:hidden">Auto</span>
+                </button>
+              </div>
+              
+              {/* Generated Prompt Display */}
+              {generatedScenePrompt && (
+                <div className="absolute top-12 right-2 sm:right-3 left-2 sm:left-auto sm:w-96 bg-zinc-950 border border-purple-700 rounded-lg p-3 text-sm text-zinc-300 max-h-60 overflow-y-auto z-20 shadow-xl">
+                  <div className="flex items-start justify-between mb-2">
+                    <span className="text-xs text-purple-400 font-semibold">Generated Scene Prompt</span>
+                    <button
+                      onClick={() => setGeneratedScenePrompt(null)}
+                      className="text-zinc-500 hover:text-white"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="whitespace-pre-wrap text-xs mb-2">{generatedScenePrompt}</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setCurrentInput(generatedScenePrompt);
+                        setGeneratedScenePrompt(null);
+                        showToast('Prompt loaded into input field', 'success');
+                      }}
+                      className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs"
+                    >
+                      Use This Prompt
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedScenePrompt);
+                        showToast('Prompt copied to clipboard!', 'success');
+                      }}
+                      className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-xs"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <textarea
                 value={currentInput}

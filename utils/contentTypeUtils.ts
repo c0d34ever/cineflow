@@ -1,4 +1,5 @@
 import { ContentType } from '../components/ContentTypeSelector';
+import { StoryContext, DirectorSettings, TechnicalStyle } from '../types';
 
 export const CONTENT_TYPE_INFO: Record<ContentType, { icon: string; name: string; color: string }> = {
   'film': { icon: '🎬', name: 'Film', color: 'amber' },
@@ -53,5 +54,130 @@ export function getContentTypeTerminology(contentType?: string): {
     'other': { scene: 'Scene', scenes: 'Scenes', addScene: 'Add Scene', newScene: 'New Scene' },
   };
   return terminology[type] || terminology['film'];
+}
+
+// Content-type specific default contexts
+export function getContentTypeDefaultContext(contentType: ContentType): Partial<StoryContext> {
+  const defaults: Record<ContentType, Partial<StoryContext>> = {
+    'film': {
+      genre: 'Drama',
+      plotSummary: 'A compelling narrative waiting to be developed...',
+      characters: 'Main characters to be defined',
+      initialContext: 'Traditional film production with cinematic storytelling'
+    },
+    'news': {
+      genre: 'News',
+      plotSummary: 'Breaking news story or investigative piece...',
+      characters: 'Reporters, interviewees, subjects',
+      initialContext: 'News reporting format with segments, interviews, and field reporting'
+    },
+    'sports': {
+      genre: 'Sports',
+      plotSummary: 'Sports event coverage or analysis...',
+      characters: 'Athletes, coaches, commentators',
+      initialContext: 'Sports content with match highlights, analysis, and commentary'
+    },
+    'documentary': {
+      genre: 'Documentary',
+      plotSummary: 'Documentary subject matter and narrative...',
+      characters: 'Subjects, interviewees, narrator',
+      initialContext: 'Documentary format with investigative segments and real-world storytelling'
+    },
+    'commercial': {
+      genre: 'Commercial',
+      plotSummary: 'Product or service promotion...',
+      characters: 'Actors, spokesperson, target audience',
+      initialContext: 'Commercial production with focused messaging and brand storytelling'
+    },
+    'music-video': {
+      genre: 'Music',
+      plotSummary: 'Music video concept and visual narrative...',
+      characters: 'Artist, performers, actors',
+      initialContext: 'Music video production with visual sequences synchronized to music'
+    },
+    'web-series': {
+      genre: 'Series',
+      plotSummary: 'Episodic narrative arc...',
+      characters: 'Series characters and recurring cast',
+      initialContext: 'Web series format with episodic structure and character development'
+    },
+    'podcast': {
+      genre: 'Podcast',
+      plotSummary: 'Podcast episode topics and themes...',
+      characters: 'Hosts, guests, interviewees',
+      initialContext: 'Podcast format with audio segments, interviews, and discussions'
+    },
+    'other': {
+      genre: '',
+      plotSummary: '',
+      characters: '',
+      initialContext: 'Custom content type'
+    }
+  };
+  return defaults[contentType] || defaults['other'];
+}
+
+// Content-type specific default director settings
+export function getContentTypeDefaultSettings(contentType: ContentType): Partial<DirectorSettings> {
+  const defaults: Record<ContentType, Partial<DirectorSettings>> = {
+    'film': {
+      style: TechnicalStyle.CINEMATIC,
+      lens: '35mm Prime',
+      angle: 'Eye Level',
+      lighting: 'Natural Cinematic',
+      movement: 'Static'
+    },
+    'news': {
+      style: TechnicalStyle.DOCUMENTARY,
+      lens: '24-70mm Zoom',
+      angle: 'Eye Level',
+      lighting: 'Natural',
+      movement: 'Handheld'
+    },
+    'sports': {
+      style: TechnicalStyle.DOCUMENTARY,
+      lens: '70-200mm Telephoto',
+      angle: 'Low Angle',
+      lighting: 'Natural',
+      movement: 'Tracking'
+    },
+    'documentary': {
+      style: TechnicalStyle.DOCUMENTARY,
+      lens: '24-70mm Zoom',
+      angle: 'Eye Level',
+      lighting: 'Natural',
+      movement: 'Handheld'
+    },
+    'commercial': {
+      style: TechnicalStyle.CINEMATIC,
+      lens: '50mm Prime',
+      angle: 'Eye Level',
+      lighting: 'Studio',
+      movement: 'Static'
+    },
+    'music-video': {
+      style: TechnicalStyle.CINEMATIC,
+      lens: '35mm Prime',
+      angle: 'Dynamic',
+      lighting: 'Creative',
+      movement: 'Dynamic'
+    },
+    'web-series': {
+      style: TechnicalStyle.CINEMATIC,
+      lens: '35mm Prime',
+      angle: 'Eye Level',
+      lighting: 'Natural Cinematic',
+      movement: 'Static'
+    },
+    'podcast': {
+      style: TechnicalStyle.DOCUMENTARY,
+      lens: 'N/A',
+      angle: 'N/A',
+      lighting: 'N/A',
+      movement: 'N/A'
+    },
+    'other': {}
+  };
+  return defaults[contentType] || {};
 }
 

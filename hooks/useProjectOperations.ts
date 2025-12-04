@@ -4,6 +4,7 @@ import { StoryContext, DirectorSettings, Scene } from '../types';
 import { ContentType } from '../components/ContentTypeSelector';
 import { generateId } from '../utils/helpers';
 import { DEFAULT_CONTEXT, DEFAULT_DIRECTOR_SETTINGS } from '../utils/constants';
+import { getContentTypeDefaultContext, getContentTypeDefaultSettings } from '../utils/contentTypeUtils';
 import { apiService, checkApiAvailability } from '../apiService';
 import { getProjectsFromDB, saveProjectToDB, deleteProjectFromDB } from '../db';
 import { activityService, archiveProject, templatesService } from '../apiServices';
@@ -145,18 +146,29 @@ export const useProjectOperations = ({
     setSelectedContentType(contentType);
     setShowContentTypeSelector(false);
     
-    // Create new project with selected content type
+    // Get content-type specific defaults
+    const contentTypeDefaults = getContentTypeDefaultContext(contentType);
+    const contentTypeSettings = getContentTypeDefaultSettings(contentType);
+    
+    // Create new project with selected content type and its specific defaults
     const newContext: StoryContext = {
       ...DEFAULT_CONTEXT,
+      ...contentTypeDefaults,
       id: generateId(),
       lastUpdated: Date.now(),
       contentType: contentType // Store content type
     };
 
+    // Create settings with content-type specific defaults
+    const newSettings: DirectorSettings = {
+      ...DEFAULT_DIRECTOR_SETTINGS,
+      ...contentTypeSettings
+    };
+
     // Update state and navigate to setup
     setStoryContext(newContext);
     setScenes([]);
-    setCurrentSettings(DEFAULT_DIRECTOR_SETTINGS);
+    setCurrentSettings(newSettings);
     setSetupTab('new');
     setView('setup');
   };

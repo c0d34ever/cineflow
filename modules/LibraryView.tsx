@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { startTransition } from 'react';
 import { ProjectData } from '../db';
 import { useLibraryState } from '../hooks/useLibraryState';
@@ -168,6 +168,51 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     });
   }, [projects, librarySearchTerm, libraryFilterGenre, libraryFilterTags, libraryFilterHasCover, libraryFilterSceneCount, libraryFilterFavorites, libraryFilterContentType, librarySortBy, librarySortOrder, favoritedProjects]);
 
+  // Memoized event handlers
+  const handleBatchModeToggle = useCallback(() => {
+    setLibraryBatchMode(!libraryBatchMode);
+    if (libraryBatchMode) {
+      setSelectedLibraryProjectIds(new Set());
+    }
+  }, [libraryBatchMode, setLibraryBatchMode, setSelectedLibraryProjectIds]);
+
+  const handleSelectAllFiltered = useCallback(() => {
+    const filterCriteria = {
+      searchTerm: librarySearchTerm,
+      genre: libraryFilterGenre,
+      tags: libraryFilterTags,
+      hasCover: libraryFilterHasCover,
+      sceneCount: libraryFilterSceneCount,
+      favorites: libraryFilterFavorites,
+      contentType: libraryFilterContentType,
+    };
+    const filteredIds = getFilteredProjectIds(projects, filterCriteria, favoritedProjects);
+    setSelectedLibraryProjectIds(filteredIds);
+  }, [librarySearchTerm, libraryFilterGenre, libraryFilterTags, libraryFilterHasCover, libraryFilterSceneCount, libraryFilterFavorites, libraryFilterContentType, projects, favoritedProjects, setSelectedLibraryProjectIds]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedLibraryProjectIds(new Set());
+  }, [setSelectedLibraryProjectIds]);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setLibrarySearchTerm(e.target.value);
+  }, [setLibrarySearchTerm]);
+
+  const handleSortByChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setLibrarySortBy(e.target.value as any);
+  }, [setLibrarySortBy]);
+
+  const handleSortOrderToggle = useCallback(() => {
+    setLibrarySortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+  }, [setLibrarySortOrder]);
+
+  const handleAdvancedSearchToggle = useCallback(() => {
+    setShowAdvancedSearch(!showAdvancedSearch);
+    if (filterPresets.length > 0) {
+      setShowFilterPresetsDropdown(!showFilterPresetsDropdown);
+    }
+  }, [showAdvancedSearch, filterPresets.length, setShowAdvancedSearch, setShowFilterPresetsDropdown]);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-3 sm:p-6 font-sans flex flex-col items-center">
       <main className="max-w-4xl w-full">
@@ -247,12 +292,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
             {/* Batch Mode Toggle */}
             <div className="flex items-center justify-between">
               <button
-                onClick={() => {
-                  setLibraryBatchMode(!libraryBatchMode);
-                  if (libraryBatchMode) {
-                    setSelectedLibraryProjectIds(new Set());
-                  }
-                }}
+                onClick={handleBatchModeToggle}
                 className={cn('px-3 py-1.5 rounded text-xs border transition-colors', libraryBatchMode
                   ? 'bg-amber-600 border-amber-500 text-white'
                   : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700')}
@@ -285,25 +325,13 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                         Assign Tags ({selectedLibraryProjectIds.size})
                       </button>
                       <button
-                        onClick={() => {
-                          const filterCriteria = {
-                            searchTerm: librarySearchTerm,
-                            genre: libraryFilterGenre,
-                            tags: libraryFilterTags,
-                            hasCover: libraryFilterHasCover,
-                            sceneCount: libraryFilterSceneCount,
-                            favorites: libraryFilterFavorites,
-                            contentType: libraryFilterContentType,
-                          };
-                          const filteredIds = getFilteredProjectIds(projects, filterCriteria, favoritedProjects);
-                          setSelectedLibraryProjectIds(filteredIds);
-                        }}
+                        onClick={handleSelectAllFiltered}
                         className="px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
                       >
                         Select All Filtered
                       </button>
                       <button
-                        onClick={() => setSelectedLibraryProjectIds(new Set())}
+                        onClick={handleClearSelection}
                         className="px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
                       >
                         Clear Selection
@@ -311,19 +339,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                     </>
                   ) : (
                     <button
-                      onClick={() => {
-                        const filterCriteria = {
-                          searchTerm: librarySearchTerm,
-                          genre: libraryFilterGenre,
-                          tags: libraryFilterTags,
-                          hasCover: libraryFilterHasCover,
-                          sceneCount: libraryFilterSceneCount,
-                          favorites: libraryFilterFavorites,
-                          contentType: libraryFilterContentType,
-                        };
-                        const filteredIds = getFilteredProjectIds(projects, filterCriteria, favoritedProjects);
-                        setSelectedLibraryProjectIds(filteredIds);
-                      }}
+                      onClick={handleSelectAllFiltered}
                       className="px-3 py-1.5 rounded text-xs bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/50 transition-colors"
                     >
                       Select All Filtered
@@ -339,7 +355,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                 <input
                   type="text"
                   value={librarySearchTerm}
-                  onChange={(e) => setLibrarySearchTerm(e.target.value)}
+                  onChange={handleSearchChange}
                   placeholder="Search projects..."
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 sm:px-4 py-2 text-sm focus:border-amber-500 outline-none"
                 />
@@ -349,12 +365,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
               <div className="flex gap-2 items-center flex-wrap">
                 <div className="relative filter-presets-container">
                   <button
-                    onClick={() => {
-                      setShowAdvancedSearch(!showAdvancedSearch);
-                      if (filterPresets.length > 0) {
-                        setShowFilterPresetsDropdown(!showFilterPresetsDropdown);
-                      }
-                    }}
+                    onClick={handleAdvancedSearchToggle}
                     className={cn('px-3 py-1.5 rounded text-xs border transition-colors', showAdvancedSearch || libraryFilterGenre || libraryFilterTags.length > 0 || libraryFilterHasCover !== null || libraryFilterSceneCount !== null || libraryFilterFavorites !== null || libraryFilterContentType !== null
                       ? 'bg-amber-600 border-amber-500 text-white'
                       : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700')}
@@ -433,7 +444,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                 </div>
                 <select
                   value={librarySortBy}
-                  onChange={(e) => setLibrarySortBy(e.target.value as any)}
+                  onChange={handleSortByChange}
                   className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:border-amber-500 outline-none"
                 >
                   <option value="date">Sort by Date</option>
@@ -445,7 +456,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                   <option value="favorites">Sort by Favorites</option>
                 </select>
                 <button
-                  onClick={() => setLibrarySortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  onClick={handleSortOrderToggle}
                   className="px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm hover:bg-zinc-800 transition-colors"
                   title={`Sort ${librarySortOrder === 'asc' ? 'Ascending' : 'Descending'}`}
                 >
@@ -885,5 +896,5 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   );
 };
 
-export default LibraryView;
+export default React.memo(LibraryView);
 

@@ -144,14 +144,29 @@ const CommentsPanel: React.FC<CommentsPanelProps> = ({ projectId, sceneId, onClo
     }
   };
 
-  const extractMentions = (content: string): number[] => {
+  const extractMentions = async (content: string): Promise<number[]> => {
     const mentionRegex = /@(\w+)/g;
     const matches = content.match(mentionRegex);
     if (!matches) return [];
     
     const usernames = matches.map(m => m.substring(1));
-    // We'll extract user IDs on the backend, but we can prepare the list here
-    return []; // Backend will handle the actual user ID lookup
+    const userIds: number[] = [];
+    
+    // Look up each mentioned user
+    for (const username of usernames) {
+      try {
+        const response = await commentsService.searchUsers(username);
+        const users = (response as any)?.users || [];
+        const user = users.find((u: User) => u.username.toLowerCase() === username.toLowerCase());
+        if (user && user.id) {
+          userIds.push(user.id);
+        }
+      } catch (error) {
+        console.error(`Failed to lookup user ${username}:`, error);
+      }
+    }
+    
+    return userIds;
   };
 
   const renderContentWithMentions = (content: string, mentions: Mention[] = []) => {
@@ -205,7 +220,7 @@ const CommentsPanel: React.FC<CommentsPanelProps> = ({ projectId, sceneId, onClo
     
     setLoading(true);
     try {
-      const mentionedIds = extractMentions(newComment);
+      const mentionedIds = await extractMentions(newComment);
       await commentsService.create(projectId, {
         content: newComment,
         is_pinned: isPinned,
