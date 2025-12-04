@@ -44,6 +44,7 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   const [bulkUploading, setBulkUploading] = useState(false);
   const [showBgRemovalModal, setShowBgRemovalModal] = useState(false);
   const [bgRemovalFile, setBgRemovalFile] = useState<File | null>(null);
+  const [extractionProgress, setExtractionProgress] = useState<{ progress: number; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -204,30 +205,55 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-4xl max-h-[85vh] flex flex-col">
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Character Management</h2>
-          <div className="flex gap-2">
+        <div className="p-4 border-b border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h2 className="text-xl font-bold">Character Management</h2>
+              {extractionProgress && (
+                <div className="mt-2">
+                  <div className="flex items-center gap-2 text-sm text-zinc-400">
+                    <span>{extractionProgress.message}</span>
+                    <span className="text-amber-500">{extractionProgress.progress}%</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-1.5 mt-1">
+                    <div 
+                      className="bg-amber-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${extractionProgress.progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
             {storyContext && (
               <button
                 onClick={async () => {
                   setLoading(true);
+                  setExtractionProgress({ progress: 0, message: 'Starting extraction...' });
                   try {
-                    const extracted = await extractCharacters(storyContext, scenes);
+                    const extracted = await extractCharacters(storyContext, scenes, (progress, message) => {
+                      setExtractionProgress({ progress, message });
+                    });
+                    setExtractionProgress({ progress: 100, message: 'Creating characters...' });
                     for (const char of extracted) {
                       await charactersService.create({ project_id: projectId, ...char });
                     }
                     await loadCharacters();
+                    setExtractionProgress(null);
                     alert(`Extracted and created ${extracted.length} characters from the complete story!`);
                   } catch (error: any) {
+                    setExtractionProgress(null);
                     alert('Error: ' + error.message);
                   } finally {
                     setLoading(false);
+                    setExtractionProgress(null);
                   }
                 }}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-sm"
                 title="Auto-extract characters from entire story (all scenes)"
+                disabled={loading}
               >
-                ✨ Auto-Extract
+                {loading ? '⏳ Extracting...' : '✨ Auto-Extract'}
               </button>
             )}
             <button

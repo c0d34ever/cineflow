@@ -689,7 +689,17 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                       }
 
                       const projectIds = projectsWithoutCover.map(project => project.context.id);
-                      await batchGenerateCovers(projectIds, apiService, setProjects, showToast, setBatchGeneratingCovers);
+                      await batchGenerateCovers(
+                        projectIds, 
+                        apiService, 
+                        setProjects, 
+                        showToast, 
+                        setBatchGeneratingCovers,
+                        (progress, message) => {
+                          // Progress updates are handled by SSE
+                          console.log(`[Batch Covers] ${progress}%: ${message}`);
+                        }
+                      );
                     }}
                     disabled={batchGeneratingCovers}
                     className="w-full px-4 py-2 bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-900/50 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"

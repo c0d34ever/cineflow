@@ -80,10 +80,86 @@ export const suggestDirectorSettings = async (
   return response.json();
 };
 
-export const extractCharacters = async (context: StoryContext, scenes: Scene[] = []): Promise<Array<{ name: string; description?: string; role?: string; appearance?: string; personality?: string }>> => {
+export const extractCharacters = async (
+  context: StoryContext, 
+  scenes: Scene[] = [],
+  onProgress?: (progress: number, message: string) => void
+): Promise<Array<{ name: string; description?: string; role?: string; appearance?: string; personality?: string }>> => {
   const token = getAuthToken();
   
-  // Create AbortController for timeout
+  // Use SSE for large extractions (30+ scenes) or if progress callback is provided
+  const useSSE = scenes.length >= 30 || !!onProgress;
+  
+  if (useSSE) {
+    // Generate connection ID
+    const connectionId = `sse-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Set up SSE connection
+    return new Promise((resolve, reject) => {
+      const eventSource = new EventSource(`${API_BASE_URL}/sse/${connectionId}?token=${token}`);
+      
+      let characters: Array<{ name: string; description?: string; role?: string; appearance?: string; personality?: string }> = [];
+      
+      eventSource.addEventListener('progress', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const progress = data.progress || 0;
+          const message = data.message || '';
+          onProgress?.(progress, message);
+        } catch (error) {
+          console.error('[extractCharacters] Error parsing progress:', error);
+        }
+      });
+      
+      eventSource.addEventListener('complete', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          characters = data.characters || [];
+          eventSource.close();
+          resolve(characters);
+        } catch (error) {
+          console.error('[extractCharacters] Error parsing complete:', error);
+          eventSource.close();
+          reject(new Error('Failed to parse character extraction result'));
+        }
+      });
+      
+      eventSource.addEventListener('error', (e: any) => {
+        try {
+          const errorData = e.data ? JSON.parse(e.data) : { error: 'Unknown error' };
+          eventSource.close();
+          reject(new Error(errorData.error || 'Character extraction failed'));
+        } catch (error) {
+          eventSource.close();
+          reject(new Error('Character extraction failed'));
+        }
+      });
+      
+      eventSource.onerror = (error) => {
+        console.error('[extractCharacters] EventSource error:', error);
+        eventSource.close();
+        reject(new Error('SSE connection failed'));
+      };
+      
+      // Wait a bit for SSE connection to establish, then send the request
+      setTimeout(() => {
+        fetch(`${API_BASE_URL}/gemini/extract-characters`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'X-SSE-Connection-ID': connectionId
+          },
+          body: JSON.stringify({ context, scenes, sseConnectionId: connectionId })
+        }).catch((error) => {
+          eventSource.close();
+          reject(error);
+        });
+      }, 500);
+    });
+  }
+  
+  // Fallback to regular request for small extractions
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
   
@@ -119,8 +195,86 @@ export const extractCharacters = async (context: StoryContext, scenes: Scene[] =
   }
 };
 
-export const extractLocations = async (context: StoryContext, scenes: Scene[]): Promise<Array<{ name: string; description?: string; location_type?: string; address?: string }>> => {
+export const extractLocations = async (
+  context: StoryContext, 
+  scenes: Scene[],
+  onProgress?: (progress: number, message: string) => void
+): Promise<Array<{ name: string; description?: string; location_type?: string; address?: string }>> => {
   const token = getAuthToken();
+  
+  // Use SSE for large extractions (30+ scenes) or if progress callback is provided
+  const useSSE = scenes.length >= 30 || !!onProgress;
+  
+  if (useSSE) {
+    // Generate connection ID
+    const connectionId = `sse-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Set up SSE connection
+    return new Promise((resolve, reject) => {
+      const eventSource = new EventSource(`${API_BASE_URL}/sse/${connectionId}?token=${token}`);
+      
+      let locations: Array<{ name: string; description?: string; location_type?: string; address?: string }> = [];
+      
+      eventSource.addEventListener('progress', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const progress = data.progress || 0;
+          const message = data.message || '';
+          onProgress?.(progress, message);
+        } catch (error) {
+          console.error('[extractLocations] Error parsing progress:', error);
+        }
+      });
+      
+      eventSource.addEventListener('complete', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          locations = data.locations || [];
+          eventSource.close();
+          resolve(locations);
+        } catch (error) {
+          console.error('[extractLocations] Error parsing complete:', error);
+          eventSource.close();
+          reject(new Error('Failed to parse location extraction result'));
+        }
+      });
+      
+      eventSource.addEventListener('error', (e: any) => {
+        try {
+          const errorData = e.data ? JSON.parse(e.data) : { error: 'Unknown error' };
+          eventSource.close();
+          reject(new Error(errorData.error || 'Location extraction failed'));
+        } catch (error) {
+          eventSource.close();
+          reject(new Error('Location extraction failed'));
+        }
+      });
+      
+      eventSource.onerror = (error) => {
+        console.error('[extractLocations] EventSource error:', error);
+        eventSource.close();
+        reject(new Error('SSE connection failed'));
+      };
+      
+      // Wait a bit for SSE connection to establish, then send the request
+      setTimeout(() => {
+        fetch(`${API_BASE_URL}/gemini/extract-locations`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'X-SSE-Connection-ID': connectionId
+          },
+          body: JSON.stringify({ context, scenes, sseConnectionId: connectionId })
+        }).catch((error) => {
+          eventSource.close();
+          reject(error);
+        });
+      }, 500);
+    });
+  }
+  
+  // Fallback to regular request for small extractions
   const response = await fetch(`${API_BASE_URL}/gemini/extract-locations`, {
     method: 'POST',
     headers: {

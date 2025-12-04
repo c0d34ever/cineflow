@@ -1146,8 +1146,11 @@ router.post('/:id/cover-image', authenticateToken, upload.single('image'), async
   }
 });
 
-// POST /api/projects/:id/generate-cover - Generate character composite cover
+// POST /api/projects/:id/generate-cover - Generate character composite cover (with SSE support)
 router.post('/:id/generate-cover', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const connectionId = (req.body.sseConnectionId || req.headers['x-sse-connection-id']) as string | undefined;
+  const useSSE = !!connectionId && sseService.hasConnection(connectionId);
+  
   try {
     const userId = req.user!.id;
     const projectId = req.params.id;
@@ -1160,14 +1163,34 @@ router.post('/:id/generate-cover', authenticateToken, async (req: AuthRequest, r
     ) as [any[], any];
 
     if (!Array.isArray(projects) || projects.length === 0) {
+      if (useSSE) {
+        sseService.sendError(connectionId!, 'Project not found');
+        return;
+      }
       return res.status(404).json({ error: 'Project not found' });
     }
 
+    if (useSSE) {
+      sseService.sendProgress(connectionId!, 10, 'Loading characters...');
+    }
+    
     // Generate character composite
+    if (useSSE) {
+      sseService.sendProgress(connectionId!, 30, 'Generating composite image...');
+    }
+    
     const result = await generateCharacterComposite(projectId);
     
     if (!result) {
+      if (useSSE) {
+        sseService.sendError(connectionId!, 'No characters with images found in this project');
+        return;
+      }
       return res.status(400).json({ error: 'No characters with images found in this project' });
+    }
+
+    if (useSSE) {
+      sseService.sendProgress(connectionId!, 70, 'Uploading to ImageKit...');
     }
 
     // Update project with generated cover
@@ -1178,6 +1201,17 @@ router.post('/:id/generate-cover', authenticateToken, async (req: AuthRequest, r
       [result.localPath, result.imagekitUrl || null, projectId]
     );
 
+    if (useSSE) {
+      sseService.sendProgress(connectionId!, 100, 'Cover generated successfully!');
+      sseService.sendComplete(connectionId!, {
+        success: true,
+        cover_image_url: result.localPath,
+        cover_imagekit_url: result.imagekitUrl,
+        cover_imagekit_thumbnail_url: result.imagekitThumbnailUrl,
+      });
+      return;
+    }
+
     res.json({
       success: true,
       cover_image_url: result.localPath,
@@ -1186,7 +1220,112 @@ router.post('/:id/generate-cover', authenticateToken, async (req: AuthRequest, r
     });
   } catch (error: any) {
     console.error('Error generating cover:', error);
-    res.status(500).json({ error: 'Failed to generate cover image' });
+    const errorMsg = error.message || 'Failed to generate cover image';
+    
+    if (useSSE) {
+      sseService.sendError(connectionId!, errorMsg);
+      return;
+    }
+    
+    res.status(500).json({ error: errorMsg });
+  }
+});
+
+// POST /api/projects/batch-generate-covers - Batch generate covers for multiple projects (with SSE support)
+router.post('/batch-generate-covers', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const connectionId = (req.body.sseConnectionId || req.headers['x-sse-connection-id']) as string | undefined;
+  const useSSE = !!connectionId && sseService.hasConnection(connectionId);
+  
+  try {
+    const userId = req.user!.id;
+    const { project_ids } = req.body;
+    
+    if (!Array.isArray(project_ids) || project_ids.length === 0) {
+      if (useSSE) {
+        sseService.sendError(connectionId!, 'project_ids array is required');
+        return;
+      }
+      return res.status(400).json({ error: 'project_ids array is required' });
+    }
+
+    const pool = getPool();
+    const total = project_ids.length;
+    let successCount = 0;
+    let failCount = 0;
+    const results: any[] = [];
+
+    for (let i = 0; i < project_ids.length; i++) {
+      const projectId = project_ids[i];
+      const progress = Math.floor((i / total) * 90); // 0-90% for generation
+      
+      if (useSSE) {
+        sseService.sendProgress(connectionId!, progress, `Generating cover ${i + 1}/${total}...`, {
+          current: i + 1,
+          total,
+          projectId
+        });
+      }
+
+      try {
+        // Verify project belongs to user
+        const [projects] = await pool.query(
+          'SELECT id FROM projects WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+          [projectId, userId]
+        ) as [any[], any];
+
+        if (Array.isArray(projects) && projects.length > 0) {
+          const result = await generateCharacterComposite(projectId);
+          
+          if (result) {
+            await pool.query(
+              `UPDATE projects 
+               SET cover_image_url = ?, cover_imagekit_url = ?, cover_image_id = NULL
+               WHERE id = ?`,
+              [result.localPath, result.imagekitUrl || null, projectId]
+            );
+            successCount++;
+            results.push({ projectId, success: true, ...result });
+          } else {
+            failCount++;
+            results.push({ projectId, success: false, error: 'No characters with images found' });
+          }
+        } else {
+          failCount++;
+          results.push({ projectId, success: false, error: 'Project not found' });
+        }
+      } catch (error: any) {
+        failCount++;
+        results.push({ projectId, success: false, error: error.message || 'Failed to generate cover' });
+      }
+    }
+
+    if (useSSE) {
+      sseService.sendProgress(connectionId!, 100, `Generated ${successCount} cover(s), ${failCount} failed`);
+      sseService.sendComplete(connectionId!, {
+        successCount,
+        failCount,
+        total,
+        results
+      });
+      return;
+    }
+
+    res.json({
+      successCount,
+      failCount,
+      total,
+      results
+    });
+  } catch (error: any) {
+    console.error('Error in batch cover generation:', error);
+    const errorMsg = error.message || 'Failed to generate covers';
+    
+    if (useSSE) {
+      sseService.sendError(connectionId!, errorMsg);
+      return;
+    }
+    
+    res.status(500).json({ error: errorMsg });
   }
 });
 

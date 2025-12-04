@@ -1053,15 +1053,71 @@ const App: React.FC = () => {
     }
   }, [view, storyContext.id]);
 
-  // Load notifications on mount and poll for updates
+  // Load notifications on mount and connect to SSE stream
   useEffect(() => {
     if (isAuthenticated) {
+      // Initial load
       loadNotifications();
-      // Poll for new notifications every 30 seconds
-      const interval = setInterval(() => {
-        loadNotifications();
-      }, 30000);
-      return () => clearInterval(interval);
+      
+      // Connect to SSE stream for real-time notifications
+      const connectionId = `notifications-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const token = localStorage.getItem('auth_token');
+      const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
+      const eventSource = new EventSource(`${API_BASE_URL}/activity/notifications/stream?token=${token}`);
+      
+      eventSource.addEventListener('notifications', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setNotifications(data.notifications || []);
+          setUnreadNotificationCount(data.unread_count || 0);
+        } catch (error) {
+          console.error('Error parsing notifications:', error);
+        }
+      });
+      
+      eventSource.addEventListener('new_notification', (e) => {
+        try {
+          const notification = JSON.parse(e.data);
+          setNotifications(prev => [notification, ...prev]);
+          setUnreadNotificationCount(prev => prev + 1);
+        } catch (error) {
+          console.error('Error parsing new notification:', error);
+        }
+      });
+      
+      eventSource.addEventListener('unread_count', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setUnreadNotificationCount(data.count || 0);
+        } catch (error) {
+          console.error('Error parsing unread count:', error);
+        }
+      });
+      
+      eventSource.addEventListener('notification_deleted', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setNotifications(prev => prev.filter(n => n.id !== data.notificationId));
+        } catch (error) {
+          console.error('Error parsing notification deleted:', error);
+        }
+      });
+      
+      eventSource.onerror = (error) => {
+        console.error('Notifications SSE error:', error);
+        // Fallback to polling if SSE fails
+        const interval = setInterval(() => {
+          loadNotifications();
+        }, 30000);
+        return () => {
+          clearInterval(interval);
+          eventSource.close();
+        };
+      };
+      
+      return () => {
+        eventSource.close();
+      };
     }
   }, [isAuthenticated]);
 

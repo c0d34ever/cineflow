@@ -1,8 +1,12 @@
 import express, { Response } from 'express';
 import { getPool } from '../db/index.js';
 import { AuthRequest, authenticateToken } from '../middleware/auth.js';
+import { sseService } from '../services/sseService.js';
 
 const router = express.Router();
+
+// Store notification SSE connections per user
+const notificationConnections = new Map<number, string>();
 
 // GET /api/activity - Get user's activity feed
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
@@ -140,12 +144,80 @@ router.delete('/notifications/:id', authenticateToken, async (req: AuthRequest, 
       [notificationId, userId]
     );
 
+    // Notify via SSE if connection exists
+    const connectionId = notificationConnections.get(userId);
+    if (connectionId && sseService.hasConnection(connectionId)) {
+      sseService.send(connectionId, 'notification_deleted', { notificationId });
+    }
+
     res.json({ message: 'Notification deleted' });
   } catch (error) {
     console.error('Error deleting notification:', error);
     res.status(500).json({ error: 'Failed to delete notification' });
   }
 });
+
+// GET /api/activity/notifications/stream - SSE stream for real-time notifications
+router.get('/notifications/stream', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const connectionId = `notifications-${userId}-${Date.now()}`;
+  
+  // Store connection
+  notificationConnections.set(userId, connectionId);
+  
+  // Create SSE connection
+  sseService.createConnection(connectionId, res);
+  
+  // Send initial notifications
+  try {
+    const pool = getPool();
+    const limit = 50;
+    
+    const [notifications] = await pool.query(
+      `SELECT * FROM notifications
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [userId, limit]
+    );
+
+    const [unreadCount] = await pool.query(
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE',
+      [userId]
+    );
+
+    sseService.send(connectionId, 'notifications', {
+      notifications,
+      unread_count: (unreadCount as any[])[0]?.count || 0
+    });
+  } catch (error) {
+    console.error('Error sending initial notifications:', error);
+  }
+  
+  // Clean up on disconnect
+  res.on('close', () => {
+    notificationConnections.delete(userId);
+    sseService.closeConnection(connectionId);
+  });
+});
+
+// Helper function to notify user of new notification (called when notification is created)
+export const notifyUserViaSSE = (userId: number, notification: any) => {
+  const connectionId = notificationConnections.get(userId);
+  if (connectionId && sseService.hasConnection(connectionId)) {
+    sseService.send(connectionId, 'new_notification', notification);
+    
+    // Also update unread count
+    const pool = getPool();
+    pool.query(
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE',
+      [userId]
+    ).then(([result]) => {
+      const unreadCount = (result as any[])[0]?.count || 0;
+      sseService.send(connectionId, 'unread_count', { count: unreadCount });
+    }).catch(err => console.error('Error updating unread count:', err));
+  }
+};
 
 export default router;
 

@@ -169,30 +169,141 @@ export const toggleProjectFavorite = async (
 };
 
 /**
- * Batch generate covers for multiple projects
+ * Batch generate covers for multiple projects (with SSE support)
  */
 export const batchGenerateCovers = async (
   projectIds: string[],
   apiService: any,
   setProjects: (projects: ProjectData[]) => void,
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void,
-  setBatchGeneratingCovers?: (generating: boolean) => void
+  setBatchGeneratingCovers?: (generating: boolean) => void,
+  onProgress?: (progress: number, message: string) => void
 ): Promise<{ successCount: number; failCount: number }> => {
   if (setBatchGeneratingCovers) {
     setBatchGeneratingCovers(true);
   }
 
+  // Use SSE for batch operations (3+ projects)
+  const useSSE = projectIds.length >= 3;
+  const token = localStorage.getItem('auth_token');
+  const API_BASE_URL = getApiBaseUrl();
+
+  if (useSSE) {
+    // Generate connection ID
+    const connectionId = `sse-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    return new Promise((resolve, reject) => {
+      const eventSource = new EventSource(`${API_BASE_URL}/sse/${connectionId}?token=${token}`);
+      
+      let result: { successCount: number; failCount: number } = { successCount: 0, failCount: 0 };
+      
+      eventSource.addEventListener('progress', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const progress = data.progress || 0;
+          const message = data.message || '';
+          onProgress?.(progress, message);
+        } catch (error) {
+          console.error('[batchGenerateCovers] Error parsing progress:', error);
+        }
+      });
+      
+      eventSource.addEventListener('complete', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          result = { successCount: data.successCount || 0, failCount: data.failCount || 0 };
+          eventSource.close();
+          
+          if (setBatchGeneratingCovers) {
+            setBatchGeneratingCovers(false);
+          }
+          
+          // Reload projects
+          apiService.getProjects().then((list: ProjectData[]) => {
+            setProjects(list);
+          });
+          
+          if (result.successCount > 0) {
+            showToast(
+              `Generated ${result.successCount} cover image(s)${result.failCount > 0 ? `, ${result.failCount} failed` : ''}`,
+              'success'
+            );
+          } else {
+            showToast('Failed to generate cover images', 'error');
+          }
+          
+          resolve(result);
+        } catch (error) {
+          console.error('[batchGenerateCovers] Error parsing complete:', error);
+          eventSource.close();
+          reject(new Error('Failed to parse batch cover generation result'));
+        }
+      });
+      
+      eventSource.addEventListener('error', (e: any) => {
+        try {
+          const errorData = e.data ? JSON.parse(e.data) : { error: 'Unknown error' };
+          eventSource.close();
+          if (setBatchGeneratingCovers) {
+            setBatchGeneratingCovers(false);
+          }
+          showToast('Batch cover generation failed: ' + (errorData.error || 'Unknown error'), 'error');
+          reject(new Error(errorData.error || 'Batch cover generation failed'));
+        } catch (error) {
+          eventSource.close();
+          if (setBatchGeneratingCovers) {
+            setBatchGeneratingCovers(false);
+          }
+          reject(new Error('Batch cover generation failed'));
+        }
+      });
+      
+      eventSource.onerror = (error) => {
+        console.error('[batchGenerateCovers] EventSource error:', error);
+        eventSource.close();
+        if (setBatchGeneratingCovers) {
+          setBatchGeneratingCovers(false);
+        }
+        reject(new Error('SSE connection failed'));
+      };
+      
+      // Wait a bit for SSE connection to establish, then send the request
+      setTimeout(() => {
+        fetch(`${API_BASE_URL}/projects/batch-generate-covers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'X-SSE-Connection-ID': connectionId
+          },
+          body: JSON.stringify({ project_ids: projectIds, sseConnectionId: connectionId })
+        }).catch((error) => {
+          eventSource.close();
+          if (setBatchGeneratingCovers) {
+            setBatchGeneratingCovers(false);
+          }
+          reject(error);
+        });
+      }, 500);
+    });
+  }
+
+  // Fallback to sequential requests for small batches
   let successCount = 0;
   let failCount = 0;
 
-  for (const projectId of projectIds) {
+  for (let i = 0; i < projectIds.length; i++) {
+    const projectId = projectIds[i];
+    const progress = Math.floor((i / projectIds.length) * 100);
+    onProgress?.(progress, `Generating cover ${i + 1}/${projectIds.length}...`);
+    
     try {
       const response = await fetch(
-        `${getApiBaseUrl()}/projects/${projectId}/generate-cover`,
+        `${API_BASE_URL}/projects/${projectId}/generate-cover`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         }

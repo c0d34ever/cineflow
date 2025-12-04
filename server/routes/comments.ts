@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getPool } from '../db/index.js';
 import { AuthRequest, authenticateToken } from '../middleware/auth.js';
+import { notifyUserViaSSE } from './activity.js';
 
 const router = express.Router();
 
@@ -131,7 +132,7 @@ router.post('/project/:projectId', authenticateToken, async (req: AuthRequest, r
           );
 
           // Create notification
-          await pool.query(
+          const [notificationResult] = await pool.query(
             `INSERT INTO notifications (user_id, type, title, message, link, is_read)
              VALUES (?, 'comment_mention', ?, ?, ?, FALSE)`,
             [
@@ -141,6 +142,18 @@ router.post('/project/:projectId', authenticateToken, async (req: AuthRequest, r
               `/projects/${projectId}${scene_id ? `?scene=${scene_id}` : ''}`
             ]
           );
+          
+          // Get the created notification
+          const insertResult = notificationResult as any;
+          const [newNotifications] = await pool.query(
+            'SELECT * FROM notifications WHERE id = ?',
+            [insertResult.insertId]
+          );
+          
+          // Notify via SSE if user is connected
+          if (Array.isArray(newNotifications) && newNotifications.length > 0) {
+            notifyUserViaSSE(mentionedUserId, newNotifications[0]);
+          }
         }
       }
     }

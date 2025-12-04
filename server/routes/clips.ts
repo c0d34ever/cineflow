@@ -2,6 +2,7 @@ import express, { Response } from 'express';
 import { getPool } from '../db/index.js';
 import { AuthRequest, authenticateToken } from '../middleware/auth.js';
 import { DirectorSettings } from '../../types.js';
+import { sseService } from '../services/sseService.js';
 
 const router = express.Router();
 
@@ -308,62 +309,123 @@ router.post('/:id/move', authenticateToken, async (req: AuthRequest, res: Respon
   }
 });
 
-// POST /api/clips/batch - Batch operations on multiple clips
+// POST /api/clips/batch - Batch operations on multiple clips (with SSE support)
 router.post('/batch', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const connectionId = (req.body.sseConnectionId || req.headers['x-sse-connection-id']) as string | undefined;
+  const useSSE = !!connectionId && sseService.hasConnection(connectionId);
+  
   try {
     const { clip_ids, operation, data } = req.body;
 
     if (!Array.isArray(clip_ids) || clip_ids.length === 0) {
+      if (useSSE) {
+        sseService.sendError(connectionId!, 'clip_ids array is required');
+        return;
+      }
       return res.status(400).json({ error: 'clip_ids array is required' });
     }
 
     if (!operation) {
+      if (useSSE) {
+        sseService.sendError(connectionId!, 'operation is required');
+        return;
+      }
       return res.status(400).json({ error: 'operation is required' });
     }
 
     const pool = getPool();
     const placeholders = clip_ids.map(() => '?').join(',');
+    const total = clip_ids.length;
 
     switch (operation) {
       case 'delete':
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 10, `Deleting ${total} scenes...`);
+        }
         // Delete clips and their director settings
+        await pool.query(`DELETE FROM scene_director_settings WHERE scene_id IN (${placeholders})`, clip_ids);
         await pool.query(`DELETE FROM scenes WHERE id IN (${placeholders})`, clip_ids);
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 100, `${total} scene(s) deleted successfully`);
+          sseService.sendComplete(connectionId!, { message: `${total} clip(s) deleted successfully`, deleted: total });
+          return;
+        }
         res.json({ message: `${clip_ids.length} clip(s) deleted successfully` });
         break;
 
       case 'update_status':
         if (!data || !data.status) {
+          if (useSSE) {
+            sseService.sendError(connectionId!, 'status is required for update_status operation');
+            return;
+          }
           return res.status(400).json({ error: 'status is required for update_status operation' });
+        }
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 10, `Updating status for ${total} scenes...`);
         }
         await pool.query(
           `UPDATE scenes SET status = ? WHERE id IN (${placeholders})`,
           [data.status, ...clip_ids]
         );
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 100, `${total} scene(s) status updated to ${data.status}`);
+          sseService.sendComplete(connectionId!, { message: `${total} clip(s) status updated to ${data.status}`, updated: total });
+          return;
+        }
         res.json({ message: `${clip_ids.length} clip(s) status updated to ${data.status}` });
         break;
 
       case 'update_sequence':
         if (!data || !Array.isArray(data.sequence_updates)) {
+          if (useSSE) {
+            sseService.sendError(connectionId!, 'sequence_updates array is required');
+            return;
+          }
           return res.status(400).json({ error: 'sequence_updates array is required' });
         }
+        const updates = data.sequence_updates;
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 10, `Updating sequence for ${updates.length} scenes...`);
+        }
         // Update sequence numbers for each clip
-        for (const update of data.sequence_updates) {
+        for (let i = 0; i < updates.length; i++) {
+          const update = updates[i];
           if (update.id && update.sequence_number !== undefined) {
             await pool.query(
               'UPDATE scenes SET sequence_number = ? WHERE id = ?',
               [update.sequence_number, update.id]
             );
+            if (useSSE) {
+              const progress = 10 + Math.floor((i / updates.length) * 90);
+              sseService.sendProgress(connectionId!, progress, `Updated ${i + 1}/${updates.length} scenes...`);
+            }
           }
+        }
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 100, `${updates.length} scene(s) sequence numbers updated`);
+          sseService.sendComplete(connectionId!, { message: `${updates.length} clip(s) sequence numbers updated`, updated: updates.length });
+          return;
         }
         res.json({ message: `${data.sequence_updates.length} clip(s) sequence numbers updated` });
         break;
 
       default:
-        return res.status(400).json({ error: `Unknown operation: ${operation}` });
+        const errorMsg = `Unknown operation: ${operation}`;
+        if (useSSE) {
+          sseService.sendError(connectionId!, errorMsg);
+          return;
+        }
+        return res.status(400).json({ error: errorMsg });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in batch operation:', error);
-    res.status(500).json({ error: 'Failed to perform batch operation' });
+    const errorMsg = error.message || 'Failed to perform batch operation';
+    if (connectionId && sseService.hasConnection(connectionId)) {
+      sseService.sendError(connectionId, errorMsg);
+      return;
+    }
+    res.status(500).json({ error: errorMsg });
   }
 });
 

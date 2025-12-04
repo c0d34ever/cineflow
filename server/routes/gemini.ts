@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { generateStoryConcept, suggestNextScene, suggestDirectorSettings, enhanceScenePrompt, extractCharacters, extractLocations, generateEpisodeContent, analyzeCharacterRelationships, suggestScenes, analyzeStory } from '../services/geminiService.js';
 import { StoryContext, DirectorSettings, Scene } from '../../types.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
+import { sseService } from '../services/sseService.js';
 
 const router = express.Router();
 
@@ -184,14 +185,21 @@ router.post('/enhance-scene-prompt', authenticateToken, async (req: AuthRequest,
   }
 });
 
-// POST /api/gemini/extract-characters - Extract characters from story
+// POST /api/gemini/extract-characters - Extract characters from story (with SSE support)
 router.post('/extract-characters', authenticateToken, async (req: AuthRequest, res: Response) => {
   // Set a longer timeout for this endpoint (2 minutes)
   req.setTimeout(120000);
   
+  const connectionId = (req.body.sseConnectionId || req.headers['x-sse-connection-id']) as string | undefined;
+  const useSSE = !!connectionId && sseService.hasConnection(connectionId);
+  
   try {
     const { context, scenes } = req.body;
     if (!context) {
+      if (useSSE) {
+        sseService.sendError(connectionId!, 'Story context is required');
+        return;
+      }
       return res.status(400).json({ error: 'Story context is required' });
     }
 
@@ -199,40 +207,127 @@ router.post('/extract-characters', authenticateToken, async (req: AuthRequest, r
     
     // Limit scenes to prevent timeout
     const scenesArray = (scenes || []) as Scene[];
-    if (scenesArray.length > 50) {
-      console.warn(`Character extraction: Limiting to first 50 of ${scenesArray.length} scenes`);
+    const totalScenes = scenesArray.length;
+    const scenesToProcess = scenesArray.slice(0, 50);
+    
+    if (totalScenes > 50) {
+      console.warn(`Character extraction: Limiting to first 50 of ${totalScenes} scenes`);
+      if (useSSE) {
+        sseService.sendProgress(connectionId!, 5, `Processing ${scenesToProcess.length} of ${totalScenes} scenes...`, { 
+          total: totalScenes, 
+          processing: scenesToProcess.length 
+        });
+      }
+    } else if (useSSE) {
+      sseService.sendProgress(connectionId!, 10, `Analyzing ${totalScenes} scenes...`, { 
+        total: totalScenes 
+      });
     }
     
-    const characters = await extractCharacters(context as StoryContext, scenesArray, userId);
+    // Extract characters with progress updates
+    let characters;
+    if (useSSE) {
+      // Create a progress callback
+      const progressCallback = (progress: number, message: string) => {
+        sseService.sendProgress(connectionId!, progress, message);
+      };
+      
+      // Send progress updates during extraction
+      progressCallback(20, 'Preparing story context...');
+      await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for progress visibility
+      
+      progressCallback(40, 'Sending to AI for character extraction...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      progressCallback(60, 'AI is analyzing characters...');
+      
+      // Extract characters
+      characters = await extractCharacters(context as StoryContext, scenesToProcess, userId);
+      
+      progressCallback(90, 'Processing extracted characters...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      progressCallback(100, `Extracted ${characters.length} characters successfully!`);
+    } else {
+      characters = await extractCharacters(context as StoryContext, scenesToProcess, userId);
+    }
+    
+    if (useSSE) {
+      sseService.sendComplete(connectionId!, { characters });
+      return; // Don't send regular response when using SSE
+    }
+    
     res.json({ characters });
   } catch (error: any) {
     console.error('Error extracting characters:', error);
     
     // Handle timeout errors specifically
-    if (error.message?.includes('timeout') || error.message?.includes('TIMEOUT') || error.code === 'ETIMEDOUT') {
-      return res.status(504).json({ 
-        error: 'Request timed out. The story may be too large. Try with fewer scenes or split the extraction.' 
+    const errorMessage = error.message?.includes('timeout') || error.message?.includes('TIMEOUT') || error.code === 'ETIMEDOUT'
+      ? 'Request timed out. The story may be too large. Try with fewer scenes or split the extraction.'
+      : error.message || 'Failed to extract characters';
+    
+    if (useSSE) {
+      sseService.sendError(connectionId!, errorMessage, { 
+        statusCode: error.message?.includes('timeout') ? 504 : 500 
       });
+      return;
     }
     
-    res.status(500).json({ error: error.message || 'Failed to extract characters' });
+    const statusCode = error.message?.includes('timeout') || error.message?.includes('TIMEOUT') || error.code === 'ETIMEDOUT' ? 504 : 500;
+    res.status(statusCode).json({ error: errorMessage });
   }
 });
 
-// POST /api/gemini/extract-locations - Extract locations from story
+// POST /api/gemini/extract-locations - Extract locations from story (with SSE support)
 router.post('/extract-locations', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const connectionId = (req.body.sseConnectionId || req.headers['x-sse-connection-id']) as string | undefined;
+  const useSSE = !!connectionId && sseService.hasConnection(connectionId);
+  
   try {
     const { context, scenes } = req.body;
     if (!context) {
+      if (useSSE) {
+        sseService.sendError(connectionId!, 'Story context is required');
+        return;
+      }
       return res.status(400).json({ error: 'Story context is required' });
     }
 
     const userId = req.user!.id;
-    const locations = await extractLocations(context, scenes || [], userId);
+    const scenesArray = (scenes || []) as Scene[];
+    
+    if (useSSE) {
+      sseService.sendProgress(connectionId!, 20, 'Preparing story context...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      sseService.sendProgress(connectionId!, 40, 'Sending to AI for location extraction...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      sseService.sendProgress(connectionId!, 60, 'AI is analyzing locations...');
+    }
+    
+    const locations = await extractLocations(context, scenesArray, userId);
+    
+    if (useSSE) {
+      sseService.sendProgress(connectionId!, 90, 'Processing extracted locations...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      sseService.sendProgress(connectionId!, 100, `Extracted ${locations.length} locations successfully!`);
+      sseService.sendComplete(connectionId!, { locations });
+      return;
+    }
+    
     res.json({ locations });
   } catch (error: any) {
     console.error('Error extracting locations:', error);
-    res.status(500).json({ error: error.message || 'Failed to extract locations' });
+    const errorMessage = error.message || 'Failed to extract locations';
+    
+    if (useSSE) {
+      sseService.sendError(connectionId!, errorMessage);
+      return;
+    }
+    
+    res.status(500).json({ error: errorMessage });
   }
 });
 

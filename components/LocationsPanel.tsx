@@ -107,30 +107,55 @@ const LocationsPanel: React.FC<LocationsPanelProps> = ({ projectId, storyContext
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-4xl max-h-[85vh] flex flex-col">
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Location Management</h2>
-          <div className="flex gap-2">
+        <div className="p-4 border-b border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h2 className="text-xl font-bold">Location Management</h2>
+              {extractionProgress && (
+                <div className="mt-2">
+                  <div className="flex items-center gap-2 text-sm text-zinc-400">
+                    <span>{extractionProgress.message}</span>
+                    <span className="text-amber-500">{extractionProgress.progress}%</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-1.5 mt-1">
+                    <div 
+                      className="bg-amber-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${extractionProgress.progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
             {storyContext && (
               <button
                 onClick={async () => {
                   setLoading(true);
+                  setExtractionProgress({ progress: 0, message: 'Starting extraction...' });
                   try {
-                    const extracted = await extractLocations(storyContext, scenes || []);
+                    const extracted = await extractLocations(storyContext, scenes || [], (progress, message) => {
+                      setExtractionProgress({ progress, message });
+                    });
+                    setExtractionProgress({ progress: 100, message: 'Creating locations...' });
                     for (const loc of extracted) {
                       await locationsService.create({ project_id: projectId, ...loc });
                     }
                     await loadLocations();
+                    setExtractionProgress(null);
                     alert(`Extracted and created ${extracted.length} locations from the complete story!`);
                   } catch (error: any) {
+                    setExtractionProgress(null);
                     alert('Error: ' + error.message);
                   } finally {
                     setLoading(false);
+                    setExtractionProgress(null);
                   }
                 }}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-sm"
                 title="Auto-extract locations from entire story (all scenes)"
+                disabled={loading}
               >
-                ✨ Auto-Extract
+                {loading ? '⏳ Extracting...' : '✨ Auto-Extract'}
               </button>
             )}
             <button
@@ -150,6 +175,7 @@ const LocationsPanel: React.FC<LocationsPanelProps> = ({ projectId, storyContext
                 <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
               </svg>
             </button>
+          </div>
           </div>
         </div>
 
