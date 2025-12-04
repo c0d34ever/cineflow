@@ -54,7 +54,9 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
 
   // Helper function to parse prompt and fill form fields
   const parsePromptAndFillForm = useCallback((prompt: string) => {
-    const newFormData = { ...formData };
+    // Use functional update to get current formData
+    setFormData(prevFormData => {
+      const newFormData = { ...prevFormData };
     
     // Split prompt into lines for line-by-line parsing
     const lines = prompt.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -64,24 +66,33 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
       /\*\*Character Name\*\*[:\s]*\n?([^\n]+)/i,
       /\*\*Name\*\*[:\s]*\n?([^\n]+)/i,
       /^Name\s*\*?[:\s]*\n?([^\n]+)/im,
-      /Character Name[:\s]*\n?([^\n]+)/i
+      /Character Name[:\s]*\n?([^\n]+)/i,
+      /^1\.\s*\*\*Character Name\*\*[:\s]*\n?([^\n]+)/im,
+      /^1\.\s*Character Name[:\s]*\n?([^\n]+)/im
     ];
     for (const pattern of namePatterns) {
       const match = prompt.match(pattern);
       if (match && match[1]) {
         const name = match[1].trim();
-        // Remove any trailing asterisks or special chars
-        newFormData.name = name.replace(/[\*\s]+$/, '').trim();
-        if (newFormData.name) break;
+        // Remove any trailing asterisks, colons, or special chars
+        newFormData.name = name.replace(/[\*\:\s]+$/, '').trim();
+        if (newFormData.name && newFormData.name.length > 0) {
+          console.log('[parsePromptAndFillForm] Found name:', newFormData.name);
+          break;
+        }
       }
     }
     
     // Also try line-by-line: if we see "Name" or "Name *" followed by a line with text
-    if (!newFormData.name) {
+    if (!newFormData.name || newFormData.name.length === 0) {
       for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Name\s*\*?$/i) && lines[i + 1] && !lines[i + 1].match(/^(Role|Description|Appearance|Personality|Backstory)/i)) {
-          newFormData.name = lines[i + 1].trim();
-          break;
+        if (lines[i].match(/^Name\s*\*?$/i) && lines[i + 1] && !lines[i + 1].match(/^(Role|Description|Appearance|Personality|Backstory|1\.|2\.|3\.)/i)) {
+          const name = lines[i + 1].trim();
+          if (name.length > 0) {
+            newFormData.name = name;
+            console.log('[parsePromptAndFillForm] Found name (line-by-line):', newFormData.name);
+            break;
+          }
         }
       }
     }
@@ -90,22 +101,32 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
     const rolePatterns = [
       /\*\*Role in Story\*\*[:\s]*\n?([^\n]+)/i,
       /\*\*Role\*\*[:\s]*\n?([^\n]+)/i,
-      /^Role[:\s]*\n?([^\n]+)/im
+      /^Role[:\s]*\n?([^\n]+)/im,
+      /^2\.\s*\*\*Role in Story\*\*[:\s]*\n?([^\n]+)/im,
+      /^2\.\s*Role[:\s]*\n?([^\n]+)/im
     ];
     for (const pattern of rolePatterns) {
       const match = prompt.match(pattern);
       if (match && match[1]) {
-        newFormData.role = match[1].trim();
-        break;
+        const role = match[1].trim().replace(/[\*\:\s]+$/, '');
+        if (role.length > 0) {
+          newFormData.role = role;
+          console.log('[parsePromptAndFillForm] Found role:', newFormData.role);
+          break;
+        }
       }
     }
     
     // Line-by-line: if we see "Role" followed by a line with text
-    if (!newFormData.role) {
+    if (!newFormData.role || newFormData.role.length === 0) {
       for (let i = 0; i < lines.length - 1; i++) {
-        if (lines[i].match(/^Role$/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Description|Appearance|Personality|Backstory)/i)) {
-          newFormData.role = lines[i + 1].trim();
-          break;
+        if (lines[i].match(/^Role/i) && lines[i + 1] && !lines[i + 1].match(/^(Name|Description|Appearance|Personality|Backstory|1\.|2\.|3\.)/i)) {
+          const role = lines[i + 1].trim();
+          if (role.length > 0) {
+            newFormData.role = role;
+            console.log('[parsePromptAndFillForm] Found role (line-by-line):', newFormData.role);
+            break;
+          }
         }
       }
     }
@@ -238,10 +259,20 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
       }
     }
     
-    // Update form data
-    setFormData(newFormData);
-    return newFormData;
-  }, [formData]);
+      // Log what we extracted for debugging
+      console.log('[parsePromptAndFillForm] Extracted data:', {
+        name: newFormData.name,
+        role: newFormData.role,
+        description: newFormData.description?.substring(0, 50),
+        appearance: newFormData.appearance?.substring(0, 50),
+        personality: newFormData.personality?.substring(0, 50),
+        backstory: newFormData.backstory?.substring(0, 50)
+      });
+      
+      // Return updated form data
+      return newFormData;
+    });
+  }, []); // No dependencies - uses functional update
 
   useEffect(() => {
     loadCharacters();
@@ -250,7 +281,14 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
   // Auto-fill form when prompt is generated
   useEffect(() => {
     if (generatedPrompt) {
-      parsePromptAndFillForm(generatedPrompt);
+      // Auto-fill when prompt is generated (form will be shown if not already)
+      if (!showAddForm) {
+        setShowAddForm(true);
+      }
+      // Small delay to ensure form is rendered
+      setTimeout(() => {
+        parsePromptAndFillForm(generatedPrompt);
+      }, 100);
     }
   }, [generatedPrompt, parsePromptAndFillForm]);
 
@@ -649,60 +687,17 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
                     <button
                       type="button"
                       onClick={() => {
-                        // Parse the prompt and fill form fields
-                        const lines = generatedPrompt.split('\n');
-                        let currentField = '';
-                        const parsed: any = {};
-                        
-                        lines.forEach(line => {
-                          const trimmed = line.trim();
-                          if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-                            currentField = trimmed.replace(/\*\*/g, '').toLowerCase();
-                          } else if (trimmed && currentField) {
-                            if (!parsed[currentField]) parsed[currentField] = [];
-                            parsed[currentField].push(trimmed);
-                          }
-                        });
-                        
-                        // Build new form data object with extracted values
-                        const newFormData = { ...formData };
-                        
-                        // Extract and fill fields
-                        if (parsed['character name'] || parsed['name']) {
-                          const nameMatch = generatedPrompt.match(/\*\*Character Name\*\*[:\s]+([^\n]+)/i) || 
-                                           generatedPrompt.match(/\*\*Name\*\*[:\s]+([^\n]+)/i) ||
-                                           generatedPrompt.match(/Name[:\s]+([^\n]+)/i);
-                          if (nameMatch) newFormData.name = nameMatch[1].trim();
+                        // Ensure form is visible
+                        if (!showAddForm) {
+                          setShowAddForm(true);
                         }
-                        if (parsed['role in story'] || parsed['role']) {
-                          const roleMatch = generatedPrompt.match(/\*\*Role in Story\*\*[:\s]+([^\n]+)/i) ||
-                                           generatedPrompt.match(/\*\*Role\*\*[:\s]+([^\n]+)/i);
-                          if (roleMatch) newFormData.role = roleMatch[1].trim();
-                        }
-                        if (parsed['physical appearance'] || parsed['appearance']) {
-                          const appearanceText = generatedPrompt.match(/\*\*Physical Appearance\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i) ||
-                                                generatedPrompt.match(/\*\*Appearance\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
-                          if (appearanceText) newFormData.appearance = appearanceText[1].trim();
-                        }
-                        if (parsed['personality traits'] || parsed['personality']) {
-                          const personalityText = generatedPrompt.match(/\*\*Personality Traits\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i) ||
-                                                  generatedPrompt.match(/\*\*Personality\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
-                          if (personalityText) newFormData.personality = personalityText[1].trim();
-                        }
-                        if (parsed['background/backstory'] || parsed['backstory']) {
-                          const backstoryText = generatedPrompt.match(/\*\*Background\/Backstory\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i) ||
-                                               generatedPrompt.match(/\*\*Backstory\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
-                          if (backstoryText) newFormData.backstory = backstoryText[1].trim();
-                        }
-                        if (parsed['description']) {
-                          const descriptionText = generatedPrompt.match(/\*\*Description\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
-                          if (descriptionText) newFormData.description = descriptionText[1].trim();
-                        }
-                        
-                        // Update state with new object
-                        setFormData(newFormData);
+                        // Use the same parsing function
+                        parsePromptAndFillForm(generatedPrompt);
                         setGeneratedPrompt(null);
-                        alert('Prompt details extracted and filled into form!');
+                        // Show success message
+                        setTimeout(() => {
+                          alert('Prompt details extracted and filled into form!');
+                        }, 150);
                       }}
                       className="mt-2 px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs"
                     >
