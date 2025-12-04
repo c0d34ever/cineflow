@@ -161,19 +161,50 @@ router.delete('/notifications/:id', authenticateToken, async (req: AuthRequest, 
 // Note: EventSource doesn't support custom headers, so token is passed via query param
 router.get('/notifications/stream', async (req: express.Request, res: Response) => {
   // Extract token from query (EventSource doesn't support custom headers)
-  const token = (req.query.token as string) || req.headers.authorization?.replace('Bearer ', '');
+  let token = (req.query.token as string) || req.headers.authorization?.replace('Bearer ', '');
+  
+  // Decode token if it's URL encoded
+  if (token) {
+    try {
+      token = decodeURIComponent(token);
+    } catch (e) {
+      // Token might not be encoded, continue with original
+    }
+  }
   
   if (!token) {
+    console.error('[Activity SSE] No token provided');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   // Verify token
+  const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+  console.error(`[Activity SSE] JWT_SECRET is ${JWT_SECRET ? 'SET' : 'NOT SET'} (length: ${JWT_SECRET?.length || 0})`);
+  console.error(`[Activity SSE] Token received (first 50 chars): ${token.substring(0, 50)}...`);
+  
+  let decoded: any;
   try {
-    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userId = decoded.userId;
-    
-    // Verify user still exists and is active
+    decoded = jwt.verify(token, JWT_SECRET) as any;
+  } catch (jwtError: any) {
+    console.error('[Activity SSE] JWT verification failed:', jwtError.name, jwtError.message);
+    if (jwtError.name === 'TokenExpiredError') {
+      return res.status(403).json({ error: 'Token expired', expiredAt: jwtError.expiredAt });
+    }
+    if (jwtError.name === 'JsonWebTokenError') {
+      return res.status(403).json({ error: 'Invalid token', details: jwtError.message });
+    }
+    return res.status(401).json({ error: 'Token verification failed', details: jwtError.message });
+  }
+  
+  const userId = decoded.userId;
+  
+  if (!userId) {
+    console.error('[Activity SSE] Token missing userId');
+    return res.status(401).json({ error: 'Invalid token: missing user ID' });
+  }
+  
+  // Verify user still exists and is active
+  try {
     const pool = getPool();
     const [usersResult] = await pool.query(
       'SELECT id, username, email, role, is_active FROM users WHERE id = ?',
@@ -182,11 +213,13 @@ router.get('/notifications/stream', async (req: express.Request, res: Response) 
 
     const users = Array.isArray(usersResult) ? usersResult : [];
     if (users.length === 0) {
+      console.error(`[Activity SSE] User not found: ${userId}`);
       return res.status(401).json({ error: 'User not found' });
     }
 
     const user = users[0] as any;
     if (!user.is_active) {
+      console.error(`[Activity SSE] User account inactive: ${userId}`);
       return res.status(403).json({ error: 'User account is inactive' });
     }
     
@@ -241,14 +274,8 @@ router.get('/notifications/stream', async (req: express.Request, res: Response) 
       sseService.closeConnection(connectionId);
     });
   } catch (error: any) {
-    console.error('[Activity SSE] Authentication error:', error);
-    if (error.name === 'TokenExpiredError') {
-      return res.status(403).json({ error: 'Token expired', expiredAt: error.expiredAt });
-    }
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(403).json({ error: 'Invalid token', details: error.message });
-    }
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    console.error('[Activity SSE] Unexpected error:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
