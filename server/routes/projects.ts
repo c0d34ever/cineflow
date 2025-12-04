@@ -245,9 +245,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
 // GET /api/projects/:id - Get single project
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
-  console.log(`[GET /api/projects/:id] ===== REQUEST RECEIVED =====`);
-  console.log(`[GET /api/projects/:id] Project ID: ${req.params.id}`);
-  console.log(`[GET /api/projects/:id] User ID: ${req.user!.id}`);
+  const projectId = req.params.id;
+  console.error(`[GET /api/projects/:id] ===== REQUEST RECEIVED =====`);
+  console.error(`[GET /api/projects/:id] Project ID: ${projectId}`);
+  console.error(`[GET /api/projects/:id] User ID: ${req.user!.id}`);
   try {
     const userId = req.user!.id;
     const pool = getPool();
@@ -283,7 +284,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [project.id]
     ) as [SceneRow[], any];
 
-    console.log(`[GET /api/projects/:id] Project ${project.id} (type: ${typeof project.id}): Found ${scenes.length} scenes in database`);
+    console.error(`[GET /api/projects/:id] Project ${project.id} (type: ${typeof project.id}): Found ${scenes.length} scenes in database`);
     
     // Debug: Check if scenes exist with different project_id format
     if (scenes.length === 0) {
@@ -452,7 +453,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           transition: 'Cut',
         };
 
-    console.log(`[GET /api/projects/:id] Returning project ${project.id} with ${scenesData.length} scenes`);
+    console.error(`[GET /api/projects/:id] Returning project ${project.id} with ${scenesData.length} scenes`);
+    
+    if (scenesData.length === 0) {
+      console.error(`[GET /api/projects/:id] WARNING: Returning empty scenes array for project ${project.id}`);
+    }
 
     res.json({
       context: storyContext,
@@ -467,9 +472,12 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 
 // POST /api/projects - Create or update project
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
-  console.log(`[POST /api/projects] ===== SAVE REQUEST =====`);
-  console.log(`[POST /api/projects] Project ID: ${req.body?.context?.id}`);
-  console.log(`[POST /api/projects] Scenes count: ${req.body?.scenes?.length || 0}`);
+  console.error(`[POST /api/projects] ===== SAVE REQUEST =====`);
+  console.error(`[POST /api/projects] Project ID: ${req.body?.context?.id}`);
+  console.error(`[POST /api/projects] Scenes count: ${req.body?.scenes?.length || 0}`);
+  if (req.body?.scenes && Array.isArray(req.body.scenes) && req.body.scenes.length > 0) {
+    console.error(`[POST /api/projects] First scene ID: ${req.body.scenes[0]?.id}`);
+  }
   try {
     const userId = req.user!.id;
     const { context, scenes, settings } = req.body;
@@ -581,10 +589,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       }
 
       // Update or insert scenes (preserving existing scenes to keep media associations)
-      console.log(`[POST /api/projects] Saving ${scenes?.length || 0} scenes for project ${context.id}`);
+      console.error(`[POST /api/projects] Saving ${scenes?.length || 0} scenes for project ${context.id}`);
       if (scenes && Array.isArray(scenes)) {
         for (const scene of scenes) {
-          console.log(`[POST /api/projects] Saving scene ${scene.id} with project_id ${context.id}`);
+          console.error(`[POST /api/projects] Saving scene ${scene.id} with project_id ${context.id}`);
           // Get primary image thumbnail for this scene (check existing media first)
           let thumbnailUrl = scene.thumbnailUrl || null;
           if (!thumbnailUrl) {
