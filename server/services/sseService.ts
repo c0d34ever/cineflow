@@ -18,6 +18,9 @@ class SSEService {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    
+    // Flush headers immediately to establish connection (prevents Cloudflare 522 timeout)
+    res.flushHeaders();
 
     // Store connection
     this.connections.set(connectionId, {
@@ -26,7 +29,7 @@ class SSEService {
       createdAt: new Date()
     });
 
-    // Send initial connection event
+    // Send initial connection event immediately
     this.send(connectionId, 'connected', { message: 'SSE connection established' });
 
     // Handle client disconnect
@@ -47,6 +50,10 @@ class SSEService {
     try {
       const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
       connection.response.write(message);
+      // Flush the response immediately to prevent buffering
+      if (connection.response.flushHeaders) {
+        connection.response.flushHeaders();
+      }
       return true;
     } catch (error) {
       console.error(`[SSE] Error sending event to ${connectionId}:`, error);

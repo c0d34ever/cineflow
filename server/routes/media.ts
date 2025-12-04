@@ -466,25 +466,28 @@ router.get('/scene/:sceneId/stream', async (req: express.Request, res: Response)
     }
     sceneMediaConnections.get(sceneId)!.add(connectionId);
     
-    // Create SSE connection
+    // Create SSE connection (this sets headers and sends initial 'connected' event)
     sseService.createConnection(connectionId, res);
     
     console.error(`[Media SSE] Connection established: ${connectionId} for scene ${sceneId}, user ${userId}`);
     
-    // Send initial media list
-    try {
-      const [rows] = await pool.query(
-        'SELECT * FROM media WHERE scene_id = ? ORDER BY display_order ASC, created_at ASC',
-        [sceneId]
-      ) as [any[], any];
-
+    // Send initial media list immediately (don't await - send async)
+    pool.query(
+      'SELECT * FROM media WHERE scene_id = ? ORDER BY display_order ASC, created_at ASC',
+      [sceneId]
+    ).then(([rows]: any) => {
       sseService.send(connectionId, 'media_list', {
         scene_id: sceneId,
-        media: rows
+        media: Array.isArray(rows) ? rows : []
       });
-    } catch (error) {
+    }).catch((error) => {
       console.error('Error sending initial media list:', error);
-    }
+      // Send empty list on error
+      sseService.send(connectionId, 'media_list', {
+        scene_id: sceneId,
+        media: []
+      });
+    });
     
     // Keep connection alive with periodic ping
     const pingInterval = setInterval(() => {

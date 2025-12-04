@@ -466,30 +466,43 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
                           }
                         });
                         
-                        // Try to extract and fill fields
+                        // Build new form data object with extracted values
+                        const newFormData = { ...formData };
+                        
+                        // Extract and fill fields
                         if (parsed['character name'] || parsed['name']) {
                           const nameMatch = generatedPrompt.match(/\*\*Character Name\*\*[:\s]+([^\n]+)/i) || 
+                                           generatedPrompt.match(/\*\*Name\*\*[:\s]+([^\n]+)/i) ||
                                            generatedPrompt.match(/Name[:\s]+([^\n]+)/i);
-                          if (nameMatch) formData.name = nameMatch[1].trim();
+                          if (nameMatch) newFormData.name = nameMatch[1].trim();
                         }
                         if (parsed['role in story'] || parsed['role']) {
-                          const roleMatch = generatedPrompt.match(/\*\*Role in Story\*\*[:\s]+([^\n]+)/i);
-                          if (roleMatch) formData.role = roleMatch[1].trim();
+                          const roleMatch = generatedPrompt.match(/\*\*Role in Story\*\*[:\s]+([^\n]+)/i) ||
+                                           generatedPrompt.match(/\*\*Role\*\*[:\s]+([^\n]+)/i);
+                          if (roleMatch) newFormData.role = roleMatch[1].trim();
                         }
                         if (parsed['physical appearance'] || parsed['appearance']) {
-                          const appearanceText = generatedPrompt.match(/\*\*Physical Appearance\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
-                          if (appearanceText) formData.appearance = appearanceText[1].trim();
+                          const appearanceText = generatedPrompt.match(/\*\*Physical Appearance\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i) ||
+                                                generatedPrompt.match(/\*\*Appearance\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
+                          if (appearanceText) newFormData.appearance = appearanceText[1].trim();
                         }
                         if (parsed['personality traits'] || parsed['personality']) {
-                          const personalityText = generatedPrompt.match(/\*\*Personality Traits\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
-                          if (personalityText) formData.personality = personalityText[1].trim();
+                          const personalityText = generatedPrompt.match(/\*\*Personality Traits\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i) ||
+                                                  generatedPrompt.match(/\*\*Personality\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
+                          if (personalityText) newFormData.personality = personalityText[1].trim();
                         }
                         if (parsed['background/backstory'] || parsed['backstory']) {
-                          const backstoryText = generatedPrompt.match(/\*\*Background\/Backstory\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
-                          if (backstoryText) formData.backstory = backstoryText[1].trim();
+                          const backstoryText = generatedPrompt.match(/\*\*Background\/Backstory\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i) ||
+                                               generatedPrompt.match(/\*\*Backstory\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
+                          if (backstoryText) newFormData.backstory = backstoryText[1].trim();
+                        }
+                        if (parsed['description']) {
+                          const descriptionText = generatedPrompt.match(/\*\*Description\*\*[:\s]+([\s\S]+?)(?=\*\*|$)/i);
+                          if (descriptionText) newFormData.description = descriptionText[1].trim();
                         }
                         
-                        setFormData({ ...formData });
+                        // Update state with new object
+                        setFormData(newFormData);
                         setGeneratedPrompt(null);
                         alert('Prompt details extracted and filled into form!');
                       }}
