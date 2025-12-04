@@ -64,9 +64,11 @@ import { useLibraryState } from './hooks/useLibraryState';
 import { useProjectOperations } from './hooks/useProjectOperations';
 import { useSceneOperations } from './hooks/useSceneOperations';
 import { useToast } from './hooks/useToast';
+import { useSSE, generateConnectionId } from './hooks/useSSE';
 import LibraryView from './modules/LibraryView';
 import SetupView from './modules/SetupView';
 import StudioView from './modules/StudioView';
+import SaveProgressModal from './components/SaveProgressModal';
 import { DirectorSettings, Scene, StoryContext } from './types';
 import { getStatusesCount } from './utils/arrayUtils';
 import { DEFAULT_CONTEXT, DEFAULT_DIRECTOR_SETTINGS } from './utils/constants';
@@ -194,6 +196,9 @@ const App: React.FC = () => {
     historyIndex, setHistoryIndex,
     maxHistorySize,
   } = appState;
+
+  // SSE connection for save progress
+  const [saveConnectionId, setSaveConnectionId] = useState<string | null>(null);
 
   // Memoize content type terminology to avoid recalculating on every render
   const contentTypeTerminology = useMemo(() => {
@@ -1444,7 +1449,9 @@ const App: React.FC = () => {
 
   // --- Studio UI (view === 'studio') ---
   // Studio view extracted to modules/StudioView.tsx
-  return <StudioView
+  return (
+    <>
+      <StudioView
     // State
     currentUser={currentUser}
     storyContext={storyContext}
@@ -1650,7 +1657,30 @@ const App: React.FC = () => {
     setupTab={setupTab}
     setSetupTab={setSetupTab}
     setProjects={setProjects}
-  />;
+  />
+  
+  {/* Save Progress Modal (SSE) */}
+  <SaveProgressModal
+    connectionId={saveConnectionId}
+    onComplete={() => {
+      setSaveConnectionId(null);
+      setSaveStatus('saved');
+      setLastSavedTime(new Date());
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    }}
+    onError={(error) => {
+      setSaveConnectionId(null);
+      setSaveStatus('error');
+      showToast(`Save failed: ${error}`, 'error');
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    }}
+  />
+  </>
+  );
 };
 
 export default App;

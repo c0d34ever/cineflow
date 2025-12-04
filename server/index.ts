@@ -31,6 +31,7 @@ import mediaRouter from './routes/media.js';
 import comicsRouter from './routes/comics.js';
 import emailsRouter from './routes/emails.js';
 import emailSettingsRouter from './routes/emailSettings.js';
+import sseRouter from './routes/sse.js';
 import { initDatabase } from './db/schema.js';
 import { authenticateToken } from './middleware/auth.js';
 
@@ -182,6 +183,7 @@ app.use('/api/media', mediaRouter);
 app.use('/api/comics', authenticateToken, comicsRouter);
 app.use('/api/emails', emailsRouter);
 app.use('/api/email-settings', emailSettingsRouter);
+app.use('/api/sse', sseRouter);
 
 // 404 handler
 app.use((req, res) => {

@@ -46,7 +46,7 @@ export const apiService = {
   },
 
   // Save project (create or update)
-  async saveProject(data: ProjectData): Promise<void> {
+  async saveProject(data: ProjectData, sseConnectionId?: string): Promise<void> {
     const token = localStorage.getItem('auth_token');
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -54,10 +54,19 @@ export const apiService = {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
+    if (sseConnectionId) {
+      headers['X-SSE-Connection-ID'] = sseConnectionId;
+    }
+    
+    const body: any = { ...data };
+    if (sseConnectionId) {
+      body.sseConnectionId = sseConnectionId;
+    }
+    
     const response = await fetch(`${API_BASE_URL}/projects`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(data),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       const errorText = await response.text();

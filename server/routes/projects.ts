@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { uploadToImageKit, isImageKitAvailable } from '../services/imagekitService.js';
 import sharp from 'sharp';
+import { sseService } from '../services/sseService.js';
 
 const router = express.Router();
 
@@ -478,6 +479,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   if (req.body?.scenes && Array.isArray(req.body.scenes) && req.body.scenes.length > 0) {
     console.error(`[POST /api/projects] First scene ID: ${req.body.scenes[0]?.id}`);
   }
+
+  const connectionId = (req.body.sseConnectionId || req.headers['x-sse-connection-id']) as string | undefined;
+  const useSSE = !!connectionId && sseService.hasConnection(connectionId);
+
   try {
     const userId = req.user!.id;
     const { context, scenes, settings } = req.body;
@@ -590,92 +595,136 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
       // Update or insert scenes (preserving existing scenes to keep media associations)
       console.error(`[POST /api/projects] Saving ${scenes?.length || 0} scenes for project ${context.id}`);
-      if (scenes && Array.isArray(scenes)) {
-        for (const scene of scenes) {
-          console.error(`[POST /api/projects] Saving scene ${scene.id} with project_id ${context.id}`);
-          // Get primary image thumbnail for this scene (check existing media first)
-          let thumbnailUrl = scene.thumbnailUrl || null;
-          if (!thumbnailUrl) {
-            try {
-              const [primaryMedia] = await connection.query(
-                'SELECT thumbnail_path FROM media WHERE scene_id = ? AND is_primary = 1 LIMIT 1',
-                [scene.id]
-              ) as [any[], any];
-              if (primaryMedia && primaryMedia.length > 0 && primaryMedia[0].thumbnail_path) {
-                thumbnailUrl = primaryMedia[0].thumbnail_path;
-              }
-            } catch (error) {
-              // Ignore errors - thumbnail is optional
-              console.warn('Could not fetch thumbnail for scene:', scene.id);
+      if (scenes && Array.isArray(scenes) && scenes.length > 0) {
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 0, 'Starting to save scenes...', { total: scenes.length, saved: 0 });
+        }
+        // Batch fetch thumbnails for all scenes at once (much faster)
+        const sceneIds = scenes.map(s => s.id);
+        let thumbnailMap: Record<string, string | null> = {};
+        try {
+          const [allThumbnails] = await connection.query(
+            'SELECT scene_id, thumbnail_path FROM media WHERE scene_id IN (?) AND is_primary = 1',
+            [sceneIds]
+          ) as [any[], any];
+          thumbnailMap = (allThumbnails || []).reduce((acc: Record<string, string | null>, media: any) => {
+            if (media.scene_id && media.thumbnail_path) {
+              acc[media.scene_id] = media.thumbnail_path;
             }
+            return acc;
+          }, {});
+        } catch (error) {
+          console.warn('Could not batch fetch thumbnails:', error);
+        }
+
+        // Process scenes in batches to avoid timeout
+        const batchSize = 50;
+        const totalBatches = Math.ceil(scenes.length / batchSize);
+        for (let i = 0; i < scenes.length; i += batchSize) {
+          const batch = scenes.slice(i, i + batchSize);
+          const currentBatch = Math.floor(i / batchSize) + 1;
+          console.error(`[POST /api/projects] Processing scenes batch ${currentBatch}/${totalBatches} (${batch.length} scenes)`);
+          
+          if (useSSE) {
+            const progress = Math.floor((i / scenes.length) * 100);
+            sseService.sendProgress(connectionId!, progress, `Saving batch ${currentBatch}/${totalBatches}...`, { 
+              total: scenes.length, 
+              saved: i,
+              currentBatch,
+              totalBatches
+            });
           }
+          
+          // Use Promise.all to process batch in parallel
+          await Promise.all(batch.map(async (scene) => {
+            const thumbnailUrl = scene.thumbnailUrl || thumbnailMap[scene.id] || null;
 
-          // Use INSERT ... ON DUPLICATE KEY UPDATE to preserve existing scenes
-          await connection.query(
-            `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url, is_ai_generated)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-               sequence_number = VALUES(sequence_number),
-               raw_idea = VALUES(raw_idea),
-               enhanced_prompt = VALUES(enhanced_prompt),
-               context_summary = VALUES(context_summary),
-               status = VALUES(status),
-               thumbnail_url = COALESCE(VALUES(thumbnail_url), thumbnail_url),
-               is_ai_generated = VALUES(is_ai_generated)`,
-            [
-              scene.id,
-              context.id,
-              scene.sequenceNumber,
-              scene.rawIdea || '',
-              scene.enhancedPrompt || '',
-              scene.contextSummary || '',
-              scene.status || 'completed',
-              thumbnailUrl,
-              scene.is_ai_generated || false,
-            ]
-          );
-
-          // Insert or update scene director settings
-          if (scene.directorSettings) {
+            // Insert or update scene
             await connection.query(
-              `INSERT INTO scene_director_settings (
-                scene_id, custom_scene_id, lens, angle, lighting, movement, zoom,
-                sound, dialogue, stunt_instructions, physics_focus, style, transition
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE
-                custom_scene_id = VALUES(custom_scene_id),
-                lens = VALUES(lens),
-                angle = VALUES(angle),
-                lighting = VALUES(lighting),
-                movement = VALUES(movement),
-                zoom = VALUES(zoom),
-                sound = VALUES(sound),
-                dialogue = VALUES(dialogue),
-                stunt_instructions = VALUES(stunt_instructions),
-                physics_focus = VALUES(physics_focus),
-                style = VALUES(style),
-                transition = VALUES(transition)`,
+              `INSERT INTO scenes (id, project_id, sequence_number, raw_idea, enhanced_prompt, context_summary, status, thumbnail_url, is_ai_generated)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE
+                 sequence_number = VALUES(sequence_number),
+                 raw_idea = VALUES(raw_idea),
+                 enhanced_prompt = VALUES(enhanced_prompt),
+                 context_summary = VALUES(context_summary),
+                 status = VALUES(status),
+                 thumbnail_url = COALESCE(VALUES(thumbnail_url), thumbnail_url),
+                 is_ai_generated = VALUES(is_ai_generated)`,
               [
                 scene.id,
-                scene.directorSettings.customSceneId || '',
-                scene.directorSettings.lens || '',
-                scene.directorSettings.angle || '',
-                scene.directorSettings.lighting || '',
-                scene.directorSettings.movement || '',
-                scene.directorSettings.zoom || '',
-                scene.directorSettings.sound || '',
-                scene.directorSettings.dialogue || '',
-                scene.directorSettings.stuntInstructions || '',
-                scene.directorSettings.physicsFocus || false,
-                scene.directorSettings.style || 'Cinematic',
-                scene.directorSettings.transition || '',
+                context.id,
+                scene.sequenceNumber,
+                scene.rawIdea || '',
+                scene.enhancedPrompt || '',
+                scene.contextSummary || '',
+                scene.status || 'completed',
+                thumbnailUrl,
+                scene.is_ai_generated || false,
               ]
             );
-          }
+
+            // Insert or update scene director settings
+            if (scene.directorSettings) {
+              await connection.query(
+                `INSERT INTO scene_director_settings (
+                  scene_id, custom_scene_id, lens, angle, lighting, movement, zoom,
+                  sound, dialogue, stunt_instructions, physics_focus, style, transition
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                  custom_scene_id = VALUES(custom_scene_id),
+                  lens = VALUES(lens),
+                  angle = VALUES(angle),
+                  lighting = VALUES(lighting),
+                  movement = VALUES(movement),
+                  zoom = VALUES(zoom),
+                  sound = VALUES(sound),
+                  dialogue = VALUES(dialogue),
+                  stunt_instructions = VALUES(stunt_instructions),
+                  physics_focus = VALUES(physics_focus),
+                  style = VALUES(style),
+                  transition = VALUES(transition)`,
+                [
+                  scene.id,
+                  scene.directorSettings.customSceneId || '',
+                  scene.directorSettings.lens || '',
+                  scene.directorSettings.angle || '',
+                  scene.directorSettings.lighting || '',
+                  scene.directorSettings.movement || '',
+                  scene.directorSettings.zoom || '',
+                  scene.directorSettings.sound || '',
+                  scene.directorSettings.dialogue || '',
+                  scene.directorSettings.stuntInstructions || '',
+                  scene.directorSettings.physicsFocus || false,
+                  scene.directorSettings.style || 'Cinematic',
+                  scene.directorSettings.transition || '',
+                ]
+              );
+            }
+          }));
+        }
+        console.error(`[POST /api/projects] Successfully saved ${scenes.length} scenes for project ${context.id}`);
+        
+        if (useSSE) {
+          sseService.sendProgress(connectionId!, 100, 'All scenes saved successfully!', { 
+            total: scenes.length, 
+            saved: scenes.length 
+          });
         }
       }
 
       await connection.commit();
+      
+      if (useSSE) {
+        sseService.sendComplete(connectionId!, { 
+          success: true, 
+          id: context.id,
+          message: 'Project saved successfully'
+        });
+        // Don't send regular response when using SSE
+        return;
+      }
+      
       res.json({ success: true, id: context.id });
     } catch (error) {
       await connection.rollback();
@@ -687,6 +736,16 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     console.error('Error saving project:', error);
     const errorMessage = error?.message || 'Failed to save project';
     const statusCode = error?.statusCode || 500;
+    
+    const connectionId = (req.body?.sseConnectionId || req.headers['x-sse-connection-id']) as string | undefined;
+    if (connectionId && sseService.hasConnection(connectionId)) {
+      sseService.sendError(connectionId, errorMessage, { 
+        statusCode,
+        details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+      });
+      return;
+    }
+    
     res.status(statusCode).json({ 
       error: errorMessage,
       details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
