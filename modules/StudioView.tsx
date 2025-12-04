@@ -341,6 +341,15 @@ const StudioView: React.FC<StudioViewProps> = (props) => {
   const [generatingScenePrompt, setGeneratingScenePrompt] = useState(false);
   const [generatedScenePrompt, setGeneratedScenePrompt] = useState<string | null>(null);
 
+  // Debug: Log scenes changes
+  React.useEffect(() => {
+    console.log('[StudioView] Scenes updated:', {
+      count: scenes?.length || 0,
+      isArray: Array.isArray(scenes),
+      scenes: scenes?.slice(0, 3).map(s => ({ id: s?.id, seq: s?.sequenceNumber, hasId: !!s?.id }))
+    });
+  }, [scenes]);
+
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden">
       {/* Header */}
@@ -1253,90 +1262,119 @@ const StudioView: React.FC<StudioViewProps> = (props) => {
             )}
 
             <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-20 sm:pb-32">
-              {scenes.length === 0 ? (
-                 <div className="flex flex-col items-center justify-center h-96 text-zinc-600 border-2 border-dashed border-zinc-800 rounded-xl bg-zinc-900/50">
-                    <p className="font-serif text-xl mb-2 text-zinc-400">The Storyboard is Empty</p>
-                    <p className="text-sm max-w-md text-center">
-                      {storyContext.initialContext 
-                        ? `Ready to continue. The Director AI knows the context of your previous ${contentTypeTerminology.scene.toLowerCase()}. Describe the next ${contentTypeTerminology.scene.toLowerCase()} below.` 
-                        : `Describe the opening ${contentTypeTerminology.scene.toLowerCase()} below.`}
-                    </p>
-                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-6">
-                  {scenes.map((scene, index) => (
-                    <div
-                      key={scene.id}
-                      data-scene-id={scene.id}
-                      draggable={!batchMode}
-                      onDragStart={(e) => handleDragStart(e, index)}
-                      onDragOver={(e) => handleDragOver(e, index)}
-                      onDragLeave={(e) => handleDragLeave(e)}
-                      onDrop={(e) => handleDrop(e, index)}
-                      onContextMenu={(e) => !batchMode && handleSceneContextMenu(e, scene)}
-                      className={`w-full transition-all duration-200 ${
-                        batchMode ? 'cursor-pointer' : 'cursor-move'
-                      } ${
-                        draggedSceneIndex === index ? 'opacity-30 scale-95 rotate-1 shadow-2xl' : ''
-                      } ${
-                        dragOverIndex === index && draggedSceneIndex !== null 
-                          ? 'translate-y-4 border-t-4 border-amber-500 bg-amber-900/10' 
-                          : ''
-                      } ${
-                        selectedSceneIds.has(scene.id) ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''
-                      } ${
-                        !batchMode ? 'hover:shadow-xl' : ''
-                      }`}
-                    >
-                      <SceneCard 
-                        scene={scene}
-                        projectId={storyContext.id}
-                        batchMode={batchMode}
-                        isSelected={selectedSceneIds.has(scene.id)}
-                        onToggleSelection={() => handleToggleSceneSelection(scene.id)}
-                        onNotesClick={(sceneId) => {
-                          setSelectedSceneId(sceneId);
-                          setShowSceneNotesPanel(true);
-                        }}
-                        onPreview={!batchMode ? () => {
-                          const sceneIndex = scenes.findIndex(s => s.id === scene.id);
-                          if (sceneIndex >= 0) {
-                            setPreviewSceneIndex(sceneIndex);
-                            setShowScenePreviewModal(true);
-                          }
-                        } : undefined}
-                        onDelete={async (sceneId) => {
-                          try {
-                            const apiAvailable = await checkApiAvailability();
-                            const API_BASE_URL = getApiBaseUrl();
-                            if (apiAvailable) {
-                              const token = localStorage.getItem('auth_token');
-                              await fetch(`${API_BASE_URL}/clips/${sceneId}`, {
-                                method: 'DELETE',
-                                headers: {
-                                  'Authorization': `Bearer ${token}`,
-                                },
-                              });
+              {(() => {
+                // Debug logging
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[StudioView] Scenes state:', {
+                    scenes,
+                    isArray: Array.isArray(scenes),
+                    length: scenes?.length,
+                    type: typeof scenes,
+                    firstScene: scenes?.[0]
+                  });
+                }
+                
+                if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center h-96 text-zinc-600 border-2 border-dashed border-zinc-800 rounded-xl bg-zinc-900/50">
+                      <p className="font-serif text-xl mb-2 text-zinc-400">The Storyboard is Empty</p>
+                      <p className="text-sm max-w-md text-center">
+                        {storyContext.initialContext 
+                          ? `Ready to continue. The Director AI knows the context of your previous ${contentTypeTerminology.scene.toLowerCase()}. Describe the next ${contentTypeTerminology.scene.toLowerCase()} below.` 
+                          : `Describe the opening ${contentTypeTerminology.scene.toLowerCase()} below.`}
+                      </p>
+                      {scenes && !Array.isArray(scenes) && (
+                        <p className="text-xs text-red-400 mt-2">Debug: scenes is not an array: {typeof scenes}</p>
+                      )}
+                      {scenes && Array.isArray(scenes) && scenes.length === 0 && (
+                        <p className="text-xs text-zinc-500 mt-2">No scenes found in project</p>
+                      )}
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div className="grid grid-cols-1 gap-6">
+                    {scenes.map((scene, index) => {
+                      if (!scene || !scene.id) {
+                        console.warn('Invalid scene at index', index, scene);
+                        return null;
+                      }
+                      return (
+                        <div
+                        key={scene.id}
+                        data-scene-id={scene.id}
+                        draggable={!batchMode}
+                        onDragStart={(e) => handleDragStart(e, index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragLeave={(e) => handleDragLeave(e)}
+                        onDrop={(e) => handleDrop(e, index)}
+                        onContextMenu={(e) => !batchMode && handleSceneContextMenu(e, scene)}
+                        className={`w-full transition-all duration-200 ${
+                          batchMode ? 'cursor-pointer' : 'cursor-move'
+                        } ${
+                          draggedSceneIndex === index ? 'opacity-30 scale-95 rotate-1 shadow-2xl' : ''
+                        } ${
+                          dragOverIndex === index && draggedSceneIndex !== null 
+                            ? 'translate-y-4 border-t-4 border-amber-500 bg-amber-900/10' 
+                            : ''
+                        } ${
+                          selectedSceneIds.has(scene.id) ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''
+                        } ${
+                          !batchMode ? 'hover:shadow-xl' : ''
+                        }`}
+                      >
+                        <SceneCard 
+                          scene={scene}
+                          projectId={storyContext.id}
+                          batchMode={batchMode}
+                          isSelected={selectedSceneIds.has(scene.id)}
+                          onToggleSelection={() => handleToggleSceneSelection(scene.id)}
+                          onNotesClick={(sceneId) => {
+                            setSelectedSceneId(sceneId);
+                            setShowSceneNotesPanel(true);
+                          }}
+                          onPreview={!batchMode ? () => {
+                            const sceneIndex = scenes.findIndex(s => s.id === scene.id);
+                            if (sceneIndex >= 0) {
+                              setPreviewSceneIndex(sceneIndex);
+                              setShowScenePreviewModal(true);
                             }
-                            setScenes(prev => {
-                              const filtered = prev.filter(s => s.id !== sceneId);
-                              // Re-sequence remaining scenes
-                              return filtered.map((s, idx) => ({
-                                ...s,
-                                sequenceNumber: idx + 1
-                              }));
-                            });
-                            showToast(`${contentTypeTerminology.scene} deleted successfully`, 'success');
-                          } catch (error: any) {
-                            showToast(`Failed to delete ${contentTypeTerminology.scene.toLowerCase()}`, 'error');
-                          }
+                          } : undefined}
+                          onDelete={async (sceneId) => {
+                            try {
+                              const apiAvailable = await checkApiAvailability();
+                              const API_BASE_URL = getApiBaseUrl();
+                              if (apiAvailable) {
+                                const token = localStorage.getItem('auth_token');
+                                await fetch(`${API_BASE_URL}/clips/${sceneId}`, {
+                                  method: 'DELETE',
+                                  headers: {
+                                    'Authorization': `Bearer ${token}`,
+                                  },
+                                });
+                              }
+                              setScenes(prev => {
+                                const filtered = prev.filter(s => s.id !== sceneId);
+                                // Re-sequence remaining scenes
+                                return filtered.map((s, idx) => ({
+                                  ...s,
+                                  sequenceNumber: idx + 1
+                                }));
+                              });
+                              showToast(`${contentTypeTerminology.scene} deleted successfully`, 'success');
+                            } catch (error: any) {
+                              showToast(`Failed to delete ${contentTypeTerminology.scene.toLowerCase()}`, 'error');
+                            }
                         }}
                       />
-                    </div>
-                  ))}
-                  <div ref={bottomRef}></div>
-                </div>
-              )}
+                        </div>
+                      );
+                    })}
+                    <div ref={bottomRef}></div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

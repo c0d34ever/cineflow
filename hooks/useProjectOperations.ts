@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { ProjectData } from '../db';
 import { StoryContext, DirectorSettings, Scene } from '../types';
 import { ContentType } from '../components/ContentTypeSelector';
@@ -38,7 +38,15 @@ export const useProjectOperations = ({
 
   const handleOpenProject = async (project: ProjectData) => {
     setStoryContext(project.context);
-    setScenes(project.scenes);
+    // Ensure scenes is always an array
+    const scenesArray = Array.isArray(project.scenes) ? project.scenes : (project.scenes ? [project.scenes] : []);
+    console.log('[handleOpenProject] Setting scenes:', {
+      projectScenes: project.scenes,
+      isArray: Array.isArray(project.scenes),
+      scenesArrayLength: scenesArray.length,
+      firstScene: scenesArray[0]
+    });
+    setScenes(scenesArray);
     setCurrentSettings(project.settings);
     setView('studio');
     
@@ -46,7 +54,7 @@ export const useProjectOperations = ({
     try {
       const token = localStorage.getItem('auth_token');
       if (token) {
-        await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/analytics/project/${project.context.id}/view`, {
+        await fetch(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api'}/analytics/project/${project.context.id}/view`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

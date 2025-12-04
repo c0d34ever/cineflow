@@ -426,7 +426,7 @@ const App: React.FC = () => {
     if (view === 'studio' && storyContext.id) {
       const currentState: ProjectData = {
         context: { ...storyContext },
-        scenes: [...scenes],
+        scenes: Array.isArray(scenes) ? [...scenes] : [],
         settings: { ...currentSettings }
       };
       setHistory([currentState]);
