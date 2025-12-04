@@ -45,15 +45,13 @@ export const useSSE = (options: UseSSEOptions) => {
     }
 
     const token = localStorage.getItem('auth_token');
-    // Pass token in Authorization header via URL params (SSE doesn't support custom headers)
-    const url = `${API_BASE_URL}/sse/${connectionId}`;
+    // Pass token in query string (SSE doesn't support custom headers)
+    const url = `${API_BASE_URL}/sse/${connectionId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
     console.log('[useSSE] Connecting to SSE:', url);
     
     // Create EventSource with token in URL (backend will extract it)
-    const eventSource = new EventSource(url, {
-      withCredentials: true
-    } as any);
+    const eventSource = new EventSource(url);
 
     eventSource.onopen = () => {
       console.log('[useSSE] SSE connection opened');

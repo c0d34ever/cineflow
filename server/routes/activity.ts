@@ -158,47 +158,98 @@ router.delete('/notifications/:id', authenticateToken, async (req: AuthRequest, 
 });
 
 // GET /api/activity/notifications/stream - SSE stream for real-time notifications
-router.get('/notifications/stream', authenticateToken, async (req: AuthRequest, res: Response) => {
-  const userId = req.user!.id;
-  const connectionId = `notifications-${userId}-${Date.now()}`;
+// Note: EventSource doesn't support custom headers, so token is passed via query param
+router.get('/notifications/stream', async (req: express.Request, res: Response) => {
+  // Extract token from query (EventSource doesn't support custom headers)
+  const token = (req.query.token as string) || req.headers.authorization?.replace('Bearer ', '');
   
-  // Store connection
-  notificationConnections.set(userId, connectionId);
-  
-  // Create SSE connection
-  sseService.createConnection(connectionId, res);
-  
-  // Send initial notifications
-  try {
-    const pool = getPool();
-    const limit = 50;
-    
-    const [notifications] = await pool.query(
-      `SELECT * FROM notifications
-       WHERE user_id = ?
-       ORDER BY created_at DESC
-       LIMIT ?`,
-      [userId, limit]
-    );
-
-    const [unreadCount] = await pool.query(
-      'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE',
-      [userId]
-    );
-
-    sseService.send(connectionId, 'notifications', {
-      notifications,
-      unread_count: (unreadCount as any[])[0]?.count || 0
-    });
-  } catch (error) {
-    console.error('Error sending initial notifications:', error);
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
   }
-  
-  // Clean up on disconnect
-  res.on('close', () => {
-    notificationConnections.delete(userId);
-    sseService.closeConnection(connectionId);
-  });
+
+  // Verify token
+  try {
+    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const userId = decoded.userId;
+    
+    // Verify user still exists and is active
+    const pool = getPool();
+    const [usersResult] = await pool.query(
+      'SELECT id, username, email, role, is_active FROM users WHERE id = ?',
+      [userId]
+    ) as [any[], any];
+
+    const users = Array.isArray(usersResult) ? usersResult : [];
+    if (users.length === 0) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const user = users[0] as any;
+    if (!user.is_active) {
+      return res.status(403).json({ error: 'User account is inactive' });
+    }
+    
+    const connectionId = `notifications-${userId}-${Date.now()}`;
+    
+    // Store connection
+    notificationConnections.set(userId, connectionId);
+    
+    // Create SSE connection
+    sseService.createConnection(connectionId, res);
+    
+    console.error(`[Activity SSE] Connection established: ${connectionId} for user ${userId}`);
+    
+    // Send initial notifications
+    try {
+      const limit = 50;
+      
+      const [notifications] = await pool.query(
+        `SELECT * FROM notifications
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`,
+        [userId, limit]
+      );
+
+      const [unreadCount] = await pool.query(
+        'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE',
+        [userId]
+      );
+
+      sseService.send(connectionId, 'notifications', {
+        notifications,
+        unread_count: (unreadCount as any[])[0]?.count || 0
+      });
+    } catch (error) {
+      console.error('Error sending initial notifications:', error);
+    }
+    
+    // Keep connection alive with periodic ping
+    const pingInterval = setInterval(() => {
+      if (sseService.hasConnection(connectionId)) {
+        sseService.send(connectionId, 'ping', { timestamp: Date.now() });
+      } else {
+        clearInterval(pingInterval);
+      }
+    }, 30000); // Ping every 30 seconds
+    
+    // Clean up on disconnect
+    res.on('close', () => {
+      clearInterval(pingInterval);
+      notificationConnections.delete(userId);
+      sseService.closeConnection(connectionId);
+    });
+  } catch (error: any) {
+    console.error('[Activity SSE] Authentication error:', error);
+    if (error.name === 'TokenExpiredError') {
+      return res.status(403).json({ error: 'Token expired', expiredAt: error.expiredAt });
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(403).json({ error: 'Invalid token', details: error.message });
+    }
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
 });
 
 // Helper function to notify user of new notification (called when notification is created)
