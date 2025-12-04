@@ -280,6 +280,26 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [project.id]
     ) as [SceneRow[], any];
 
+    console.log(`[GET /api/projects/:id] Project ${project.id}: Found ${scenes.length} scenes in database`);
+    
+    // Debug: Check if scenes exist with different project_id format
+    if (scenes.length === 0) {
+      const [allScenes] = await pool.query(
+        'SELECT id, project_id FROM scenes LIMIT 10'
+      ) as [any[], any];
+      console.log(`[GET /api/projects/:id] Debug: Sample scenes in database:`, allScenes.map(s => ({ id: s.id, project_id: s.project_id, matches: s.project_id === project.id })));
+      
+      // Try alternative query - maybe project_id is stored as string vs number
+      const [altScenes] = await pool.query(
+        'SELECT * FROM scenes WHERE project_id = ? OR project_id = ? ORDER BY sequence_number ASC',
+        [project.id, String(project.id)]
+      ) as [SceneRow[], any];
+      if (altScenes.length > 0) {
+        console.log(`[GET /api/projects/:id] Found ${altScenes.length} scenes with alternative query`);
+        scenes.push(...altScenes);
+      }
+    }
+
     const [settings] = await pool.query(
       'SELECT * FROM director_settings WHERE project_id = ?',
       [project.id]
@@ -324,6 +344,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           coverImageUrl: coverImagekitUrl || coverImageUrl || undefined,
           contentType: (project as any).content_type || undefined,
         };
+
+    console.log(`[GET /api/projects/:id] Processing ${scenes.length} scenes for project ${project.id}`);
 
     const scenesData: Scene[] = await Promise.all(
       scenes.map(async (scene) => {
@@ -404,6 +426,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           style: 'Cinematic' as any,
           transition: 'Cut',
         };
+
+    console.log(`[GET /api/projects/:id] Returning project ${project.id} with ${scenesData.length} scenes`);
 
     res.json({
       context: storyContext,

@@ -54,8 +54,14 @@ export const useProjectOperations = ({
         if (apiAvailable) {
           const fullProject = await apiService.getProject(project.context.id);
           console.log('[handleOpenProject] Fetched full project:', {
+            fullProject: fullProject,
+            scenes: fullProject.scenes,
+            scenesType: typeof fullProject.scenes,
             scenesLength: fullProject.scenes?.length || 0,
-            isArray: Array.isArray(fullProject.scenes)
+            isArray: Array.isArray(fullProject.scenes),
+            firstScene: fullProject.scenes?.[0],
+            hasScenesProperty: 'scenes' in fullProject,
+            allKeys: Object.keys(fullProject)
           });
           projectData = fullProject;
         }
