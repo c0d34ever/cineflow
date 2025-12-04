@@ -275,6 +275,7 @@ const CharactersPanel: React.FC<CharactersPanelProps> = ({ projectId, storyConte
             </button>
           </div>
         </div>
+        </div>
 
         <div className="flex-1 overflow-y-auto p-4">
           {showAddForm ? (
