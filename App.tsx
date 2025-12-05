@@ -36,6 +36,7 @@ import ProjectQuickActionsMenu from './components/ProjectQuickActionsMenu';
 import ProjectStatisticsPanel from './components/ProjectStatisticsPanel';
 import ProjectStatsTooltip from './components/ProjectStatsTooltip';
 import ProjectTemplatesLibrary from './components/ProjectTemplatesLibrary';
+import QuickTemplateSelector from './components/QuickTemplateSelector';
 import QuickActionsMenuWrapper, { setShowToast as setQuickActionsToast } from './components/QuickActionsMenuWrapper';
 import ResetPassword from './components/ResetPassword';
 import SceneBookmarksPanel from './components/SceneBookmarksPanel';
@@ -158,6 +159,7 @@ const App: React.FC = () => {
     showStoryboardPlayback, setShowStoryboardPlayback,
     showAdvancedSearchPanel, setShowAdvancedSearchPanel,
     showTemplatesLibrary, setShowTemplatesLibrary,
+    showQuickTemplateSelector, setShowQuickTemplateSelector,
     showAIStoryAnalysis, setShowAIStoryAnalysis,
     showShotListGenerator, setShowShotListGenerator,
     showShootingSchedule, setShowShootingSchedule,
@@ -1515,6 +1517,44 @@ const App: React.FC = () => {
             />
           </div>
         )}
+        {showQuickTemplateSelector && (
+          <QuickTemplateSelector
+            showToast={showToast}
+            onSelectTemplate={async (template) => {
+              try {
+                const API_BASE_URL = getApiBaseUrl();
+                const token = localStorage.getItem('auth_token');
+                
+                const response = await fetch(`${API_BASE_URL}/templates/${template.id}/create-project`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                  },
+                });
+
+                if (!response.ok) throw new Error('Failed to create project from template');
+
+                const result = await response.json();
+                
+                const projectData = await apiService.getProject(result.id);
+                setStoryContext(projectData.context);
+                setScenes(projectData.scenes || []);
+                setCurrentSettings(projectData.settings || DEFAULT_DIRECTOR_SETTINGS);
+                setView('studio');
+                setShowQuickTemplateSelector(false);
+                showToast('Project created from template!', 'success');
+              } catch (error: any) {
+                showToast('Failed to create project from template', 'error');
+              }
+            }}
+            onClose={() => setShowQuickTemplateSelector(false)}
+            onShowFullLibrary={() => {
+              setShowQuickTemplateSelector(false);
+              setShowTemplatesLibrary(true);
+            }}
+          />
+        )}
       <LibraryView
         currentUser={currentUser}
         projects={projects}
@@ -1545,6 +1585,9 @@ const App: React.FC = () => {
         setSelectedProjectForSharing={setSelectedProjectForSharing}
         setShowSharingModal={setShowSharingModal}
         setProjects={setProjects}
+        setShowQuickTemplateSelector={setShowQuickTemplateSelector}
+        handleTemplateSelect={handleTemplateSelect}
+        setShowTemplatesLibrary={setShowTemplatesLibrary}
       />
       </>
     );

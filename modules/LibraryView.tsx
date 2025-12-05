@@ -43,6 +43,9 @@ interface LibraryViewProps {
   setSelectedProjectForSharing: (project: ProjectData | null) => void;
   setShowSharingModal: (show: boolean) => void;
   setProjects: React.Dispatch<React.SetStateAction<ProjectData[]>>;
+  setShowQuickTemplateSelector: (show: boolean) => void;
+  handleTemplateSelect: (template: any) => void;
+  setShowTemplatesLibrary: (show: boolean) => void;
 }
 
 const LibraryView: React.FC<LibraryViewProps> = ({
@@ -75,6 +78,9 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   setSelectedProjectForSharing,
   setShowSharingModal,
   setProjects,
+  setShowQuickTemplateSelector,
+  handleTemplateSelect,
+  setShowTemplatesLibrary,
 }) => {
   // Use library state hook
   const {
@@ -726,20 +732,37 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
         <div className={getGridColumnsClass(libraryViewMode, libraryCardSize)}>
           {/* New Project Card */}
-          <button 
-            onClick={(e) => {
-              e.preventDefault();
-              handleCreateNew();
-            }}
-            className="bg-zinc-900/50 border-2 border-dashed border-zinc-800 rounded-xl p-8 flex flex-col items-center justify-center min-h-[200px] hover:border-amber-500/50 hover:bg-zinc-900 transition-all group"
-          >
-             <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 group-hover:bg-amber-600 group-hover:text-white transition-colors mb-4">
-               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-               </svg>
-             </div>
-             <span className="text-sm font-bold text-zinc-400 group-hover:text-white">Start New Project</span>
-          </button>
+          <div className="bg-zinc-900/50 border-2 border-dashed border-zinc-800 rounded-xl p-4 flex flex-col gap-2 min-h-[200px]">
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                handleCreateNew();
+              }}
+              className="flex-1 flex flex-col items-center justify-center hover:border-amber-500/50 hover:bg-zinc-900 transition-all group rounded-lg"
+            >
+               <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 group-hover:bg-amber-600 group-hover:text-white transition-colors mb-4">
+                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                 </svg>
+               </div>
+               <span className="text-sm font-bold text-zinc-400 group-hover:text-white">Start New Project</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowQuickTemplateSelector(true);
+              }}
+              className="w-full px-3 py-2 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded transition-colors flex items-center justify-center gap-2 border border-zinc-700"
+              title="Start from template"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+              </svg>
+              From Template
+            </button>
+          </div>
 
           {/* Import Project Card */}
           <button 

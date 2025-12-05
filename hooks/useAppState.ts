@@ -130,6 +130,7 @@ export const useAppState = () => {
   const [tagAssignerProject, setTagAssignerProject] = useState<ProjectData | null>(null);
   const [favoritedProjects, setFavoritedProjects] = useState<Set<string>>(new Set());
   const [showBulkTagAssigner, setShowBulkTagAssigner] = useState(false);
+  const [showQuickTemplateSelector, setShowQuickTemplateSelector] = useState(false);
 
   // Undo/Redo
   const [history, setHistory] = useState<ProjectData[]>([]);
@@ -364,6 +365,8 @@ export const useAppState = () => {
     setFavoritedProjects,
     showBulkTagAssigner,
     setShowBulkTagAssigner,
+    showQuickTemplateSelector,
+    setShowQuickTemplateSelector,
     
     // Undo/Redo
     history,
